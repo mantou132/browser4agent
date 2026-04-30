@@ -1,77 +1,64 @@
 (async () => {
-  const SKIP_TAGS = new Set([
-    "SCRIPT",
-    "STYLE",
-    "HEAD",
-    "NOSCRIPT",
-    "TEMPLATE",
-    "IMG",
-    "IFRAME",
-    "SVG",
-  ]);
+  const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'HEAD', 'NOSCRIPT', 'TEMPLATE', 'IMG', 'IFRAME', 'SVG']);
   const VOID_TAGS = new Set([
-    "AREA",
-    "BASE",
-    "BR",
-    "COL",
-    "EMBED",
-    "HR",
-    "IMG",
-    "INPUT",
-    "LINK",
-    "META",
-    "PARAM",
-    "SOURCE",
-    "TRACK",
-    "WBR",
+    'AREA',
+    'BASE',
+    'BR',
+    'COL',
+    'EMBED',
+    'HR',
+    'IMG',
+    'INPUT',
+    'LINK',
+    'META',
+    'PARAM',
+    'SOURCE',
+    'TRACK',
+    'WBR',
   ]);
   const KEEP_ATTRS = new Set([
-    "id",
+    'id',
     // "class",
-    "role",
-    "type",
-    "name",
-    "href",
-    "src",
-    "alt",
-    "placeholder",
-    "aria-label",
-    "aria-hidden",
-    "data-testid",
-    "disabled",
-    "checked",
-    "selected",
-    "value",
+    'role',
+    'type',
+    'name',
+    'href',
+    'src',
+    'alt',
+    'placeholder',
+    'aria-label',
+    'aria-hidden',
+    'data-testid',
+    'disabled',
+    'checked',
+    'selected',
+    'value',
   ]);
 
   const serialize = (node) => {
     if (node.nodeType === Node.TEXT_NODE) {
       const text = node.textContent.trim();
-      return text ? (node.textContent !== text ? ` ${text} ` : text) : "";
+      return text ? (node.textContent !== text ? ` ${text} ` : text) : '';
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) return "";
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
 
     const tag = node.tagName;
-    if (SKIP_TAGS.has(tag)) return "";
+    if (SKIP_TAGS.has(tag)) return '';
 
-    if (tag === "SLOT") {
+    if (tag === 'SLOT') {
       const assigned = node.assignedNodes({ flatten: true });
-      return (assigned.length ? assigned : [...node.childNodes])
-        .map(serialize)
-        .join("");
+      return (assigned.length ? assigned : [...node.childNodes]).map(serialize).join('');
     }
 
     const children = (node.shadowRoot ?? node).childNodes;
-    const childrenContent = [...children].map(serialize).join("");
-    if (!VOID_TAGS.has(tag) && !childrenContent) return "";
+    const childrenContent = [...children].map(serialize).join('');
+    if (!VOID_TAGS.has(tag) && !childrenContent) return '';
 
     const attrs = [...node.attributes]
-      .filter(
-        (attr) => KEEP_ATTRS.has(attr.name) && !attr.value.startsWith("data:"),
-      )
+      .filter((attr) => KEEP_ATTRS.has(attr.name) && !attr.value.startsWith('data:'))
       .map((attr) => `${attr.name}="${attr.value}"`)
-      .join(" ");
-    const openTag = `<${tag.toLowerCase()}${attrs ? ` ${attrs}` : ""}>`;
+      .join(' ');
+    const openTag = `<${tag.toLowerCase()}${attrs ? ` ${attrs}` : ''}>`;
 
     if (VOID_TAGS.has(tag)) return openTag;
 

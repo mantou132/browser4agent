@@ -2,12 +2,14 @@
 
 一个可以直接获取浏览器打开标签页数据的 MCP 服务。例如，当浏览器中打开了内部系统或包含个人数据的网页时，可以通过该 MCP 直接读取页面内容。也可以用于读取本地服务页面的控制台信息、Cookie、localStorage 数据，辅助 bug 修复。
 
+> ⚠️ **安全警告**：仅在你完全信任的环境中使用，应该避免提示词攻击窃取信息。
+
 ## 工作原理
 
 ```
 Agent (Cursor/Claude Code 等)
     │
-    │  MCP over HTTP
+    │  MCP over HTTP (本地连接)
     ▼
 本地进程 (browser-data-mcp)
     │
@@ -15,12 +17,27 @@ Agent (Cursor/Claude Code 等)
     ▼
 浏览器扩展
     │
-    │  Chrome Scripting API
+    │  Chrome Scripting API / Firefox WebExtensions API
     ▼
 标签页内容
 ```
 
 Agent 通过 MCP 协议与本地进程通信，本地进程将 MCP 消息通过 Native Messaging 透传给浏览器扩展，浏览器扩展通过脚本注入读取标签页内容并返回。
+
+## 比较
+
+| 工具 | 技术实现 | 操作当前浏览器 | 需要额外配置 |
+| --- | --- | --- | --- |
+| **browser-data-mcp** (本项目) | 浏览器扩展 API | ✅ 是 | ⚠️ 否，安装扩展即可 |
+| **[Claude for Chrome][1]** | 浏览器扩展 API | ✅ 是 | ⚠️ 否，安装扩展即可 |
+| [chrome-devtools-mcp][2] | CDP (Chrome DevTools Protocol) | ❌ 否 | ⚠️ 需开启 Chrome 远程调试 (`--remote-debugging-port`) |
+| [playwright-mcp][3] | Playwright (底层 CDP) | ❌ 否 | ⚠️ 否，自动管理浏览器 |
+| [browser-use][4] | Playwright (底层 CDP) + Python Agent 框架 | ❌ 否 | ⚠️ 或需提供 CDP endpoint |
+
+[1]: https://claude.com/claude-for-chrome
+[2]: https://github.com/executeautomation/chrome-mcp-server
+[3]: https://github.com/microsoft/playwright-mcp
+[4]: https://github.com/browser-use/browser-use
 
 ## 安装与使用
 
@@ -58,6 +75,19 @@ claude mcp add --transport http --scope user browser http://127.0.0.1:39271/mcp
 ```
 
 配置完 MCP 之后，AI Agent 会在需要时自动调用 MCP 的工具，读取浏览器中的数据
+
+## 工具说明
+
+| 工具名称 | 功能 | 安全等级 |
+| --- | --- | --- |
+| `list_tabs` | 列出所有打开的标签页 | ✅ 安全 |
+| `read_tab` | 读取指定标签页的精简 HTML | ✅ 安全 |
+| `read_active_tab` | 读取当前活动标签页的精简 HTML | ✅ 安全 |
+| `get_cookies` | 获取指定 URL 的 cookie | ⚠️ 敏感 |
+| `get_errors` | 获取页面错误信息 | ✅ 安全 |
+| `get_local_storage` | 获取页面 localStorage 数据 | ⚠️ 敏感 |
+| `execute_script` | 在标签页中执行 JavaScript | 🔴 高风险 |
+| `execute_script_in_background` | 在扩展后台执行 JavaScript | 🔴 高风险 |
 
 ## 支持的浏览器
 

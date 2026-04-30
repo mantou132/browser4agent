@@ -9,13 +9,7 @@
     }
   },
   "description": "Provides browser tab data to Browser Data MCP native messaging host",
-  "permissions": [
-    "tabs",
-    "nativeMessaging",
-    "scripting",
-    "activeTab",
-    "cookies"
-  ],
+  "permissions": ["tabs", "nativeMessaging", "scripting", "activeTab", "cookies"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "type": "module",
@@ -38,5 +32,8 @@
   ],
   "icons": {
     "128": "icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   }
 }

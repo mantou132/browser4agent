@@ -70,8 +70,11 @@ impl NativeMessenger {
     }
 
     /// Deliver a response from the extension to the waiting oneshot.
-    pub async fn deliver_response(&self, request_id: u64, response: serde_json::Value) {
+    pub async fn deliver_response(&self, request_id: u64, mut response: serde_json::Value) {
         if let Some(tx) = self.pending.lock().await.remove(&request_id) {
+            if let Some(map) = response.as_object_mut() {
+                map.remove("request_id");
+            }
             let _ = tx.send(response);
         }
     }

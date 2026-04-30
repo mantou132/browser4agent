@@ -1,4 +1,6 @@
-const err = (msg) => ({ type: "error", error: msg });
+import { exec } from './execute-in-bg.js';
+
+const err = (msg) => ({ type: 'error', error: msg });
 
 function scriptResult(results) {
   const { result, error } = results[0] || {};
@@ -8,15 +10,13 @@ function scriptResult(results) {
 
 export async function getAllTabs() {
   try {
-    const tabs = (await chrome.tabs.query({})).map(
-      ({ id, title, url, active, lastAccessed }) => ({
-        id,
-        title,
-        active,
-        url: url.slice(0, 1024),
-        lastAccessed: new Date(lastAccessed).toLocaleString(),
-      }),
-    );
+    const tabs = (await chrome.tabs.query({})).map(({ id, title, url, active, lastAccessed }) => ({
+      id,
+      title,
+      active,
+      url: url.slice(0, 1024),
+      lastAccessed: new Date(lastAccessed).toLocaleString(),
+    }));
     return { tabs };
   } catch (e) {
     return err(`Failed to get tabs: ${e.message}`);
@@ -24,14 +24,14 @@ export async function getAllTabs() {
 }
 
 export async function readTab(tabId) {
-  if (tabId == null) return err("tabId is required");
+  if (tabId == null) return err('tabId is required');
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
-      files: ["serialize.js"],
-      world: "MAIN",
+      files: ['serialize.js'],
+      world: 'MAIN',
     });
-    const content = scriptResult(results) || "";
+    const content = scriptResult(results) || '';
     return { tabId, content };
   } catch (e) {
     return err(`Failed to read tab ${tabId}: ${e.message}`);
@@ -44,13 +44,13 @@ export async function readActiveTab() {
       active: true,
       currentWindow: true,
     });
-    if (!tab) return err("No active tab");
+    if (!tab) return err('No active tab');
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ["serialize.js"],
-      world: "MAIN",
+      files: ['serialize.js'],
+      world: 'MAIN',
     });
-    const content = scriptResult(results) || "";
+    const content = scriptResult(results) || '';
     return { tabId: tab.id, title: tab.title, url: tab.url, content };
   } catch (e) {
     return err(`Failed to read active tab: ${e.message}`);
@@ -59,9 +59,7 @@ export async function readActiveTab() {
 
 export async function getCookies(url) {
   try {
-    const cookies = (
-      await chrome.cookies.getAll({ url, partitionKey: {} })
-    ).map(({ name, value, domain, path }) => ({
+    const cookies = (await chrome.cookies.getAll({ url, partitionKey: {} })).map(({ name, value, domain, path }) => ({
       name,
       value,
       domain,
@@ -74,12 +72,12 @@ export async function getCookies(url) {
 }
 
 export async function getErrors(tabId) {
-  if (tabId == null) return err("tabId is required");
+  if (tabId == null) return err('tabId is required');
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => window.__page_errors || [],
-      world: "MAIN",
+      world: 'MAIN',
     });
     return { messages: scriptResult(results) || [] };
   } catch (e) {
@@ -88,13 +86,13 @@ export async function getErrors(tabId) {
 }
 
 export async function executeScript(tabId, funcStr) {
-  if (tabId == null) return err("tabId is required");
-  if (!funcStr) return err("funcStr is required");
+  if (tabId == null) return err('tabId is required');
+  if (!funcStr) return err('funcStr is required');
   try {
     const nonce = scriptResult(
       await chrome.scripting.executeScript({
         target: { tabId },
-        func: () => document.querySelector("script[nonce]")?.nonce,
+        func: () => document.querySelector('script[nonce]')?.nonce,
       }),
     );
     const results = await chrome.scripting.executeScript({
@@ -117,10 +115,10 @@ export async function executeScript(tabId, funcStr) {
             }
           })();
         `;
-        const blob = new Blob([blobContent], { type: "text/javascript" });
+        const blob = new Blob([blobContent], { type: 'text/javascript' });
         const blobUrl = URL.createObjectURL(blob);
-        const script = document.createElement("script");
-        if (nonce) script.setAttribute("nonce", nonce);
+        const script = document.createElement('script');
+        if (nonce) script.setAttribute('nonce', nonce);
         script.src = blobUrl;
         script.onerror = reject;
         document.head.append(script);
@@ -133,7 +131,7 @@ export async function executeScript(tabId, funcStr) {
         }
       },
       args: [funcStr, nonce],
-      world: "MAIN",
+      world: 'MAIN',
     });
     return { result: scriptResult(results) };
   } catch (e) {
@@ -141,19 +139,26 @@ export async function executeScript(tabId, funcStr) {
   }
 }
 
+export async function executeScriptInBackground(funcStr) {
+  if (!funcStr) return err('funcStr is required');
+  try {
+    const result = await exec(funcStr);
+    return { result };
+  } catch (e) {
+    return err(`Failed to execute script: ${e.message}`);
+  }
+}
+
 export async function getLocalStorage(tabId) {
-  if (tabId == null) return err("tabId is required");
+  if (tabId == null) return err('tabId is required');
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: () =>
         Object.fromEntries(
-          Object.entries(localStorage).map(([k, v]) => [
-            k,
-            v.length > 1024 ? `... (${v.length} chars)` : v,
-          ]),
+          Object.entries(localStorage).map(([k, v]) => [k, v.length > 1024 ? `... (${v.length} chars)` : v]),
         ),
-      world: "MAIN",
+      world: 'MAIN',
     });
     return { data: scriptResult(results) || {} };
   } catch (e) {

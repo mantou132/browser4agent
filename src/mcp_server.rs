@@ -1,13 +1,9 @@
 use crate::native_host::NativeMessenger;
 use rmcp::{
     ErrorData as McpError, ServerHandler,
-    handler::server::{
-        router::tool::ToolRouter,
-        wrapper::Parameters,
-    },
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{ErrorCode, *},
-    schemars,
-    tool, tool_handler, tool_router,
+    schemars, tool, tool_handler, tool_router,
 };
 use serde::Deserialize;
 
@@ -38,6 +34,14 @@ pub struct ExecuteScriptParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExecuteScriptInBackgroundParams {
+    #[schemars(
+        description = "一个无参数的函数，该函数在扩展背景脚本中执行后返回其结果，支持异步函数"
+    )]
+    pub func_str: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct GetLocalStorageParams {
     #[schemars(description = "目标标签页 ID（从 list_tabs 获取）")]
     pub tab_id: i64,
@@ -59,86 +63,159 @@ impl BrowserDataServer {
         }
     }
 
-    #[tool(description = "列出浏览器中所有打开的标签页，返回每个标签的 id、标题、活动状态、最近使用时间和 URL。用于选择目标标签后再调用 read_tab/get_cookies/get_local_storage 等读取内容。")]
+    #[tool(
+        description = "列出浏览器中所有打开的标签页，返回每个标签的 id、标题、活动状态、最近使用时间和 URL。用于选择目标标签后再调用 read_tab/get_cookies/get_local_storage 等读取内容。"
+    )]
     async fn list_tabs(&self) -> Result<CallToolResult, McpError> {
-        let resp = self.request_extension(&serde_json::json!({"type": "list_tabs"})).await?;
-        if let Some(r) = Self::check_error(&resp) { return Ok(r); }
+        let resp = self
+            .request_extension(&serde_json::json!({"type": "list_tabs"}))
+            .await?;
+        if let Some(r) = Self::check_error(&resp) {
+            return Ok(r);
+        }
         Self::json_result(&resp)
     }
 
-    #[tool(description = "读取指定标签页的精简 HTML。先用 list_tabs 获取标签 ID，再用此工具读取内容。")]
+    #[tool(
+        description = "读取指定标签页的精简 HTML。先用 list_tabs 获取标签 ID，再用此工具读取内容。"
+    )]
     async fn read_tab(
         &self,
         Parameters(params): Parameters<ReadTabParams>,
     ) -> Result<CallToolResult, McpError> {
-        let resp = self.request_extension(&serde_json::json!({"type": "read_tab", "tabId": params.tab_id})).await?;
-        if let Some(r) = Self::check_error(&resp) { return Ok(r); }
+        let resp = self
+            .request_extension(&serde_json::json!({"type": "read_tab", "tabId": params.tab_id}))
+            .await?;
+        if let Some(r) = Self::check_error(&resp) {
+            return Ok(r);
+        }
         Self::json_result(&resp)
     }
 
-    #[tool(description = "读取当前窗口活动标签页的精简 HTML。当用户直接要求获取当前页面内容时使用，无需先调用 list_tabs。")]
+    #[tool(
+        description = "读取当前窗口活动标签页的精简 HTML。当用户直接要求获取当前页面内容时使用，无需先调用 list_tabs。"
+    )]
     async fn read_active_tab(&self) -> Result<CallToolResult, McpError> {
-        let resp = self.request_extension(&serde_json::json!({"type": "read_active_tab"})).await?;
-        if let Some(r) = Self::check_error(&resp) { return Ok(r); }
+        let resp = self
+            .request_extension(&serde_json::json!({"type": "read_active_tab"}))
+            .await?;
+        if let Some(r) = Self::check_error(&resp) {
+            return Ok(r);
+        }
         Self::json_result(&resp)
     }
 
-    #[tool(description = "获取指定 URL 域名下的浏览器 cookie。用于访问需要登录但未在浏览器中打开的页面：先获取 cookie，再用 cookie 发起 HTTP 请求。")]
+    #[tool(
+        description = "获取指定 URL 域名下的浏览器 cookie。用于访问需要登录但未在浏览器中打开的页面：先获取 cookie，再用 cookie 发起 HTTP 请求。"
+    )]
     async fn get_cookies(
         &self,
         Parameters(params): Parameters<GetCookiesParams>,
     ) -> Result<CallToolResult, McpError> {
-        let resp = self.request_extension(&serde_json::json!({"type": "get_cookies", "url": params.url})).await?;
-        if let Some(r) = Self::check_error(&resp) { return Ok(r); }
+        let resp = self
+            .request_extension(&serde_json::json!({"type": "get_cookies", "url": params.url}))
+            .await?;
+        if let Some(r) = Self::check_error(&resp) {
+            return Ok(r);
+        }
         Self::json_result(&resp)
     }
 
-    #[tool(description = "获取指定标签页的页面错误，包括 JS 错误、未处理的 Promise rejection 和 CSP 违规。用于调试页面问题。")]
+    #[tool(
+        description = "获取指定标签页的页面错误，包括 JS 错误、未处理的 Promise rejection 和 CSP 违规。用于调试页面问题。"
+    )]
     async fn get_errors(
         &self,
         Parameters(params): Parameters<GetErrorsParams>,
     ) -> Result<CallToolResult, McpError> {
-        let resp = self.request_extension(&serde_json::json!({"type": "get_errors", "tabId": params.tab_id})).await?;
-        if let Some(r) = Self::check_error(&resp) { return Ok(r); }
+        let resp = self
+            .request_extension(&serde_json::json!({"type": "get_errors", "tabId": params.tab_id}))
+            .await?;
+        if let Some(r) = Self::check_error(&resp) {
+            return Ok(r);
+        }
         Self::json_result(&resp)
     }
 
-    #[tool(description = "在指定标签页中执行无参数函数并返回结果。用于根据上下文动态精确获取页面数据、操作 DOM。")]
+    #[tool(
+        description = "在指定标签页中执行无参数 JavaScript 函数并返回结果。用于根据上下文动态精确获取页面数据、操作 DOM。"
+    )]
     async fn execute_script(
         &self,
         Parameters(params): Parameters<ExecuteScriptParams>,
     ) -> Result<CallToolResult, McpError> {
         let resp = self.request_extension(&serde_json::json!({"type": "execute_script", "tabId": params.tab_id, "funcStr": params.func_str})).await?;
-        if let Some(r) = Self::check_error(&resp) { return Ok(r); }
+        if let Some(r) = Self::check_error(&resp) {
+            return Ok(r);
+        }
         Self::json_result(&resp)
     }
 
-    #[tool(description = "获取指定标签页的 localStorage 数据（长内容被截断）。用于读取页面本地存储的状态信息。")]
+    #[tool(
+        description = "在浏览器扩展背景环境中执行无参数 JavaScript 函数并返回结果。用于根据上下文操控浏览器窗口和标签。所有扩展 API 都可以使用，请用 chrome 命名空间使用 async/await 函数"
+    )]
+    async fn execute_script_in_background(
+        &self,
+        Parameters(params): Parameters<ExecuteScriptInBackgroundParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let resp = self.request_extension(&serde_json::json!({"type": "execute_script_in_background", "funcStr": params.func_str})).await?;
+        if let Some(r) = Self::check_error(&resp) {
+            return Ok(r);
+        }
+        Self::json_result(&resp)
+    }
+
+    #[tool(
+        description = "获取指定标签页的 localStorage 数据（长内容被截断）。用于读取页面本地存储的状态信息。"
+    )]
     async fn get_local_storage(
         &self,
         Parameters(params): Parameters<GetLocalStorageParams>,
     ) -> Result<CallToolResult, McpError> {
-        let resp = self.request_extension(&serde_json::json!({"type": "get_local_storage", "tabId": params.tab_id})).await?;
-        if let Some(r) = Self::check_error(&resp) { return Ok(r); }
+        let resp = self
+            .request_extension(
+                &serde_json::json!({"type": "get_local_storage", "tabId": params.tab_id}),
+            )
+            .await?;
+        if let Some(r) = Self::check_error(&resp) {
+            return Ok(r);
+        }
         Self::json_result(&resp)
     }
 }
 
 impl BrowserDataServer {
-    /// Send a request to the browser extension and wait for response (10s timeout).
-    async fn request_extension(&self, msg: &serde_json::Value) -> Result<serde_json::Value, McpError> {
+    /// Send a request to the browser extension and wait for response (30s timeout).
+    async fn request_extension(
+        &self,
+        msg: &serde_json::Value,
+    ) -> Result<serde_json::Value, McpError> {
         let rx = self.messenger.request(msg).await;
         match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
             Ok(Ok(resp)) => Ok(resp),
-            Ok(Err(_)) => Err(McpError::new(ErrorCode(-32603), "Browser extension disconnected", None)),
-            Err(_) => Err(McpError::new(ErrorCode(-32603), "Timeout waiting for browser extension", None)),
+            Ok(Err(_)) => Err(McpError::new(
+                ErrorCode(-32603),
+                "Browser extension disconnected",
+                None,
+            )),
+            Err(_) => Err(McpError::new(
+                ErrorCode(-32603),
+                "Timeout waiting for browser extension",
+                None,
+            )),
         }
     }
 
     fn check_error(resp: &serde_json::Value) -> Option<CallToolResult> {
         if resp.get("type").and_then(|t| t.as_str()) == Some("error") {
-            let err = resp.get("error").and_then(|e| e.as_str()).unwrap_or("unknown");
-            Some(CallToolResult::success(vec![Content::text(format!("Error: {}", err))]))
+            let err = resp
+                .get("error")
+                .and_then(|e| e.as_str())
+                .unwrap_or("unknown");
+            Some(CallToolResult::success(vec![Content::text(format!(
+                "Error: {}",
+                err
+            ))]))
         } else {
             None
         }

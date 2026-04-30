@@ -1,7 +1,7 @@
 window.browserDataMCPReadTabContentHack = async () => {
-  const container = document.querySelector(".bear-web-x-container");
+  const container = document.querySelector('.bear-web-x-container');
   const scrollTop = container?.scrollTop;
-  const style = document.createElement("style");
+  const style = document.createElement('style');
   style.textContent = `
       body * {
           all: unset !important;
@@ -15,9 +15,7 @@ window.browserDataMCPReadTabContentHack = async () => {
       }
     `;
   document.body.append(style);
-  await new Promise((res) =>
-    setTimeout(res, document.visibilityState === "hidden" ? 300 : 0),
-  );
+  await new Promise((res) => setTimeout(res, document.visibilityState === 'hidden' ? 300 : 0));
   return () => {
     style.remove();
     container?.scrollTo(0, scrollTop);
