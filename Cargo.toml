@@ -1,0 +1,26 @@
+[package]
+name = "browser-data-mcp"
+version = "0.1.0"
+edition = "2024"
+description = "MCP server that provides browser tab data via native messaging with a browser extension"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["clock"] }
+dirs = "6"
+rmcp = { version = "1", features = ["macros", "server", "transport-streamable-http-server"] }
+schemars = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+strum = { version = "0.27", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+axum = "0.8"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+winapi = { version = "0.3", features = ["winbase", "fileapi"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
