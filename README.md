@@ -83,6 +83,7 @@ claude mcp add --transport http --scope user browser http://127.0.0.1:39271/mcp
 | `list_tabs` | 列出所有打开的标签页 | ✅ 安全 |
 | `read_tab` | 读取指定标签页的精简 HTML | ✅ 安全 |
 | `read_active_tab` | 读取当前活动标签页的精简 HTML | ✅ 安全 |
+| `screenshot_tab` | 对指定标签页进行截图，返回 PNG 图片 | ✅ 安全 |
 | `get_cookies` | 获取指定 URL 的 cookie | ⚠️ 敏感 |
 | `get_errors` | 获取页面错误信息 | ✅ 安全 |
 | `get_local_storage` | 获取页面 localStorage 数据 | ⚠️ 敏感 |

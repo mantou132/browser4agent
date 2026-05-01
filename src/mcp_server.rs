@@ -47,6 +47,12 @@ pub struct GetLocalStorageParams {
     pub tab_id: i64,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ScreenshotTabParams {
+    #[schemars(description = "要截图的标签页 ID（从 list_tabs 获取）")]
+    pub tab_id: i64,
+}
+
 #[derive(Clone)]
 pub struct BrowserDataServer {
     messenger: NativeMessenger,
@@ -181,6 +187,33 @@ impl BrowserDataServer {
             return Ok(r);
         }
         Self::json_result(&resp)
+    }
+
+    #[tool(
+        description = "对指定标签页进行截图，返回 PNG 格式的 base64 编码图片数据。先用 list_tabs 获取标签 ID，再用此工具截图。调用时会自动激活目标标签页确保截图成功。"
+    )]
+    async fn screenshot_tab(
+        &self,
+        Parameters(params): Parameters<ScreenshotTabParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let resp = self
+            .request_extension(
+                &serde_json::json!({"type": "screenshot_tab", "tabId": params.tab_id}),
+            )
+            .await?;
+        if let Some(r) = Self::check_error(&resp) {
+            return Ok(r);
+        }
+        if let Some(image) = resp.get("image").and_then(|i| i.as_str()) {
+            let mime_type = resp.get("format").and_then(|f| f.as_str()).unwrap_or("png");
+            let mime = format!("image/{}", mime_type);
+            Ok(CallToolResult::success(vec![Content::image(
+                image.to_string(),
+                mime,
+            )]))
+        } else {
+            Self::json_result(&resp)
+        }
     }
 }
 

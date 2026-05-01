@@ -7,6 +7,7 @@ import {
   getLocalStorage,
   readActiveTab,
   readTab,
+  screenshotTab,
 } from './tools.js';
 
 const NATIVE_HOST_NAME = 'browser_data_mcp';
@@ -66,6 +67,11 @@ function handleMessageFromHost(msg) {
       break;
     case 'get_local_storage':
       getLocalStorage(rest.tabId).then((result) => {
+        sendToHost({ ...result, request_id });
+      });
+      break;
+    case 'screenshot_tab':
+      screenshotTab(rest.tabId).then((result) => {
         sendToHost({ ...result, request_id });
       });
       break;

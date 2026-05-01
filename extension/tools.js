@@ -165,3 +165,21 @@ export async function getLocalStorage(tabId) {
     return err(`Failed to get localStorage: ${e.message}`);
   }
 }
+
+export async function screenshotTab(tabId) {
+  if (tabId == null) return err('tabId is required');
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    if (!tab) return err('Tab not found');
+    if (!tab.active) {
+      await chrome.tabs.update(tabId, { active: true });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
+    const format = 'png';
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format });
+    const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+    return { tabId, image: base64Data, format };
+  } catch (e) {
+    return err(`Failed to screenshot tab ${tabId}: ${e.message}`);
+  }
+}
