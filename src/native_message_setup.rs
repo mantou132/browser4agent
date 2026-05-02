@@ -148,5 +148,7 @@ pub fn install_native_message_host(
         write_registry(name, browser, &manifest_path)?;
     }
 
+    println!("\nNative messaging host installed successfully!");
+
     Ok(())
 }

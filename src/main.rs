@@ -1,3 +1,5 @@
+mod ai_tool_setup;
+mod constant;
 mod logger;
 mod mcp_server;
 mod native_host;
@@ -23,8 +25,10 @@ async fn main() -> Result<()> {
             Some("kaanjpgabaklepokebpdojepkccmbpng"),
             Some("browser-data-mcp@xianqiao.wang"),
         )?;
-        println!("\nNative messaging host installed successfully!");
-        println!("Press any key to exit...");
+
+        ai_tool_setup::setup_ai_tools()?;
+
+        println!("\nPress any key to exit...");
         let _ = io::stdin().read_exact(&mut [0u8; 1]);
     }
 

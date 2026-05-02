@@ -1,3 +1,4 @@
+use crate::constant::{BIND_ADDRESS, MCP_PATH};
 use crate::logger;
 use crate::mcp_server::BrowserDataServer;
 use anyhow::Result;
@@ -8,9 +9,6 @@ use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::sync::Arc;
 use tokio::sync::{Mutex, oneshot};
-
-const BIND_ADDRESS: &str = "127.0.0.1:39271";
-const MCP_PATH: &str = "/mcp";
 
 /// Read one native message from stdin (4-byte LE length prefix + JSON).
 /// Returns None on EOF or error (browser disconnected).
