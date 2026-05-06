@@ -1,9 +1,13 @@
-use crate::constant::{BIND_ADDRESS, MCP_PATH, SERVER_NAME};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    process::Command,
+};
+
 use anyhow::Result;
 use serde_json::json;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use crate::constant::{BIND_ADDRESS, MCP_PATH, SERVER_NAME};
 
 fn get_url() -> String {
     format!("http://{}{}", BIND_ADDRESS, MCP_PATH)
@@ -86,6 +90,40 @@ fn add_vscode_config() -> Result<bool> {
     Ok(status.success())
 }
 
+fn get_cursor_config_path() -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_default()
+        .join(".cursor/mcp.json")
+}
+
+fn is_cursor_installed() -> bool {
+    get_cursor_config_path()
+        .parent()
+        .is_some_and(|p| p.exists())
+}
+
+fn add_cursor_config() -> Result<bool> {
+    let config_path = &get_cursor_config_path();
+    if check_config_for_url(config_path)? {
+        return Ok(true);
+    }
+
+    let content = fs::read_to_string(config_path).unwrap_or_else(|_| "{}".to_string());
+    let mut json = jsonc_parser::parse_to_serde_value(&content, &Default::default())
+        .ok()
+        .flatten()
+        .unwrap_or(json!({}));
+    if json.get("mcpServers").is_none() {
+        json["mcpServers"] = json!({});
+    }
+    json["mcpServers"][SERVER_NAME] = json!({
+        "url": get_url()
+    });
+    let json_str = serde_json::to_string_pretty(&json)?;
+    fs::write(config_path, json_str)?;
+    Ok(true)
+}
+
 fn get_zed_config_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_default()
@@ -130,6 +168,11 @@ pub fn setup_ai_tools() -> Result<()> {
     if is_vscode_installed() {
         add_vscode_config()?;
         println!("MCP configured for VS Code");
+    }
+
+    if is_cursor_installed() {
+        add_cursor_config()?;
+        println!("MCP configured for Cursor");
     }
 
     if is_zed_installed() {

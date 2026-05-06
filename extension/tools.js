@@ -10,8 +10,10 @@ function scriptResult(results) {
 
 export async function getAllTabs() {
   try {
-    const tabs = (await chrome.tabs.query({})).map(({ id, title, url, active, lastAccessed }) => ({
+    const tabs = (await chrome.tabs.query({})).map(({ id, title, url, active, lastAccessed, windowId, groupId }) => ({
       id,
+      windowId,
+      groupId,
       title,
       active,
       url: url.slice(0, 1024),

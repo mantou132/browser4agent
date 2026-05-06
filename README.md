@@ -54,27 +54,9 @@ Agent 通过 MCP 协议与本地进程通信，本地进程将 MCP 消息通过 
 
 双击可执行程序，将自动注册 Native Messaging Host（写入清单文件，Windows 上还会写入注册表），使浏览器扩展能够找到并连接该程序。完成后按任意键关闭窗口。
 
+初始化会自动在本机的 AI Agent 中配置 MCP，如果没有配置，请自行配置 HTTP MCP：`http://127.0.0.1:39271/mcp`
+
 > **注意：** 初始化完成后，不能再移动或删除可执行文件，因为浏览器会根据注册的路径查找它。
-
-### 3. 在 AI Agent 中配置 MCP
-
-Cursor：
-
-```json
-{
-  "browser": {
-    "url": "http://127.0.0.1:39271/mcp"
-  }
-}
-```
-
-Claude Code：
-
-```bash
-claude mcp add --transport http --scope user browser http://127.0.0.1:39271/mcp
-```
-
-配置完 MCP 之后，AI Agent 会在需要时自动调用 MCP 的工具，读取浏览器中的数据
 
 ## 工具说明
 
@@ -89,6 +71,8 @@ claude mcp add --transport http --scope user browser http://127.0.0.1:39271/mcp
 | `get_local_storage` | 获取页面 localStorage 数据 | ⚠️ 敏感 |
 | `execute_script` | 在标签页中执行 JavaScript | 🔴 高风险 |
 | `execute_script_in_background` | 在扩展后台执行 JavaScript | 🔴 高风险 |
+
+> 两个脚本执行工具可以覆盖其他工具，但是其他内置的工具可以提高正确性，减少 Token 使用
 
 ## 支持的浏览器
 
