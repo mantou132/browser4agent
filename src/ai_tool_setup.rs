@@ -21,8 +21,54 @@ fn check_config_for_url(config_path: &Path) -> Result<bool> {
     Ok(content.contains(&get_url()))
 }
 
+fn get_codex_command() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "codex.cmd"
+    } else {
+        "codex"
+    }
+}
+
+fn is_codex_installed() -> bool {
+    Command::new(get_codex_command())
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+fn is_codex_configured() -> Result<bool> {
+    let output = Command::new(get_codex_command())
+        .args(["mcp", "list"])
+        .output()?;
+    if !output.status.success() {
+        return Ok(false);
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.contains(&get_url()))
+}
+
+fn add_codex_config() -> Result<bool> {
+    if is_codex_configured()? {
+        return Ok(true);
+    }
+
+    let status = Command::new(get_codex_command())
+        .args(["mcp", "add", "--url", &get_url(), SERVER_NAME])
+        .status()?;
+    Ok(status.success())
+}
+
+fn get_claude_command() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "claude.cmd"
+    } else {
+        "claude"
+    }
+}
+
 fn is_claude_code_installed() -> bool {
-    Command::new("claude")
+    Command::new(get_claude_command())
         .arg("--version")
         .output()
         .map(|o| o.status.success())
@@ -30,7 +76,9 @@ fn is_claude_code_installed() -> bool {
 }
 
 fn is_claude_code_configured() -> Result<bool> {
-    let output = Command::new("claude").args(["mcp", "list"]).output()?;
+    let output = Command::new(get_claude_command())
+        .args(["mcp", "list"])
+        .output()?;
     if !output.status.success() {
         return Ok(false);
     }
@@ -43,7 +91,7 @@ fn add_claude_code_config() -> Result<bool> {
         return Ok(true);
     }
 
-    let status = Command::new("claude")
+    let status = Command::new(get_claude_command())
         .args([
             "mcp",
             "add",
@@ -58,8 +106,16 @@ fn add_claude_code_config() -> Result<bool> {
     Ok(status.success())
 }
 
+fn get_vscode_command() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "code.cmd"
+    } else {
+        "code"
+    }
+}
+
 fn is_vscode_installed() -> bool {
-    Command::new("code")
+    Command::new(get_vscode_command())
         .arg("--version")
         .output()
         .map(|o| o.status.success())
@@ -83,7 +139,7 @@ fn add_vscode_config() -> Result<bool> {
         SERVER_NAME,
         get_url()
     );
-    let status = Command::new("code")
+    let status = Command::new(get_vscode_command())
         .arg("--add-mcp")
         .arg(json_arg)
         .status()?;
@@ -158,26 +214,44 @@ fn add_zed_config() -> Result<bool> {
 }
 
 pub fn setup_ai_tools() -> Result<()> {
-    println!("\nChecking AI tools and configuring MCP server...\n");
+    if is_codex_installed() {
+        match add_codex_config() {
+            Ok(true) => println!("MCP configured for Codex"),
+            Ok(false) => eprintln!("Failed to configure MCP for Codex"),
+            Err(e) => eprintln!("Failed to configure MCP for Codex: {e}"),
+        }
+    }
 
     if is_claude_code_installed() {
-        add_claude_code_config()?;
-        println!("MCP configured for Claude Code");
+        match add_claude_code_config() {
+            Ok(true) => println!("MCP configured for Claude Code"),
+            Ok(false) => eprintln!("Failed to configure MCP for Claude Code"),
+            Err(e) => eprintln!("Failed to configure MCP for Claude Code: {e}"),
+        }
     }
 
     if is_vscode_installed() {
-        add_vscode_config()?;
-        println!("MCP configured for VS Code");
+        match add_vscode_config() {
+            Ok(true) => println!("MCP configured for VS Code"),
+            Ok(false) => eprintln!("Failed to configure MCP for VS Code"),
+            Err(e) => eprintln!("Failed to configure MCP for VS Code: {e}"),
+        }
     }
 
     if is_cursor_installed() {
-        add_cursor_config()?;
-        println!("MCP configured for Cursor");
+        match add_cursor_config() {
+            Ok(true) => println!("MCP configured for Cursor"),
+            Ok(false) => eprintln!("Failed to configure MCP for Cursor"),
+            Err(e) => eprintln!("Failed to configure MCP for Cursor: {e}"),
+        }
     }
 
     if is_zed_installed() {
-        add_zed_config()?;
-        println!("MCP configured for Zed");
+        match add_zed_config() {
+            Ok(true) => println!("MCP configured for Zed"),
+            Ok(false) => eprintln!("Failed to configure MCP for Zed"),
+            Err(e) => eprintln!("Failed to configure MCP for Zed: {e}"),
+        }
     }
 
     println!("\nMCP configured successfully!");
