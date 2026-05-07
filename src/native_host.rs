@@ -1,6 +1,6 @@
 use crate::constant::{BIND_ADDRESS, MCP_PATH};
 use crate::logger;
-use crate::mcp_server::BrowserDataServer;
+use crate::mcp_server::BrowserMcpServer;
 use anyhow::Result;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpService, session::local::LocalSessionManager,
@@ -102,7 +102,7 @@ async fn native_message_loop(messenger: NativeMessenger) {
 
 pub async fn run() -> Result<()> {
     let messenger = NativeMessenger::new();
-    let server = BrowserDataServer::new(messenger.clone());
+    let server = BrowserMcpServer::new(messenger.clone());
 
     let service = StreamableHttpService::new(
         move || Ok(server.clone()),

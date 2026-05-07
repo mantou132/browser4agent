@@ -1,6 +1,10 @@
-# Browser Data MCP
+# Browser MCP
 
-一个可以直接获取浏览器打开标签页数据的 MCP 服务。例如，当浏览器中打开了内部系统或包含个人数据的网页时，可以通过该 MCP 直接读取页面内容。也可以用于读取本地服务页面的控制台信息、Cookie、localStorage 数据，辅助 bug 修复。
+一个让 AI Agent 读取浏览器标签页内容、操控浏览器的 MCP 服务。
+
+**读取内容**：当浏览器中打开了内部系统或包含个人数据的网页时，可以直接读取页面内容、Cookie、localStorage、页面错误等。适用于无法通过普通 HTTP 请求访问的本地服务、内网系统或需要登录的页面。
+
+**操控浏览器**：通过在扩展后台执行脚本，可以管理标签页和窗口、拦截/修改网络请求、操作下载等，实现浏览器自动化。
 
 > ⚠️ **安全警告**：仅在你完全信任的环境中使用，应该避免提示词攻击窃取信息。
 
@@ -11,7 +15,7 @@ Agent (Cursor/Claude Code 等)
     │
     │  MCP over HTTP (本地连接)
     ▼
-本地进程 (browser-data-mcp)
+本地进程 (browser-mcp)
     │
     │  Native Messaging (stdin/stdout)
     ▼
@@ -22,13 +26,13 @@ Agent (Cursor/Claude Code 等)
 标签页内容
 ```
 
-Agent 通过 MCP 协议与本地进程通信，本地进程将 MCP 消息通过 Native Messaging 透传给浏览器扩展，浏览器扩展通过脚本注入读取标签页内容并返回。
+Agent 通过 MCP 协议与本地进程通信，本地进程将 MCP 消息通过 Native Messaging 透传给浏览器扩展，浏览器扩展通过脚本注入读取标签页内容、在标签页或扩展后台执行脚本，并返回结果。
 
 ## 比较
 
 | 工具 | 技术实现 | 操作当前浏览器 | 需要额外配置 |
 | --- | --- | --- | --- |
-| **browser-data-mcp** (本项目) | 浏览器扩展 API | ✅ 是 | ⚠️ 否，安装扩展即可 |
+| **browser-mcp** (本项目) | 浏览器扩展 API | ✅ 是 | ⚠️ 否，安装扩展即可 |
 | **[Claude for Chrome][1]** | 浏览器扩展 API | ✅ 是 | ⚠️ 否，安装扩展即可 |
 | [chrome-devtools-mcp][2] | CDP (Chrome DevTools Protocol) | ❌ 否 | ⚠️ 需开启 Chrome 远程调试 (`--remote-debugging-port`) |
 | [playwright-mcp][3] | Playwright (底层 CDP) | ❌ 否 | ⚠️ 否，自动管理浏览器 |
@@ -70,9 +74,9 @@ Agent 通过 MCP 协议与本地进程通信，本地进程将 MCP 消息通过 
 | `get_errors` | 获取页面错误信息 | ✅ 安全 |
 | `get_local_storage` | 获取页面 localStorage 数据 | ⚠️ 敏感 |
 | `execute_script` | 在标签页中执行 JavaScript | 🔴 高风险 |
-| `execute_script_in_background` | 在扩展后台执行 JavaScript | 🔴 高风险 |
+| `execute_script_in_background` | 在扩展后台执行 JavaScript，操控浏览器 | 🔴 高风险 |
 
-> 两个脚本执行工具可以覆盖其他工具，但是其他内置的工具可以提高正确性，减少 Token 使用
+> `execute_script_in_background` 可以操控浏览器（管理标签页/窗口、拦截请求、操作下载等），`execute_script` 可以在页面中执行任意脚本。两者均可覆盖其他工具的功能，但其他内置工具可以提高正确性、减少 Token 使用。
 
 ## 支持的浏览器
 
@@ -85,13 +89,13 @@ Agent 通过 MCP 协议与本地进程通信，本地进程将 MCP 消息通过 
 cargo build --release
 ```
 
-构建产物位于 `target/release/browser-data-mcp`（Windows 上为 `.exe`）。
+构建产物位于 `target/release/browser-mcp`（Windows 上为 `.exe`）。
 
 ## Roadmap
 
-- **精准读取页面内容** — 用最少的 token 准确提取页面关键信息，而非返回整个 HTML
 - **确保读取用户感官上的数据** — 有些页面是虚拟渲染，需要用 hack 手段读取到全部内容
-- **操控页面** — 直接操作页面元素（点击、输入、滚动等），实现浏览器自动化
+- **支持动态加载页面工具** — 允许用户订阅工具集，列出页面中可用工具，用户可以手动开启以向 Agent 暴露出来
+- **调用页面暴露的工具** — 调用浏览器页面暴露的工具函数，实现页面与 Agent 的双向交互
 
 ## 许可证
 

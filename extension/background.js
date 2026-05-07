@@ -10,7 +10,7 @@ import {
   screenshotTab,
 } from './tools.js';
 
-const NATIVE_HOST_NAME = 'browser_data_mcp';
+const NATIVE_HOST_NAME = 'browser_mcp';
 
 function sendToHost(msg) {
   if (port) {

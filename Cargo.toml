@@ -1,8 +1,8 @@
 [package]
-name = "browser-data-mcp"
+name = "browser-mcp"
 version = "0.1.0"
 edition = "2024"
-description = "MCP server that provides browser tab data via native messaging with a browser extension"
+description = "MCP server that reads browser tab content and controls the browser (tabs, windows, network) via a browser extension"
 license = "MIT"
 
 [dependencies]

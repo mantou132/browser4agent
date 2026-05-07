@@ -54,14 +54,14 @@ pub struct ScreenshotTabParams {
 }
 
 #[derive(Clone)]
-pub struct BrowserDataServer {
+pub struct BrowserMcpServer {
     messenger: NativeMessenger,
     #[allow(dead_code)]
-    tool_router: ToolRouter<BrowserDataServer>,
+    tool_router: ToolRouter<BrowserMcpServer>,
 }
 
 #[tool_router]
-impl BrowserDataServer {
+impl BrowserMcpServer {
     pub fn new(messenger: NativeMessenger) -> Self {
         Self {
             messenger,
@@ -158,7 +158,7 @@ impl BrowserDataServer {
     }
 
     #[tool(
-        description = "在浏览器扩展背景环境中执行无参数 JavaScript 函数并返回结果。用于根据上下文操控浏览器窗口和标签。所有扩展 API 都可以使用，请用 chrome 命名空间使用 async/await 函数"
+        description = "在浏览器扩展背景环境中执行无参数 JavaScript 函数并返回结果。用于操控浏览器：管理窗口和标签页、拦截/修改网络请求、操作下载等。所有 chrome.* 扩展 API 均可使用，请用 async/await 调用。"
     )]
     async fn execute_script_in_background(
         &self,
@@ -217,7 +217,7 @@ impl BrowserDataServer {
     }
 }
 
-impl BrowserDataServer {
+impl BrowserMcpServer {
     /// Send a request to the browser extension and wait for response (30s timeout).
     async fn request_extension(
         &self,
@@ -261,7 +261,7 @@ impl BrowserDataServer {
 }
 
 #[tool_handler]
-impl ServerHandler for BrowserDataServer {
+impl ServerHandler for BrowserMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(
             ServerCapabilities::builder()
@@ -270,7 +270,7 @@ impl ServerHandler for BrowserDataServer {
         )
         .with_server_info(Implementation::from_build_env())
         .with_instructions(
-            "你可以直接读取用户浏览器中已打开的标签页内容、在标签页中执行指定函数。典型场景：用户需要获取某个网页的内容，但该网页是本地服务、内网系统（如内部管理后台、RDC 等）或需要登录的个人数据页面，无法通过普通 HTTP 请求访问，此时用户浏览器中通常已经打开了该页面。如果用户直接要求获取当前页面数据（tabId, url，title，content），直接调用 read_active_tab；如果需要从多个标签中选择，先调用 list_tabs 列出所有标签，再根据上下文选择匹配的标签调用 read_tab。".to_string(),
+            "你可以直接读取用户浏览器中已打开的标签页内容、在标签页中执行指定函数、操控浏览器（管理窗口和标签页、拦截网络请求等）。典型场景：用户需要获取某个网页的内容，但该网页是本地服务、内网系统（如内部管理后台、RDC 等）或需要登录的个人数据页面，无法通过普通 HTTP 请求访问，此时用户浏览器中通常已经打开了该页面。如果用户直接要求获取当前页面数据（tabId, url，title，content），直接调用 read_active_tab；如果需要从多个标签中选择，先调用 list_tabs 列出所有标签，再根据上下文选择匹配的标签调用 read_tab。如果需要操控浏览器（新建/关闭标签页、管理窗口、拦截请求等），使用 execute_script_in_background。".to_string(),
         )
     }
 }

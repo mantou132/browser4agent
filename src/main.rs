@@ -20,10 +20,10 @@ async fn main() -> Result<()> {
         native_host::run().await?;
     } else {
         native_message_setup::install_native_message_host(
-            "browser_data_mcp",
-            "Browser Data MCP - provides browser tab data to AI agent",
+            "browser_mcp",
+            "Browser MCP - 读取浏览器标签页内容、操控浏览器，为 AI Agent 提供浏览器能力",
             Some("kaanjpgabaklepokebpdojepkccmbpng"),
-            Some("browser-data-mcp@xianqiao.wang"),
+            Some("browser-mcp@xianqiao.wang"),
         )?;
 
         ai_tool_setup::setup_ai_tools()?;
