@@ -44,7 +44,7 @@ async function addHostInvoke(vm) {
   vm.setProp(vm.global, '__host_invoke', hostInvokeHandle);
 }
 
-export async function exec(funcStr) {
+export async function exec(funcStr, args) {
   const QuickJS = await QuickJSPromise;
   using vm = QuickJS.newContext();
 
@@ -70,11 +70,13 @@ export async function exec(funcStr) {
     `),
   ).dispose();
 
+  const argsJson = JSON.stringify(args || []);
   using promiseHandle = vm.unwrapResult(
     vm.evalCode(`
       (async () => {
         const userFunc = ${funcStr};
-        return userFunc();
+        const args = JSON.parse(${JSON.stringify(argsJson)});
+        return userFunc(...args);
       })()
     `),
   );

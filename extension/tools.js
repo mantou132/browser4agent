@@ -8,6 +8,27 @@ function scriptResult(results) {
   return result;
 }
 
+async function ensureTabLoaded(tabId) {
+  const tab = await chrome.tabs.get(tabId);
+  if (!tab) throw new Error(`Tab ${tabId} not found`);
+  if (tab.discarded) await chrome.tabs.reload(tabId);
+  if (tab.discarded || tab.status === 'loading') {
+    const { resolve, reject, promise } = Promise.withResolvers();
+    const listener = (updatedTabId, changeInfo) => {
+      if (updatedTabId !== tabId || changeInfo.status !== 'complete') return;
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      reject(new Error(`Tab ${tabId} load timed out, please retry`));
+    }, 15_000);
+    await promise;
+  }
+  return tab;
+}
+
 export async function getAllTabs() {
   try {
     const tabs = (await chrome.tabs.query({})).map(({ id, title, url, active, lastAccessed, windowId, groupId }) => ({
@@ -28,6 +49,7 @@ export async function getAllTabs() {
 export async function readTab(tabId) {
   if (tabId == null) return err('tabId is required');
   try {
+    await ensureTabLoaded(tabId);
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       files: ['serialize.js'],
@@ -47,6 +69,7 @@ export async function readActiveTab() {
       currentWindow: true,
     });
     if (!tab) return err('No active tab');
+    await ensureTabLoaded(tab.id);
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       files: ['serialize.js'],
@@ -76,6 +99,7 @@ export async function getCookies(url) {
 export async function getErrors(tabId) {
   if (tabId == null) return err('tabId is required');
   try {
+    await ensureTabLoaded(tabId);
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => window.__page_errors || [],
@@ -87,10 +111,12 @@ export async function getErrors(tabId) {
   }
 }
 
-export async function executeScript(tabId, funcStr) {
+export async function executeScript(tabId, funcStr, args) {
   if (tabId == null) return err('tabId is required');
   if (!funcStr) return err('funcStr is required');
+  const argsJson = JSON.stringify(args || []);
   try {
+    await ensureTabLoaded(tabId);
     const nonce = scriptResult(
       await chrome.scripting.executeScript({
         target: { tabId },
@@ -99,7 +125,7 @@ export async function executeScript(tabId, funcStr) {
     );
     const results = await chrome.scripting.executeScript({
       target: { tabId },
-      func: async (code, nonce) => {
+      func: async (code, argsStr, nonce) => {
         const { promise, resolve, reject } = Promise.withResolvers();
         const callbackId = `mcp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         window[callbackId] = {
@@ -110,7 +136,8 @@ export async function executeScript(tabId, funcStr) {
           (async () => {
             const cb = window["${callbackId}"];
             try {
-              const result = await (${code})();
+              const args = JSON.parse(${JSON.stringify(argsStr)});
+              const result = await (${code})(...args);
               cb.resolve(result);
             } catch(e) {
               cb.reject(e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : String(e));
@@ -132,7 +159,7 @@ export async function executeScript(tabId, funcStr) {
           delete window[callbackId];
         }
       },
-      args: [funcStr, nonce],
+      args: [funcStr, argsJson, nonce],
       world: 'MAIN',
     });
     return { result: scriptResult(results) };
@@ -141,10 +168,10 @@ export async function executeScript(tabId, funcStr) {
   }
 }
 
-export async function executeScriptInBackground(funcStr) {
+export async function executeScriptInBackground(funcStr, args) {
   if (!funcStr) return err('funcStr is required');
   try {
-    const result = await exec(funcStr);
+    const result = await exec(funcStr, args);
     return { result };
   } catch (e) {
     return err(`Failed to execute script: ${e.message}`);
@@ -154,6 +181,7 @@ export async function executeScriptInBackground(funcStr) {
 export async function getLocalStorage(tabId) {
   if (tabId == null) return err('tabId is required');
   try {
+    await ensureTabLoaded(tabId);
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: () =>
@@ -171,8 +199,7 @@ export async function getLocalStorage(tabId) {
 export async function screenshotTab(tabId) {
   if (tabId == null) return err('tabId is required');
   try {
-    const tab = await chrome.tabs.get(tabId);
-    if (!tab) return err('Tab not found');
+    const tab = await ensureTabLoaded(tabId);
     if (!tab.active) {
       await chrome.tabs.update(tabId, { active: true });
       await new Promise((resolve) => setTimeout(resolve, 300));

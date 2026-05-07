@@ -9,7 +9,7 @@
     }
   },
   "description": "读取浏览器标签页内容、操控浏览器（管理标签页/窗口/网络请求等），为 AI Agent 提供浏览器能力",
-  "permissions": ["tabs", "nativeMessaging", "scripting", "activeTab", "cookies"],
+  "permissions": ["tabs", "nativeMessaging", "scripting", "activeTab", "cookies", "alarms"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "type": "module",

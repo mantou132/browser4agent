@@ -56,12 +56,12 @@ function handleMessageFromHost(msg) {
       });
       break;
     case 'execute_script':
-      executeScript(rest.tabId, rest.funcStr).then((result) => {
+      executeScript(rest.tabId, rest.funcStr, rest.args).then((result) => {
         sendToHost({ ...result, request_id });
       });
       break;
     case 'execute_script_in_background':
-      executeScriptInBackground(rest.funcStr).then((result) => {
+      executeScriptInBackground(rest.funcStr, rest.args).then((result) => {
         sendToHost({ ...result, request_id });
       });
       break;

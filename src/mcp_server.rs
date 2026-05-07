@@ -27,18 +27,24 @@ pub struct GetErrorsParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExecuteScriptParams {
-    #[schemars(description = "一个无参数的函数，该函数在标签页中执行后返回其结果，支持异步函数")]
+    #[schemars(description = "一个函数，该函数在标签页中执行后返回其结果，支持异步函数。函数将接收 args 数组中的元素作为参数")]
     pub func_str: String,
     #[schemars(description = "目标标签页 ID（从 list_tabs 获取）")]
     pub tab_id: i64,
+    #[schemars(description = "传递给函数的参数数组，函数将以这些参数调用，如 args=[1,2] 则调用 func(1,2)")]
+    #[serde(default)]
+    pub args: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExecuteScriptInBackgroundParams {
     #[schemars(
-        description = "一个无参数的函数，该函数在扩展背景脚本中执行后返回其结果，支持异步函数"
+        description = "一个函数，该函数在扩展背景脚本中执行后返回其结果，支持异步函数。函数将接收 args 数组中的元素作为参数"
     )]
     pub func_str: String,
+    #[schemars(description = "传递给函数的参数数组，函数将以这些参数调用，如 args=[1,2] 则调用 func(1,2)")]
+    #[serde(default)]
+    pub args: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -144,13 +150,13 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "在指定标签页中执行无参数 JavaScript 函数并返回结果。用于根据上下文动态精确获取页面数据、操作 DOM。"
+        description = "在指定标签页中执行 JavaScript 函数并返回结果。函数将接收 args 数组中的元素作为参数。用于根据上下文动态精确获取页面数据、操作 DOM。"
     )]
     async fn execute_script(
         &self,
         Parameters(params): Parameters<ExecuteScriptParams>,
     ) -> Result<CallToolResult, McpError> {
-        let resp = self.request_extension(&serde_json::json!({"type": "execute_script", "tabId": params.tab_id, "funcStr": params.func_str})).await?;
+        let resp = self.request_extension(&serde_json::json!({"type": "execute_script", "tabId": params.tab_id, "funcStr": params.func_str, "args": params.args})).await?;
         if let Some(r) = Self::check_error(&resp) {
             return Ok(r);
         }
@@ -158,13 +164,13 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "在浏览器扩展背景环境中执行无参数 JavaScript 函数并返回结果。用于操控浏览器：管理窗口和标签页、拦截/修改网络请求、操作下载等。所有 chrome.* 扩展 API 均可使用，请用 async/await 调用。"
+        description = "在浏览器扩展背景环境中执行 JavaScript 函数并返回结果。函数将接收 args 数组中的元素作为参数。用于操控浏览器：管理窗口和标签页、拦截/修改网络请求、操作下载等。所有 chrome.* 扩展 API 均可使用，请用 async/await 调用。"
     )]
     async fn execute_script_in_background(
         &self,
         Parameters(params): Parameters<ExecuteScriptInBackgroundParams>,
     ) -> Result<CallToolResult, McpError> {
-        let resp = self.request_extension(&serde_json::json!({"type": "execute_script_in_background", "funcStr": params.func_str})).await?;
+        let resp = self.request_extension(&serde_json::json!({"type": "execute_script_in_background", "funcStr": params.func_str, "args": params.args})).await?;
         if let Some(r) = Self::check_error(&resp) {
             return Ok(r);
         }
