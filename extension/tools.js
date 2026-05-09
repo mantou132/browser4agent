@@ -3,6 +3,13 @@ import { getAvailableTabTools, getSubscribedTool } from './shared/mcp/toolsets.j
 
 const err = (msg) => ({ type: 'error', error: msg });
 
+// Pseudo toolset id used for tools that the page itself registered via
+// `navigator.modelContext.registerTool` (WebMCP). They are not stored in
+// chrome.storage; metadata is fetched live from the tab and `execute` is
+// invoked through the in-page reference kept on `window.__webmcp_tools__`.
+const PAGE_TOOLSET_ID = 'webmcp';
+const PAGE_TOOLSET_NAME = 'Page WebMCP Tools';
+
 function scriptResult(results) {
   const { result, error } = results[0] || {};
   if (error) return err(error.message || String(error));
@@ -169,11 +176,41 @@ export async function executeScript(tabId, funcStr, args) {
   }
 }
 
+async function getPageWebmcpTools(tabId) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const tools = window.__webmcp_tools__;
+      if (!(tools instanceof Map)) return [];
+      return Array.from(tools.values()).map(({ name, description, inputSchema }) => ({
+        name: name,
+        description: typeof description === 'string' ? description : '',
+        inputSchema: inputSchema || { type: 'object', properties: {} },
+      }));
+    },
+    world: 'MAIN',
+  });
+  return scriptResult(results) || [];
+}
+
 export async function listTabTools(tabId) {
   if (tabId == null) return err('tabId is required');
   try {
-    await ensureTabLoaded(tabId);
-    return await getAvailableTabTools(tabId);
+    const tab = await ensureTabLoaded(tabId);
+    const subscribed = await getAvailableTabTools(tabId);
+    const pageTools = await getPageWebmcpTools(tabId);
+    const tools = [
+      ...subscribed.tools,
+      ...pageTools.map((t) => ({
+        toolsetId: PAGE_TOOLSET_ID,
+        toolsetName: PAGE_TOOLSET_NAME,
+        toolsetUrl: tab.url,
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+      })),
+    ];
+    return { ...subscribed, tools };
   } catch (e) {
     return err(`Failed to list tab tools: ${e.message}`);
   }
@@ -185,6 +222,25 @@ export async function executeTabTool(tabId, toolsetId, toolName, args) {
   if (!toolName) return err('toolName is required');
   try {
     const tab = await ensureTabLoaded(tabId);
+    if (toolsetId === PAGE_TOOLSET_ID) {
+      const result = await executeScript(
+        tabId,
+        `async (name, args) => {
+          const tool = window.__webmcp_tools__?.get(name);
+          if (!tool) throw new Error('Page WebMCP tool not found: ' + name);
+          return await tool.execute(args);
+        }`,
+        [toolName, args || {}],
+      );
+      if (result.type === 'error') return result;
+      return {
+        tabId,
+        toolsetId,
+        toolsetName: PAGE_TOOLSET_NAME,
+        toolName,
+        result: result.result,
+      };
+    }
     const { toolset, tool } = await getSubscribedTool(toolsetId, toolName);
     if (!tool.pattern || !new URLPattern(tool.pattern).test(tab.url)) {
       return err(`Tool ${toolName} does not match tab URL`);

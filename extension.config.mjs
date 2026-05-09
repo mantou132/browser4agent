@@ -5,20 +5,19 @@ const extensionRoot = fileURLToPath(new URL('./extension/', import.meta.url)).re
 
 export default {
   config(config) {
+    config.target = ['web', 'es2024'];
     config.module ??= {};
     config.module.rules ??= [];
     config.module.rules.unshift({
       test: /\.js$/,
       enforce: 'pre',
-      include: (filename) => {
-        const path = filename.replaceAll('\\', '/');
-        return path.startsWith(extensionRoot) && !path.includes('/vendor/');
-      },
+      include: (filename) => filename.replaceAll('\\', '/').startsWith(extensionRoot),
       use: [
         {
           loader: 'builtin:swc-loader',
           options: {
             jsc: {
+              target: 'es2024',
               parser: {
                 syntax: 'ecmascript',
                 decorators: true,
