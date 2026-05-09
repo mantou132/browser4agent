@@ -3,7 +3,7 @@
 
 import { adoptedStyle, css, customElement, GemElement, html, property, template } from '@mantou/gem';
 import { Modal } from 'duoyun-ui/elements/modal';
-import { removeToolset, setToolsetEnabled } from '../store.js';
+import { removeToolset, setToolsetEnabled } from '../../shared/mcp/store.js';
 
 import 'duoyun-ui/elements/avatar';
 import 'duoyun-ui/elements/switch';

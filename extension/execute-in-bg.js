@@ -1,6 +1,4 @@
-import { QJS } from './vendor/quickjs-emscripten.js';
-
-const QuickJSPromise = QJS.getQuickJS();
+import { getQuickJS } from 'quickjs-emscripten';
 
 async function hostChromeInvoke(path, args) {
   const parts = path.split('.');
@@ -45,7 +43,7 @@ async function addHostInvoke(vm) {
 }
 
 export async function exec(funcStr, args) {
-  const QuickJS = await QuickJSPromise;
+  const QuickJS = await getQuickJS();
   using vm = QuickJS.newContext();
 
   addHostInvoke(vm);

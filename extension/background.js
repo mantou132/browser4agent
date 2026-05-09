@@ -1,3 +1,4 @@
+import { loadToolset } from './shared/mcp/loader.js';
 import {
   executeScript,
   executeScriptInBackground,
@@ -114,5 +115,27 @@ function connectNativeHost() {
     setTimeout(connectNativeHost, 1000);
   }
 }
+
+chrome.runtime.onInstalled.addListener(async (details) => {
+  if (details.reason !== 'install') return;
+  const url = chrome.runtime.getURL('toolsets/example.json');
+  const { meta, tools } = await loadToolset(url);
+  const { toolsets } = await chrome.storage.sync.get({ toolsets: [] });
+  await chrome.storage.sync.set({
+    toolsets: [
+      ...toolsets,
+      {
+        id: 'example',
+        url: 'toolsets/example.json',
+        name: meta.name,
+        description: meta.description || '',
+        icon: meta.icon || '',
+        type: meta.type === 'official' ? 'official' : 'community',
+        enabled: true,
+        tools,
+      },
+    ],
+  });
+});
 
 connectNativeHost();

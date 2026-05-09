@@ -75,8 +75,21 @@ Agent 通过 MCP 协议与本地进程通信，本地进程将 MCP 消息通过 
 | `get_local_storage` | 获取页面 localStorage 数据 | ⚠️ 敏感 |
 | `execute_script` | 在标签页中执行 JavaScript | 🔴 高风险 |
 | `execute_script_in_background` | 在扩展后台执行 JavaScript，操控浏览器 | 🔴 高风险 |
+| `list_tab_tools` | 列出指定标签页可用的页面工具 | ✅ 安全 |
+| `execute_tab_tool` | 调用页面工具（按 toolsetId + toolName） | ⚠️ 取决于工具实现 |
 
 > `execute_script_in_background` 可以操控浏览器（管理标签页/窗口、拦截请求、操作下载等），`execute_script` 可以在页面中执行任意脚本。两者均可覆盖其他工具的功能，但其他内置工具可以提高正确性、减少 Token 使用。
+
+### 页面工具（Tab Tools）
+
+`list_tab_tools` 返回的工具有两种来源：
+
+- **订阅工具集**：用户在扩展中订阅的工具集（JSON 描述 + `execute` 字符串），按 `pattern` 匹配当前标签页 URL 后暴露。
+- **页面 WebMCP 工具**：页面通过 [WebMCP][5] 草案 API `navigator.modelContext.registerTool({ name, description, inputSchema, execute })` 注册的工具。扩展在 `document_start` hook 该 API，把 `execute` 函数引用保存在页面全局对象中，`execute_tab_tool` 调用时通过该引用执行。
+
+两种来源在 `list_tab_tools` 的返回中通过 `toolsetId` 区分（WebMCP 工具的 `toolsetId` 固定为 `webmcp`），Agent 调用方式一致。
+
+[5]: https://webmachinelearning.github.io/webmcp/
 
 ## 支持的浏览器
 
@@ -94,8 +107,6 @@ cargo build --release
 ## Roadmap
 
 - **确保读取用户感官上的数据** — 有些页面是虚拟渲染，需要用 hack 手段读取到全部内容
-- **支持动态加载页面工具** — 允许用户订阅工具集，列出页面中可用工具，用户可以手动开启以向 Agent 暴露出来
-- **调用页面暴露的工具** — 调用浏览器页面暴露的工具函数，实现页面与 Agent 的双向交互
 
 ## 许可证
 

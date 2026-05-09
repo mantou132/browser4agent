@@ -31,8 +31,5 @@
       "quoteStyle": "single",
       "attributePosition": "auto"
     }
-  },
-  "files": {
-    "includes": ["**", "!!**/vendor"]
   }
 }

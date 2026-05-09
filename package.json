@@ -9,7 +9,8 @@
   "license": "ISC",
   "dependencies": {
     "@mantou/gem": "^2.2.2",
-    "duoyun-ui": "^2.2.2"
+    "duoyun-ui": "^2.2.2",
+    "quickjs-emscripten": "^0.32.0"
   },
   "devDependencies": {
     "extension": "^3.16.0"

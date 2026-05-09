@@ -50,9 +50,11 @@ pub struct ExecuteTabToolParams {
     pub toolset_id: String,
     #[schemars(description = "工具名称（从 list_tab_tools 返回结果中获取）")]
     pub tool_name: String,
-    #[schemars(description = "传递给工具执行函数的参数对象")]
+    #[schemars(
+        description = "传递给工具执行函数的参数对象，必须是 JSON 对象，结构需符合 list_tab_tools 返回的该工具 inputSchema；无参数时传 {}"
+    )]
     #[serde(default)]
-    pub args: serde_json::Value,
+    pub args: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]

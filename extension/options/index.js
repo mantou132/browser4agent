@@ -23,7 +23,7 @@ import 'duoyun-ui/elements/avatar';
 import 'duoyun-ui/elements/button';
 import 'duoyun-ui/elements/empty';
 import 'duoyun-ui/elements/form';
-import '../shared/mcp/elements/toolset-card.js';
+import './elements/toolset-card.js';
 
 const style = css({
   $: `
