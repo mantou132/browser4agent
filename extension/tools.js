@@ -1,4 +1,5 @@
 import { exec } from './execute-in-bg.js';
+import { getAvailableTabTools, getSubscribedTool } from './shared/mcp/toolsets.js';
 
 const err = (msg) => ({ type: 'error', error: msg });
 
@@ -165,6 +166,40 @@ export async function executeScript(tabId, funcStr, args) {
     return { result: scriptResult(results) };
   } catch (e) {
     return err(`Failed to execute script: ${e.message}`);
+  }
+}
+
+export async function listTabTools(tabId) {
+  if (tabId == null) return err('tabId is required');
+  try {
+    await ensureTabLoaded(tabId);
+    return await getAvailableTabTools(tabId);
+  } catch (e) {
+    return err(`Failed to list tab tools: ${e.message}`);
+  }
+}
+
+export async function executeTabTool(tabId, toolsetId, toolName, args) {
+  if (tabId == null) return err('tabId is required');
+  if (!toolsetId) return err('toolsetId is required');
+  if (!toolName) return err('toolName is required');
+  try {
+    const tab = await ensureTabLoaded(tabId);
+    const { toolset, tool } = await getSubscribedTool(toolsetId, toolName);
+    if (!tool.pattern || !new URLPattern(tool.pattern).test(tab.url)) {
+      return err(`Tool ${toolName} does not match tab URL`);
+    }
+    const result = await executeScript(tabId, tool.execute, [args || {}]);
+    if (result.type === 'error') return result;
+    return {
+      tabId,
+      toolsetId,
+      toolsetName: toolset.name,
+      toolName,
+      result: result.result,
+    };
+  } catch (e) {
+    return err(`Failed to execute tab tool: ${e.message}`);
   }
 }
 

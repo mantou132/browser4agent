@@ -37,6 +37,25 @@ pub struct ExecuteScriptParams {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ListTabToolsParams {
+    #[schemars(description = "目标标签页 ID（从 list_tabs 获取）")]
+    pub tab_id: i64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExecuteTabToolParams {
+    #[schemars(description = "目标标签页 ID（从 list_tabs 获取）")]
+    pub tab_id: i64,
+    #[schemars(description = "工具集 ID（从 list_tab_tools 返回结果中获取）。工具集名称可重复，必须用 ID 定位。")]
+    pub toolset_id: String,
+    #[schemars(description = "工具名称（从 list_tab_tools 返回结果中获取）")]
+    pub tool_name: String,
+    #[schemars(description = "传递给工具执行函数的参数对象")]
+    #[serde(default)]
+    pub args: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExecuteScriptInBackgroundParams {
     #[schemars(
         description = "一个函数，该函数在扩展背景脚本中执行后返回其结果，支持异步函数。函数将接收 args 数组中的元素作为参数"
@@ -157,6 +176,44 @@ impl BrowserMcpServer {
         Parameters(params): Parameters<ExecuteScriptParams>,
     ) -> Result<CallToolResult, McpError> {
         let resp = self.request_extension(&serde_json::json!({"type": "execute_script", "tabId": params.tab_id, "funcStr": params.func_str, "args": params.args})).await?;
+        if let Some(r) = Self::check_error(&resp) {
+            return Ok(r);
+        }
+        Self::json_result(&resp)
+    }
+
+    #[tool(
+        description = "列出指定标签页中可用的页面工具。返回工具集 ID、工具集 URL、工具名、描述和 inputSchema。工具集名称和工具名可能在不同工具集中重复，后续执行必须使用 toolsetId + toolName。"
+    )]
+    async fn list_tab_tools(
+        &self,
+        Parameters(params): Parameters<ListTabToolsParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let resp = self
+            .request_extension(&serde_json::json!({"type": "list_tab_tools", "tabId": params.tab_id}))
+            .await?;
+        if let Some(r) = Self::check_error(&resp) {
+            return Ok(r);
+        }
+        Self::json_result(&resp)
+    }
+
+    #[tool(
+        description = "在指定标签页中执行一个已订阅并匹配当前页面的页面工具。先调用 list_tab_tools 获取 toolsetId 和 toolName，再传入 args。工具执行函数会注入目标标签页执行，结果返回给 Agent。"
+    )]
+    async fn execute_tab_tool(
+        &self,
+        Parameters(params): Parameters<ExecuteTabToolParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let resp = self
+            .request_extension(&serde_json::json!({
+                "type": "execute_tab_tool",
+                "tabId": params.tab_id,
+                "toolsetId": params.toolset_id,
+                "toolName": params.tool_name,
+                "args": params.args,
+            }))
+            .await?;
         if let Some(r) = Self::check_error(&resp) {
             return Ok(r);
         }

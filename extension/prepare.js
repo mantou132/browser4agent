@@ -43,4 +43,7 @@
       originalPolicy: e.originalPolicy,
     });
   });
+
+  // TODO: 拦截 window.navigator.modelContext.registerTool 注册的工具
+  // 并通过 postMessage 将内容传递给扩展
 })();

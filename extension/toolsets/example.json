@@ -1,0 +1,63 @@
+{
+  "name": "Example Page Tools",
+  "description": "用于测试页面工具订阅、匹配和执行的示例工具集",
+  "icon": "🧪",
+  "type": "community",
+  "tools": [
+    {
+      "name": "get_page_summary",
+      "description": "读取当前标签页的标题、URL 和页面文本摘要",
+      "pattern": "https://example.com/*",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "maxLength": {
+            "type": "number",
+            "description": "返回正文摘要的最大字符数"
+          }
+        }
+      },
+      "execute": "async ({ maxLength = 300 } = {}) => ({ title: document.title, url: location.href, summary: document.body?.innerText?.trim().slice(0, maxLength) || '' })"
+    },
+    {
+      "name": "highlight_text",
+      "description": "在当前页面高亮匹配的文本",
+      "pattern": "https://example.com/*",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "需要高亮的文本"
+          },
+          "color": {
+            "type": "string",
+            "description": "CSS 背景色"
+          }
+        },
+        "required": ["text"]
+      },
+      "execute": "async ({ text, color = 'yellow' } = {}) => { if (!text) throw new Error('text is required'); const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let count = 0; const nodes = []; while (walker.nextNode()) { const node = walker.currentNode; if (node.nodeValue.includes(text)) nodes.push(node); } for (const node of nodes) { const parts = node.nodeValue.split(text); const fragment = document.createDocumentFragment(); parts.forEach((part, index) => { if (part) fragment.append(part); if (index < parts.length - 1) { const mark = document.createElement('mark'); mark.textContent = text; mark.style.background = color; fragment.append(mark); count++; } }); node.parentNode.replaceChild(fragment, node); } return { count }; }"
+    },
+    {
+      "name": "fill_input",
+      "description": "根据 CSS selector 给输入框赋值并触发 input/change 事件",
+      "pattern": "https://example.com/*",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "selector": {
+            "type": "string",
+            "description": "输入框 CSS selector"
+          },
+          "value": {
+            "type": "string",
+            "description": "要填写的值"
+          }
+        },
+        "required": ["selector", "value"]
+      },
+      "execute": "async ({ selector, value } = {}) => { if (!selector) throw new Error('selector is required'); const el = document.querySelector(selector); if (!el) throw new Error(`No element found: ${selector}`); el.focus?.(); el.value = value ?? ''; el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: String(value ?? '') })); el.dispatchEvent(new Event('change', { bubbles: true })); return { selector, value: el.value }; }"
+    }
+  ]
+}

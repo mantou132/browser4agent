@@ -47,10 +47,10 @@ Agent 通过 MCP 协议与本地进程通信，本地进程将 MCP 消息通过 
 
 ### 1. 下载并安装浏览器扩展
 
-将 `extension/` 目录作为未打包扩展加载到浏览器中：
+将 `extension/x` 目录作为未打包扩展加载到浏览器中：
 
-- Chrome/Edge：打开 `chrome://extensions`，开启「开发者模式」，点击「加载已解压的扩展程序」，选择 `extension` 目录
-- Firefox：打开 `about:debugging`，点击「临时加载附加组件」，选择 `extension` 目录中的 `manifest.json`
+- Chrome/Edge：打开 `chrome://extensions`，开启「开发者模式」，点击「加载已解压的扩展程序」，选择 `dist/chrome` 目录
+- Firefox：打开 `about:debugging`，点击「临时加载附加组件」，选择 `dist/firefox` 目录中的 `manifest.json`
 
 > 目前仅支持一个浏览器。扩展安装后会自动以 Native Messaging 方式启动本地进程，进程启动后即提供 MCP 服务，无需手动启动。
 

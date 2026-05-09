@@ -1,10 +1,12 @@
 import {
   executeScript,
   executeScriptInBackground,
+  executeTabTool,
   getAllTabs,
   getCookies,
   getErrors,
   getLocalStorage,
+  listTabTools,
   readActiveTab,
   readTab,
   screenshotTab,
@@ -57,6 +59,16 @@ function handleMessageFromHost(msg) {
       break;
     case 'execute_script':
       executeScript(rest.tabId, rest.funcStr, rest.args).then((result) => {
+        sendToHost({ ...result, request_id });
+      });
+      break;
+    case 'list_tab_tools':
+      listTabTools(rest.tabId).then((result) => {
+        sendToHost({ ...result, request_id });
+      });
+      break;
+    case 'execute_tab_tool':
+      executeTabTool(rest.tabId, rest.toolsetId, rest.toolName, rest.args).then((result) => {
         sendToHost({ ...result, request_id });
       });
       break;

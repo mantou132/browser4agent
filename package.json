@@ -1,0 +1,17 @@
+{
+  "name": "extension",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "extension dev extension --browser=chrome",
+    "build": "extension build extension --browser=chrome,firefox"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "@mantou/gem": "^2.2.2",
+    "duoyun-ui": "^2.2.2"
+  },
+  "devDependencies": {
+    "extension": "^3.16.0"
+  }
+}
