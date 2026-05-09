@@ -2,7 +2,6 @@
   "name": "Example Page Tools",
   "description": "用于测试页面工具订阅、匹配和执行的示例工具集",
   "icon": "🧪",
-  "type": "community",
   "tools": [
     {
       "name": "get_page_summary",

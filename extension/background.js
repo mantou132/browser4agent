@@ -127,11 +127,11 @@ chrome.runtime.onInstalled.addListener(async (details) => {
       {
         id: 'example',
         url: 'toolsets/example.json',
+        type: 'official',
+        enabled: true,
         name: meta.name,
         description: meta.description || '',
         icon: meta.icon || '',
-        type: meta.type === 'official' ? 'official' : 'community',
-        enabled: true,
         tools,
       },
     ],

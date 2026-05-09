@@ -1,5 +1,6 @@
 /target
 /dist
+.swc
 .claude
 key.pem
 .DS_Store

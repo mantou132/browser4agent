@@ -3,8 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "extension dev extension --browser=chrome",
-    "build": "extension build extension --browser=chrome,firefox"
+    "dev": "extension dev ./extension",
+    "build": "extension build ./extension"
   },
   "license": "ISC",
   "dependencies": {
@@ -13,6 +13,7 @@
     "quickjs-emscripten": "^0.32.0"
   },
   "devDependencies": {
-    "extension": "^3.16.0"
+    "extension": "^3.16.0",
+    "swc-plugin-gem": "^0.1.9"
   }
 }

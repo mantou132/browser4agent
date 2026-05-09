@@ -1,22 +1,4 @@
-// biome-ignore-all lint/correctness/noUnusedPrivateClassMembers: gem decorators consume private fields
-// biome-ignore-all lint/correctness/noUnusedVariables: gem @customElement consumes the class
-
-import {
-  adoptedStyle,
-  connectStore,
-  createState,
-  css,
-  customElement,
-  GemElement,
-  html,
-  mounted,
-  template,
-} from '@mantou/gem';
 import { initStore, isToolEnabled, mcpStore, setToolEnabled } from '../shared/mcp/store.js';
-
-import 'duoyun-ui/elements/avatar';
-import 'duoyun-ui/elements/loading';
-import 'duoyun-ui/elements/switch';
 
 function matchPattern(url, pattern) {
   if (!url || !pattern) return false;

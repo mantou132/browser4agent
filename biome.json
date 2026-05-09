@@ -31,5 +31,13 @@
       "quoteStyle": "single",
       "attributePosition": "auto"
     }
+  },
+  "linter": {
+    "rules": {
+      "correctness": {
+        "noUnusedPrivateClassMembers": "off",
+        "noUnusedVariables": "off"
+      }
+    }
   }
 }

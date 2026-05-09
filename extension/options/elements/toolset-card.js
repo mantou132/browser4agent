@@ -1,13 +1,5 @@
-// biome-ignore-all lint/correctness/noUnusedPrivateClassMembers: gem decorators consume private fields
-// biome-ignore-all lint/correctness/noUnusedVariables: gem @customElement consumes the class
-
-import { adoptedStyle, css, customElement, GemElement, html, property, template } from '@mantou/gem';
 import { Modal } from 'duoyun-ui/elements/modal';
 import { removeToolset, setToolsetEnabled } from '../../shared/mcp/store.js';
-
-import 'duoyun-ui/elements/avatar';
-import 'duoyun-ui/elements/switch';
-import 'duoyun-ui/elements/tag';
 
 const style = css({
   $: `
@@ -71,26 +63,29 @@ const style = css({
   `,
 });
 
-@customElement('mcp-toolset-card')
+@customElement('options-toolset-card')
 @adoptedStyle(style)
 class McpToolsetCardElement extends GemElement {
+  // swc bug?
   @property toolset;
 
   #initial = (name) => ((name || '').trim()[0] || '?').toUpperCase();
 
   #toggle = (e) => {
-    if (!this.toolset) return;
     setToolsetEnabled(this.toolset.id, e.detail);
+    // swc bug?
+    this.update();
   };
 
   #remove = async () => {
-    if (!this.toolset) return;
     await Modal.confirm(`确认移除工具集「${this.toolset.name}」？`);
     await removeToolset(this.toolset.id);
+    // swc bug?
+    this.update();
   };
 
   @template()
-  #content = () => {
+  #content() {
     const t = this.toolset;
     if (!t) return html``;
     const typeLabel = t.type === 'official' ? '官方' : '社区';
@@ -108,9 +103,9 @@ class McpToolsetCardElement extends GemElement {
         <div class=${style.url}>${t.url}</div>
       </div>
       <div class=${style.actions}>
-        <dy-switch .checked=${!!t.enabled} @change=${this.#toggle}></dy-switch>
+        <dy-switch neutral="informative" .checked=${!!t.enabled} @change=${this.#toggle}></dy-switch>
         <button class=${style.menuBtn} title="移除" aria-label="移除" @click=${this.#remove}>×</button>
       </div>
     `;
-  };
+  }
 }

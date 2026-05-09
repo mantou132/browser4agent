@@ -1,29 +1,8 @@
-// biome-ignore-all lint/correctness/noUnusedPrivateClassMembers: gem decorators consume private fields
-// biome-ignore-all lint/correctness/noUnusedVariables: gem @customElement consumes the class
-
-import {
-  adoptedStyle,
-  connectStore,
-  createState,
-  css,
-  customElement,
-  GemElement,
-  html,
-  mounted,
-  template,
-} from '@mantou/gem';
-
 import { Modal } from 'duoyun-ui/elements/modal';
 import { Toast } from 'duoyun-ui/elements/toast';
 import { fnv1a } from 'duoyun-ui/lib/encode';
 import { loadToolset } from '../shared/mcp/loader.js';
 import { addToolset, initStore, mcpStore } from '../shared/mcp/store.js';
-
-import 'duoyun-ui/elements/avatar';
-import 'duoyun-ui/elements/button';
-import 'duoyun-ui/elements/empty';
-import 'duoyun-ui/elements/form';
-import './elements/toolset-card.js';
 
 const style = css({
   $: `
@@ -134,7 +113,7 @@ class McpOptionsPageElement extends GemElement {
         name: meta.name,
         description: meta.description || '',
         icon: meta.icon || '',
-        type: meta.type === 'official' ? 'official' : 'community',
+        type: new URL(url).hostname.includes('extension') ? 'official' : 'community',
         enabled: true,
         tools,
       });
@@ -169,7 +148,7 @@ class McpOptionsPageElement extends GemElement {
         <div class=${style.stack}>
           ${
             toolsets.length
-              ? toolsets.map((t) => html`<mcp-toolset-card .toolset=${t}></mcp-toolset-card>`)
+              ? toolsets.map((t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`)
               : html`<dy-empty text="暂未订阅任何工具集"></dy-empty>`
           }
           <button
@@ -196,7 +175,7 @@ class McpOptionsPageElement extends GemElement {
           </div>
         </header>
         <div class=${style.stack}>
-          ${recommended.map((t) => html`<mcp-toolset-card .toolset=${t}></mcp-toolset-card>`)}
+          ${recommended.map((t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`)}
         </div>
       </section>
     `;
