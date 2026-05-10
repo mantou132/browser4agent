@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: var(--color-indigo-500);
+  --color-highlight: var(--color-slate-900);
+  --color-text: var(--color-slate-700);
+  --color-describe: var(--color-slate-500);
+  --color-bg: var(--color-white);
+  --color-bg-light: var(--color-slate-50);
+  --color-bg-hover: var(--color-slate-100);
+  --color-border: var(--color-slate-200);
+  --color-disabled: var(--color-slate-200);
+  --color-informative: var(--color-sky-500);
+  --color-neutral: var(--color-slate-400);
+  --color-positive: var(--color-teal-500);
+  --color-notice: var(--color-amber-500);
+  --color-negative: var(--color-rose-500);
+  --color-focus: var(--color-indigo-500);
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-text);
+}

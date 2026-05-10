@@ -1,86 +1,22 @@
+// SWC bug: https://github.com/swc-project/swc/issues/11846
+
 import { Modal } from 'duoyun-ui/elements/modal';
 import { removeToolset, setToolsetEnabled } from '../../shared/mcp/store.js';
 
-const style = css({
-  $: `
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 14px 16px;
-    border: 1px solid #e5e7eb;
-    border-radius: 10px;
-    background: #fff;
-    transition: border-color 0.15s;
-    &:hover { border-color: #3b82f6; }
-  `,
-  body: `
-    flex: 1;
-    min-width: 0;
-  `,
-  titleRow: `
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 4px;
-  `,
-  title: `
-    font-weight: 600;
-    font-size: 14px;
-    color: #111827;
-  `,
-  desc: `
-    color: #6b7280;
-    font-size: 13px;
-    margin-bottom: 4px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  `,
-  url: `
-    color: #9ca3af;
-    font-size: 12px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  `,
-  actions: `
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-shrink: 0;
-  `,
-  menuBtn: `
-    width: 28px;
-    height: 28px;
-    border: 0;
-    background: transparent;
-    color: #6b7280;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 18px;
-    line-height: 1;
-    &:hover { background: #f3f4f6; }
-  `,
-});
-
 @customElement('options-toolset-card')
-@adoptedStyle(style)
 class McpToolsetCardElement extends GemElement {
-  // swc bug?
   @property toolset;
 
   #initial = (name) => ((name || '').trim()[0] || '?').toUpperCase();
 
   #toggle = (e) => {
     setToolsetEnabled(this.toolset.id, e.detail);
-    // swc bug?
     this.update();
   };
 
   #remove = async () => {
     await Modal.confirm(`确认移除工具集「${this.toolset.name}」？`);
     await removeToolset(this.toolset.id);
-    // swc bug?
     this.update();
   };
 
@@ -92,19 +28,21 @@ class McpToolsetCardElement extends GemElement {
     const icon = t.icon || '';
     const isIconUrl = /^https?:\/\//.test(icon);
     return html`
-      <dy-avatar v-if=${isIconUrl} src=${icon} size="large"></dy-avatar>
-      <dy-avatar v-else size="large">${icon || this.#initial(t.name)}</dy-avatar>
-      <div class=${style.body}>
-        <div class=${style.titleRow}>
-          <span class=${style.title}>${t.name}</span>
-          <dy-tag small color=${t.type === 'official' ? 'positive' : 'informative'}>${typeLabel}</dy-tag>
+      <div class="flex items-center gap-3.5 py-3.5 px-4 border border-border rounded-[10px] bg-bg transition-[border-color] hover:border-primary">
+        <dy-avatar v-if=${isIconUrl} src=${icon} size="large"></dy-avatar>
+        <dy-avatar v-else size="large">${icon || this.#initial(t.name)}</dy-avatar>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 mb-1">
+            <span class="font-semibold text-sm text-highlight">${t.name}</span>
+            <dy-tag small color=${t.type === 'official' ? 'positive' : 'informative'}>${typeLabel}</dy-tag>
+          </div>
+          <div class="text-describe text-[13px] mb-1 truncate">${t.description || '—'}</div>
+          <div class="text-neutral text-xs truncate">${t.url}</div>
         </div>
-        <div class=${style.desc}>${t.description || '—'}</div>
-        <div class=${style.url}>${t.url}</div>
-      </div>
-      <div class=${style.actions}>
-        <dy-switch neutral="informative" .checked=${!!t.enabled} @change=${this.#toggle}></dy-switch>
-        <button class=${style.menuBtn} title="移除" aria-label="移除" @click=${this.#remove}>×</button>
+        <div class="flex items-center gap-2.5 shrink-0">
+          <dy-switch neutral="positive" .checked=${!!t.enabled} @change=${this.#toggle}></dy-switch>
+          <button class="w-7 h-7 border-0 bg-transparent text-describe rounded-normal cursor-pointer text-lg leading-none hover:bg-bg-hover" title="移除" aria-label="移除" @click=${this.#remove}>×</button>
+        </div>
       </div>
     `;
   }

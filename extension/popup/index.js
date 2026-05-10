@@ -9,136 +9,7 @@ function matchPattern(url, pattern) {
   }
 }
 
-const style = css({
-  $: `
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    box-sizing: border-box;
-  `,
-  top: `
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 14px;
-    border-bottom: 1px solid #e5e7eb;
-  `,
-  topTitle: `
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 600;
-  `,
-  gear: `
-    width: 28px;
-    height: 28px;
-    border: 0;
-    background: transparent;
-    color: #6b7280;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 16px;
-    &:hover { background: #f3f4f6; }
-  `,
-  tabInfo: `
-    padding: 12px 14px 8px;
-    border-bottom: 1px solid #e5e7eb;
-  `,
-  tabLine: `
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-  `,
-  tabLabel: `
-    flex: none;
-    font-size: 12px;
-    color: #6b7280;
-  `,
-  tabUrl: `
-    flex: 1;
-    min-width: 0;
-    font-size: 12px;
-    color: #111827;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    & span:last-child {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-  `,
-  tabHint: `
-    font-size: 11px;
-    color: #9ca3af;
-    margin-top: 4px;
-  `,
-  list: `
-    flex: 1;
-    overflow-y: auto;
-    padding: 6px 8px;
-  `,
-  row: `
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 6px;
-    border-radius: 8px;
-    &:hover { background: #f3f4f6; }
-  `,
-  rowBody: `
-    flex: 1;
-    min-width: 0;
-  `,
-  rowName: `
-    font-size: 13px;
-    font-weight: 500;
-    color: #111827;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  `,
-  rowDesc: `
-    font-size: 12px;
-    color: #6b7280;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    margin-top: 2px;
-  `,
-  bottom: `
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 14px;
-    border-top: 1px solid #e5e7eb;
-    font-size: 12px;
-  `,
-  count: `
-    color: #6b7280;
-  `,
-  linkBtn: `
-    background: transparent;
-    border: 0;
-    color: #3b82f6;
-    cursor: pointer;
-    font: inherit;
-    padding: 0;
-  `,
-  empty: `
-    padding: 40px 20px;
-    text-align: center;
-    color: #6b7280;
-    font-size: 13px;
-  `,
-});
-
 @customElement('mcp-popup-page')
-@adoptedStyle(style)
 @connectStore(mcpStore)
 class McpPopupPageElement extends GemElement {
   #s = createState({ tab: null, ready: false });
@@ -183,52 +54,54 @@ class McpPopupPageElement extends GemElement {
     const url = this.#s.tab?.url || '';
 
     return html`
-      <header class=${style.top}>
-        <span class=${style.topTitle}>
-          <dy-avatar>🧩</dy-avatar>
-          MCP 工具
-        </span>
-        <button class=${style.gear} title="设置" aria-label="设置" @click=${this.#openOptions}>⚙</button>
-      </header>
+      <div class="flex flex-col h-screen box-border">
+        <header class="flex items-center justify-between py-3 px-3.5 border-b border-border">
+          <span class="flex items-center gap-2 font-semibold text-highlight">
+            <dy-avatar>🧩</dy-avatar>
+            MCP 工具
+          </span>
+          <button class="w-7 h-7 border-0 bg-transparent text-describe rounded-normal cursor-pointer text-base hover:bg-bg-hover" title="设置" aria-label="设置" @click=${this.#openOptions}>⚙</button>
+        </header>
 
-      <div class=${style.tabInfo}>
-        <div class=${style.tabLine}>
-          <div class=${style.tabLabel}>当前标签</div>
-          <div class=${style.tabUrl} title=${url}>
-            <span>🔗</span>
-            <span>${url || '(无 URL)'}</span>
+        <div class="pt-3 pb-2 px-3.5 border-b border-border">
+          <div class="flex items-center gap-2 min-w-0">
+            <div class="shrink-0 text-xs text-describe">当前标签</div>
+            <div class="flex-1 min-w-0 text-xs text-highlight flex items-center gap-1.5 truncate" title=${url}>
+              <span>🔗</span>
+              <span class="truncate">${url || '(无 URL)'}</span>
+            </div>
           </div>
+          <div class="text-[11px] text-neutral mt-1">显示可在当前页面使用的工具</div>
         </div>
-        <div class=${style.tabHint}>显示可在当前页面使用的工具</div>
-      </div>
 
-      <div class=${style.list}>
-        ${
-          matched.length === 0
-            ? html`<div class=${style.empty}>当前页面没有匹配的工具</div>`
-            : matched.map(
-                ({ toolsetId, toolsetName, tool }) => html`
-                  <div class=${style.row}>
-                    <dy-avatar>${this.#initial(tool.name)}</dy-avatar>
-                    <div class=${style.rowBody}>
-                      <div class=${style.rowName} title=${`${tool.name} · ${toolsetName}`}>${tool.name}</div>
-                      <div class=${style.rowDesc}>${toolsetName} · ${tool.description || '—'}</div>
+        <div class="flex-1 overflow-y-auto py-1.5 px-2">
+          ${
+            matched.length === 0
+              ? html`<div class="py-10 px-5 text-center text-describe text-[13px]">当前页面没有匹配的工具</div>`
+              : matched.map(
+                  ({ toolsetId, toolsetName, tool }) => html`
+                    <div class="flex items-center gap-2.5 py-2 px-1.5 rounded-normal hover:bg-bg-hover">
+                      <dy-avatar>${this.#initial(tool.name)}</dy-avatar>
+                      <div class="flex-1 min-w-0">
+                        <div class="text-[13px] font-medium text-highlight truncate" title=${`${tool.name} · ${toolsetName}`}>${tool.name}</div>
+                        <div class="text-xs text-describe truncate mt-0.5">${toolsetName} · ${tool.description || '—'}</div>
+                      </div>
+                      <dy-switch
+                        neutral="positive"
+                        .checked=${isToolEnabled(toolsetId, tool.name)}
+                        @change=${(e) => this.#toggleTool(toolsetId, tool.name, e)}
+                      ></dy-switch>
                     </div>
-                    <dy-switch
-                      neutral="informative"
-                      .checked=${isToolEnabled(toolsetId, tool.name)}
-                      @change=${(e) => this.#toggleTool(toolsetId, tool.name, e)}
-                    ></dy-switch>
-                  </div>
-                `,
-              )
-        }
-      </div>
+                  `,
+                )
+          }
+        </div>
 
-      <footer class=${style.bottom}>
-        <span class=${style.count}>共 ${enabledCount} 个工具已启用</span>
-        <button class=${style.linkBtn} @click=${this.#openOptions}>管理工具集</button>
-      </footer>
+        <footer class="flex items-center justify-between py-2.5 px-3.5 border-t border-border text-xs">
+          <span class="text-describe">共 ${enabledCount} 个工具已启用</span>
+          <button class="bg-transparent border-0 text-primary cursor-pointer font-inherit p-0" @click=${this.#openOptions}>管理工具集</button>
+        </footer>
+      </div>
     `;
   };
 }

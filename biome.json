@@ -19,6 +19,11 @@
       "enabled": true
     }
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "javascript": {
     "formatter": {
       "jsxQuoteStyle": "double",

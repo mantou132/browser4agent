@@ -3,10 +3,9 @@
 1. 遇到没有明确的事情不要自由发挥，应该询问确定
 2. 始终根据目的考虑代码，如果有更简洁的方案应该提出来
 
-
 # 前端开发
 
-使用 [`@mantou/gem`](https://gemjs.org/) 框架。UI 使用 [`duoyun-ui`](https://duoyun-ui.gemjs.org/)。用 ECMAScript 最近的规范写。
+使用 [`@mantou/gem`](https://gemjs.org/) 框架，UI 使用 [`duoyun-ui`](https://duoyun-ui.gemjs.org/)，使用了自动导入插件，不需要再导入 `@mantou/gem` 成员和 `duoyun-ui` 元素。用 ECMAScript 最新的规范写，样式尽量使用 TailwindCSS 实现。
 
 ## Gem Element Development
 

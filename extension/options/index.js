@@ -4,66 +4,9 @@ import { fnv1a } from 'duoyun-ui/lib/encode';
 import { loadToolset } from '../shared/mcp/loader.js';
 import { addToolset, initStore, mcpStore } from '../shared/mcp/store.js';
 
-const style = css({
-  $: `
-    display: block;
-    max-width: 880px;
-    margin: 0 auto;
-    padding: 32px 28px 64px;
-    box-sizing: border-box;
-  `,
-  pageHeader: `
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    margin-bottom: 32px;
-    & h1 { font-size: 22px; margin: 0; }
-    & p { margin: 4px 0 0; color: #6b7280; font-size: 13px; }
-  `,
-  section: `
-    margin-top: 28px;
-  `,
-  sectionHeader: `
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 14px;
-    & h2 { margin: 0; font-size: 15px; }
-    & p { margin: 4px 0 0; color: #6b7280; font-size: 12px; }
-  `,
-  stack: `
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  `,
-  more: `
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px;
-    border: 1px dashed #e5e7eb;
-    border-radius: 10px;
-    color: #6b7280;
-    cursor: pointer;
-    background: transparent;
-    width: 100%;
-    text-align: left;
-    font: inherit;
-    &:hover { border-color: #3b82f6; color: #3b82f6; }
-  `,
-  moreLeft: `
-    display: flex;
-    gap: 10px;
-    align-items: center;
-  `,
-});
-
 @customElement('mcp-options-page')
-@adoptedStyle(style)
 @connectStore(mcpStore)
 class McpOptionsPageElement extends GemElement {
-  // Recommended toolsets — endpoint not ready yet, kept as state for future fetch.
   #s = createState({ recommended: [] });
 
   @mounted()
@@ -86,7 +29,7 @@ class McpOptionsPageElement extends GemElement {
             }}
           ></dy-form-item>
         </dy-form>
-        <small style="color:#6b7280">
+        <small class="text-describe">
           JSON 中的每个工具包含 <code>registerTool</code> 字段，并使用 <code>pattern</code>
           匹配页面。
         </small>
@@ -129,55 +72,57 @@ class McpOptionsPageElement extends GemElement {
     const { toolsets } = mcpStore;
     const { recommended } = this.#s;
     return html`
-      <header class=${style.pageHeader}>
-        <dy-avatar size="large">🧩</dy-avatar>
-        <div>
-          <h1>MCP 扩展设置</h1>
-          <p>订阅和管理工具集</p>
-        </div>
-      </header>
-
-      <section class=${style.section}>
-        <header class=${style.sectionHeader}>
+      <div class="block max-w-220 mx-auto pt-8 pb-16 px-7 box-border">
+        <header class="flex items-center gap-3.5 mb-8">
+          <dy-avatar size="large">🧩</dy-avatar>
           <div>
-            <h2>工具集</h2>
-            <p>工具集是一个 JSON 文件，里面列出的工具字段类似 WebMCP，并额外包含 pattern 用来匹配页面。</p>
+            <h1 class="text-[22px] m-0 text-highlight">MCP 扩展设置</h1>
+            <p class="mt-1 text-describe text-[13px]">订阅和管理工具集</p>
           </div>
-          <dy-button @click=${this.#openAdd}>添加工具集</dy-button>
         </header>
-        <div class=${style.stack}>
-          ${
-            toolsets.length
-              ? toolsets.map((t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`)
-              : html`<dy-empty text="暂未订阅任何工具集"></dy-empty>`
-          }
-          <button
-            class=${style.more}
-            @click=${() => Toast.open({ key: 'toolset_market', type: 'default', content: '社区工具集市场即将推出' })}
-          >
-            <span class=${style.moreLeft}>
-              <span style="font-size:18px">🧭</span>
-              <span>
-                <strong>探索更多工具集</strong>
-                <div style="font-size:12px;margin-top:2px">访问社区工具集市场，发现更多工具</div>
+
+        <section class="mt-7">
+          <header class="flex items-end justify-between gap-3 mb-3.5">
+            <div>
+              <h2 class="m-0 text-[15px] text-highlight">工具集</h2>
+              <p class="mt-1 text-describe text-xs">工具集是一个 JSON 文件，里面列出的工具字段类似 WebMCP，并额外包含 pattern 用来匹配页面。</p>
+            </div>
+            <dy-button @click=${this.#openAdd}>添加工具集</dy-button>
+          </header>
+          <div class="flex flex-col gap-2.5">
+            ${
+              toolsets.length
+                ? toolsets.map((t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`)
+                : html`<dy-empty text="暂未订阅任何工具集"></dy-empty>`
+            }
+            <button
+              class="flex items-center justify-between py-3.5 px-4 border border-dashed border-border rounded-[10px] text-describe cursor-pointer bg-transparent w-full text-left font-inherit hover:border-primary hover:text-primary"
+              @click=${() => Toast.open('default', '社区工具集市场即将推出')}
+            >
+              <span class="flex gap-2.5 items-center">
+                <span class="text-lg">🧭</span>
+                <span>
+                  <strong>探索更多工具集</strong>
+                  <div class="text-xs mt-0.5">访问社区工具集市场，发现更多工具</div>
+                </span>
               </span>
-            </span>
-            <span>›</span>
-          </button>
-        </div>
-      </section>
-
-      <section v-if=${!!recommended.length} class=${style.section}>
-        <header class=${style.sectionHeader}>
-          <div>
-            <h2>推荐工具集</h2>
-            <p>来自社区的精选工具集。</p>
+              <span>›</span>
+            </button>
           </div>
-        </header>
-        <div class=${style.stack}>
-          ${recommended.map((t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`)}
-        </div>
-      </section>
+        </section>
+
+        <section v-if=${!!recommended.length} class="mt-7">
+          <header class="flex items-end justify-between gap-3 mb-3.5">
+            <div>
+              <h2 class="m-0 text-[15px] text-highlight">推荐工具集</h2>
+              <p class="mt-1 text-describe text-xs">来自社区的精选工具集。</p>
+            </div>
+          </header>
+          <div class="flex flex-col gap-2.5">
+            ${recommended.map((t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`)}
+          </div>
+        </section>
+      </div>
     `;
   };
 }
