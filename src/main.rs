@@ -4,9 +4,12 @@ mod logger;
 mod mcp_server;
 mod native_host;
 mod native_message_setup;
+use std::{
+    env,
+    io::{self, Read},
+};
+
 use anyhow::Result;
-use std::env;
-use std::io::{self, Read};
 
 // chrome has extension id, firefox has manifest path & extension id
 fn is_launched_by_browser() -> bool {
@@ -20,10 +23,10 @@ async fn main() -> Result<()> {
         native_host::run().await?;
     } else {
         native_message_setup::install_native_message_host(
-            "browser_mcp",
-            "Browser MCP - 读取浏览器标签页内容、操控浏览器，为 AI Agent 提供浏览器能力",
+            "browser4agent",
+            "Browser for AI Agent",
             Some("kaanjpgabaklepokebpdojepkccmbpng"),
-            Some("browser-mcp@xianqiao.wang"),
+            Some("browser4agent@xianqiao.wang"),
         )?;
 
         ai_tool_setup::setup_ai_tools()?;

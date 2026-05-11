@@ -1,4 +1,3 @@
-import { loadToolset } from './shared/mcp/loader.js';
 import {
   executeScript,
   executeScriptInBackground,
@@ -13,7 +12,9 @@ import {
   screenshotTab,
 } from './tools.js';
 
-const NATIVE_HOST_NAME = 'browser_mcp';
+const NATIVE_HOST_NAME = 'browser4agent';
+
+let port = null;
 
 function sendToHost(msg) {
   if (port) {
@@ -93,8 +94,6 @@ function handleMessageFromHost(msg) {
   }
 }
 
-let port = null;
-
 function connectNativeHost() {
   try {
     port = chrome.runtime.connectNative(NATIVE_HOST_NAME);
@@ -115,27 +114,5 @@ function connectNativeHost() {
     setTimeout(connectNativeHost, 1000);
   }
 }
-
-chrome.runtime.onInstalled.addListener(async (details) => {
-  if (details.reason !== 'install') return;
-  const url = chrome.runtime.getURL('toolsets/example.json');
-  const { meta, tools } = await loadToolset(url);
-  const { toolsets } = await chrome.storage.sync.get({ toolsets: [] });
-  await chrome.storage.sync.set({
-    toolsets: [
-      ...toolsets,
-      {
-        id: 'example',
-        url: 'toolsets/example.json',
-        type: 'official',
-        enabled: true,
-        name: meta.name,
-        description: meta.description || '',
-        icon: meta.icon || '',
-        tools,
-      },
-    ],
-  });
-});
 
 connectNativeHost();

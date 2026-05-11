@@ -1,8 +1,8 @@
 [package]
-name = "browser-mcp"
+name = "browser4agent"
 version = "0.1.0"
 edition = "2024"
-description = "MCP server that reads browser tab content and controls the browser (tabs, windows, network) via a browser extension"
+description = "MCP server that reads browser tab content and controls the browser via a browser extension"
 license = "MIT"
 
 [dependencies]
@@ -21,7 +21,6 @@ jsonc-parser = { version = "0.32", features = ["serde"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
-winapi = { version = "0.3", features = ["winbase", "fileapi"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

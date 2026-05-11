@@ -29,7 +29,9 @@ export default {
               target: 'es2024',
               parser: { syntax: 'typescript', decorators: true, explicitResourceManagement: true },
               transform: { decoratorVersion: '2022-03' },
+              externalHelpers: true,
               experimental: {
+                runPluginFirst: true,
                 plugins: [
                   [
                     'swc-plugin-gem',
@@ -56,7 +58,10 @@ export default {
     config.plugins ??= [];
     config.plugins.push(
       new CopyRspackPlugin({
-        patterns: [{ from: `./extension/toolsets`, to: 'toolsets' }],
+        patterns: [
+          { from: `./extension/toolsets`, to: 'toolsets' },
+          { from: `./extension/serialize.js`, to: 'serialize.js' },
+        ],
       }),
     );
     return config;

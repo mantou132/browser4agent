@@ -1,4 +1,7 @@
-@import "tailwindcss";
+@import "tailwindcss/theme";
+/*https://github.com/w3c/csswg-drafts/issues/10407*/
+/*@import "tailwindcss/preflight";*/
+@import "tailwindcss/utilities";
 
 @theme {
   --color-primary: var(--color-indigo-500);

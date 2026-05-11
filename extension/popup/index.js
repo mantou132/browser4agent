@@ -1,3 +1,4 @@
+import { icons } from 'duoyun-ui/lib/icons';
 import { initStore, isToolEnabled, mcpStore, setToolEnabled } from '../shared/mcp/store.js';
 
 function matchPattern(url, pattern) {
@@ -49,6 +50,8 @@ class McpPopupPageElement extends GemElement {
   #content = () => {
     if (!this.#s.ready) return html`<dy-loading></dy-loading>`;
 
+    const manifest = chrome.runtime.getManifest();
+    const icon = chrome.runtime.getURL(manifest.icons['128']);
     const matched = this.#matched();
     const enabledCount = matched.filter((m) => isToolEnabled(m.toolsetId, m.tool.name)).length;
     const url = this.#s.tab?.url || '';
@@ -57,10 +60,10 @@ class McpPopupPageElement extends GemElement {
       <div class="flex flex-col h-screen box-border">
         <header class="flex items-center justify-between py-3 px-3.5 border-b border-border">
           <span class="flex items-center gap-2 font-semibold text-highlight">
-            <dy-avatar>🧩</dy-avatar>
-            MCP 工具
+            <img src=${icon} class="w-6 h-6" />
+            <span>${manifest.name}</span>
           </span>
-          <button class="w-7 h-7 border-0 bg-transparent text-describe rounded-normal cursor-pointer text-base hover:bg-bg-hover" title="设置" aria-label="设置" @click=${this.#openOptions}>⚙</button>
+          <dy-button .icon=${icons.tune} square color="cancel" @click=${this.#openOptions}></dy-button>
         </header>
 
         <div class="pt-3 pb-2 px-3.5 border-b border-border">
@@ -71,19 +74,19 @@ class McpPopupPageElement extends GemElement {
               <span class="truncate">${url || '(无 URL)'}</span>
             </div>
           </div>
-          <div class="text-[11px] text-neutral mt-1">显示可在当前页面使用的工具</div>
+          <div class="text-xs text-neutral mt-1">下面显示的是 AI Agent 可在当前页面使用的工具</div>
         </div>
 
         <div class="flex-1 overflow-y-auto py-1.5 px-2">
           ${
             matched.length === 0
-              ? html`<div class="py-10 px-5 text-center text-describe text-[13px]">当前页面没有匹配的工具</div>`
+              ? html`<div class="py-10 px-5 text-center text-describe text-sm">没有匹配的工具</div>`
               : matched.map(
                   ({ toolsetId, toolsetName, tool }) => html`
-                    <div class="flex items-center gap-2.5 py-2 px-1.5 rounded-normal hover:bg-bg-hover">
-                      <dy-avatar>${this.#initial(tool.name)}</dy-avatar>
+                    <div class="flex items-center gap-2.5 py-2 px-1.5 rounded-sm hover:bg-bg-hover">
+                      <dy-avatar square>${this.#initial(tool.name)}</dy-avatar>
                       <div class="flex-1 min-w-0">
-                        <div class="text-[13px] font-medium text-highlight truncate" title=${`${tool.name} · ${toolsetName}`}>${tool.name}</div>
+                        <div class="text-sm font-medium text-highlight truncate" title=${`${tool.name} · ${toolsetName}`}>${tool.name}</div>
                         <div class="text-xs text-describe truncate mt-0.5">${toolsetName} · ${tool.description || '—'}</div>
                       </div>
                       <dy-switch
@@ -99,7 +102,7 @@ class McpPopupPageElement extends GemElement {
 
         <footer class="flex items-center justify-between py-2.5 px-3.5 border-t border-border text-xs">
           <span class="text-describe">共 ${enabledCount} 个工具已启用</span>
-          <button class="bg-transparent border-0 text-primary cursor-pointer font-inherit p-0" @click=${this.#openOptions}>管理工具集</button>
+          <dy-action-text class="text-primary" @click=${this.#openOptions}>管理工具集</dy-action-text>
         </footer>
       </div>
     `;
