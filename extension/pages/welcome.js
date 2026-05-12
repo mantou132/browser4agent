@@ -1,5 +1,5 @@
-@customElement('mcp-welcome-page')
-class McpWelcomePageElement extends GemElement {
+@customElement('agent-welcome-page')
+class AgentWelcomePageElement extends GemElement {
   #platforms = [
     {
       name: 'macOS',
@@ -43,7 +43,7 @@ class McpWelcomePageElement extends GemElement {
               <a
                 href=${p.url}
                 target="_blank"
-                class="flex flex-col items-center gap-2 py-4 px-6 border border-border rounded-xl hover:border-primary transition-[border-color] no-underline"
+                class="flex flex-1 flex-col items-center gap-2 py-4 px-6 border border-border rounded-xl hover:border-primary transition-[border-color] no-underline"
               >
                 <span class="text-3xl">${p.icon}</span>
                 <span class="text-sm font-semibold text-highlight">${p.name}</span>

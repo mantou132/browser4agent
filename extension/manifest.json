@@ -16,7 +16,7 @@
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": "icon128.png",
-    "default_title": "MCP 工具"
+    "default_title": "AI Agent 工具"
   },
   "options_ui": {
     "page": "options/options.html",

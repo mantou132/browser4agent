@@ -1,4 +1,4 @@
-window.browserDataMCPReadTabContentHack = async () => {
+window.browserAgentReadTabContentHack = async () => {
   const container = document.querySelector('.bear-web-x-container');
   const scrollTop = container?.scrollTop;
   const style = document.createElement('style');

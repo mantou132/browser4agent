@@ -1,15 +1,15 @@
 import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
 import { createForm } from 'duoyun-ui/patterns/form';
-import { loadToolset } from '../shared/mcp/loader.js';
-import { addToolset, initStore, mcpStore } from '../shared/mcp/store.js';
-import { getToolsetId } from '../shared/mcp/toolsets.js';
+import { loadToolset } from '../shared/loader.js';
+import { addToolset, initStore, toolStore } from '../shared/store.js';
+import { getToolsetId } from '../shared/toolsets.js';
 
 const toolsets = require.context('../public/toolsets', false, /\.json$/);
 
-@customElement('mcp-options-page')
-@connectStore(mcpStore)
-class McpOptionsPageElement extends GemElement {
+@customElement('agent-options-page')
+@connectStore(toolStore)
+class AgentOptionsPageElement extends GemElement {
   #state = createState({
     recommended: toolsets.keys().map((key) => {
       return {
@@ -21,9 +21,9 @@ class McpOptionsPageElement extends GemElement {
     }),
   });
 
-  @memo(() => [mcpStore.toolsets])
+  @memo(() => [toolStore.toolsets])
   get #recommended() {
-    const subscribed = new Set(mcpStore.toolsets.map((t) => t.id));
+    const subscribed = new Set(toolStore.toolsets.map((t) => t.id));
     return this.#state.recommended.filter((t) => !subscribed.has(getToolsetId(t.url)));
   }
 
@@ -63,7 +63,7 @@ class McpOptionsPageElement extends GemElement {
       return Toast.open('warning', '无效 URL');
     }
     const id = getToolsetId(url);
-    if (mcpStore.toolsets.find((t) => t.id === id)) {
+    if (toolStore.toolsets.find((t) => t.id === id)) {
       return Toast.open('warning', '该工具集已订阅');
     }
     try {
@@ -85,7 +85,7 @@ class McpOptionsPageElement extends GemElement {
 
   @template()
   #content = () => {
-    const { toolsets } = mcpStore;
+    const { toolsets } = toolStore;
     const manifest = chrome.runtime.getManifest();
     const icon = chrome.runtime.getURL(manifest.icons['128']);
     return html`
@@ -116,17 +116,17 @@ class McpOptionsPageElement extends GemElement {
                 ? toolsets.map((t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`)
                 : html`<dy-empty class="py-20" text="暂未订阅任何工具集"></dy-empty>`
             }
-            <button
-              class="flex items-center gap-3.5 py-3.5 px-4 border border-dashed border-border rounded-xl text-describe cursor-pointer bg-transparent w-full text-left font-inherit hover:border-primary hover:text-primary"
+            <div
+              class="flex items-center gap-3.5 py-3.5 px-4 border border-dashed border-border rounded-xl text-describe cursor-pointer hover:border-primary hover:text-primary"
               @click=${() => chrome.tabs.create({ url: chrome.runtime.getURL('pages/market.html') })}
             >
-              <dy-avatar size="large" class="bg-neutral/10">🧭</dy-avatar>
+              <dy-avatar size="large" square>🧭</dy-avatar>
               <div class="flex-1 min-w-0">
-                <strong class="text-sm">探索更多工具集</strong>
-                <div class="text-xs mt-1">访问社区工具集市场，发现更多工具</div>
+                <div class="text-sm mb-2">探索更多工具集</div>
+                <div class="text-xs">访问社区工具集市场，发现更多工具</div>
               </div>
               <dy-use .element=${icons.right}></dy-use>
-            </button>
+            </div>
           </div>
         </section>
 

@@ -1,9 +1,9 @@
 import { icons } from 'duoyun-ui/lib/icons';
-import { initStore, isToolEnabled, mcpStore, setToolEnabled } from '../shared/mcp/store.js';
+import { initStore, isToolEnabled, setToolEnabled, toolStore } from '../shared/store.js';
 
-@customElement('mcp-popup-page')
-@connectStore(mcpStore)
-class McpPopupPageElement extends GemElement {
+@customElement('agent-popup-page')
+@connectStore(toolStore)
+class AgentPopupPageElement extends GemElement {
   #s = createState({ tab: null, ready: false });
   #initial = (name) => ((name || '').trim()[0] || '?').toUpperCase();
 
@@ -26,7 +26,7 @@ class McpPopupPageElement extends GemElement {
   #matched() {
     const url = this.#s.tab?.url || '';
     const out = [];
-    for (const ts of mcpStore.toolsets) {
+    for (const ts of toolStore.toolsets) {
       if (!ts.enabled) continue;
       for (const tool of ts.tools || []) {
         if (new URLPattern(tool.pattern).test(url)) {

@@ -66,7 +66,7 @@
     return `${openTag}${childrenContent}</${tag.toLowerCase()}>`;
   };
 
-  const restore = await window.browserDataMCPReadTabContentHack?.();
+  const restore = await window.browserAgentReadTabContentHack?.();
   const result = serialize(document.body);
   restore?.();
   return result;

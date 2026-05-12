@@ -2,18 +2,18 @@ import { Modal } from 'duoyun-ui/elements/modal';
 import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
 import { createForm } from 'duoyun-ui/patterns/form';
-import { loadToolset } from '../shared/mcp/loader.js';
-import { addToolset, initStore, mcpStore } from '../shared/mcp/store.js';
-import { getToolsetId } from '../shared/mcp/toolsets.js';
+import { loadToolset } from '../shared/loader.js';
+import { addToolset, initStore, toolStore } from '../shared/store.js';
+import { getToolsetId } from '../shared/toolsets.js';
 
 const MARKET_API =
   import.meta.env.MODE === 'development'
     ? 'http://127.0.0.1:8787'
     : 'https://browser4agent-market.709922234.workers.dev';
 
-@customElement('mcp-market-page')
-@connectStore(mcpStore)
-class McpMarketPageElement extends GemElement {
+@customElement('agent-market-page')
+@connectStore(toolStore)
+class AgentMarketPageElement extends GemElement {
   #state = createState({
     toolsets: [],
     loading: true,
@@ -44,7 +44,7 @@ class McpMarketPageElement extends GemElement {
   #subscribe = async (t) => {
     const toolsetUrl = this.#getUrl(t.name);
     const id = getToolsetId(toolsetUrl);
-    if (mcpStore.toolsets.find((t) => t.id === id)) {
+    if (toolStore.toolsets.find((t) => t.id === id)) {
       return Toast.open('warning', '该工具集已订阅');
     }
     try {
@@ -107,7 +107,7 @@ class McpMarketPageElement extends GemElement {
   @template()
   #content = () => {
     const { toolsets, loading, error } = this.#state;
-    const subscribed = new Set(mcpStore.toolsets.map((t) => t.id));
+    const subscribed = new Set(toolStore.toolsets.map((t) => t.id));
     const manifest = chrome.runtime.getManifest();
     const icon = chrome.runtime.getURL(manifest.icons['128']);
 
@@ -136,7 +136,7 @@ class McpMarketPageElement extends GemElement {
                 <div
                   class="flex items-center gap-3.5 py-3.5 px-4 border border-border rounded-xl"
                 >
-                  <dy-avatar size="large" class="bg-neutral/10">${t.icon || '📦'}</dy-avatar>
+                  <dy-avatar size="large" square>${t.icon || '📦'}</dy-avatar>
                   <div class="flex-1 min-w-0">
                     <strong class="text-sm text-highlight">${t.name}</strong>
                     <div class="text-xs mt-1 text-describe">${t.description || ''}</div>

@@ -1,5 +1,5 @@
 import { exec } from './execute-in-bg.js';
-import { getAvailableTabTools, getSubscribedTool } from './shared/mcp/toolsets.js';
+import { getAvailableTabTools, getSubscribedTool } from './shared/toolsets.js';
 
 const err = (msg) => ({ type: 'error', error: msg });
 
@@ -135,7 +135,7 @@ export async function executeScript(tabId, funcStr, args) {
       target: { tabId },
       func: async (code, argsStr, nonce) => {
         const { promise, resolve, reject } = Promise.withResolvers();
-        const callbackId = `mcp_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        const callbackId = `agent_tool_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         window[callbackId] = {
           resolve: (val) => resolve(val),
           reject: (err) => reject(err),
