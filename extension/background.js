@@ -14,6 +14,7 @@ import {
 
 const NATIVE_HOST_NAME = 'browser4agent';
 const WELCOME_URL = chrome.runtime.getURL('pages/welcome.html');
+const MARKET_URL = chrome.runtime.getURL('pages/market.html');
 
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
@@ -27,9 +28,20 @@ chrome.contextMenus.create({
   contexts: ['action'],
 });
 
+chrome.contextMenus.create({
+  id: 'open-market',
+  title: '工具集市场',
+  contexts: ['action'],
+});
+
 chrome.contextMenus.onClicked.addListener((info) => {
-  if (info.menuItemId === 'open-welcome') {
-    chrome.tabs.create({ url: WELCOME_URL });
+  switch (info.menuItemId) {
+    case 'open-welcome':
+      chrome.tabs.create({ url: WELCOME_URL });
+      break;
+    case 'open-market':
+      chrome.tabs.create({ url: MARKET_URL });
+      break;
   }
 });
 

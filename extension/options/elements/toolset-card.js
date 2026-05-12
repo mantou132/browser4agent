@@ -68,6 +68,7 @@ class McpToolsetCardElement extends GemElement {
 
     const icon = t.icon || '';
     const isIconUrl = /^https?:\/\//.test(icon);
+    const isOfficial = t.type === 'official';
     return html`
       <div class="flex items-center gap-3.5 py-3.5 px-4 border border-border rounded-xl bg-bg transition-[border-color] hover:border-primary">
         <dy-avatar v-if=${isIconUrl} src=${icon} size="large" class="bg-neutral/10"></dy-avatar>
@@ -75,7 +76,7 @@ class McpToolsetCardElement extends GemElement {
         <div class="flex-1 min-w-0">
           <dy-space class="mb-1" size="large">
             <span class="font-semibold text-sm text-highlight">${t.name}</span>
-            <dy-tag color=${t.type === 'official' ? 'positive' : 'default'}>${t.type === 'official' ? '官方' : '社区'}</dy-tag>
+            <dy-tag color=${isOfficial ? 'positive' : 'default'}>${isOfficial ? '官方' : '社区'}</dy-tag>
           </dy-space>
           <div class="text-describe text-sm mb-1 truncate">${t.description || '—'}</div>
           <div class="text-neutral text-xs truncate">${t.url}</div>

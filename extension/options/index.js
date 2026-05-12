@@ -72,7 +72,7 @@ class McpOptionsPageElement extends GemElement {
         ...meta,
         id,
         url,
-        type: new URL(url).protocol === 'blob' ? 'official' : 'community',
+        type: new URL(url).protocol.includes('extension') ? 'official' : 'community',
         enabled: true,
         tools,
       });
@@ -118,7 +118,7 @@ class McpOptionsPageElement extends GemElement {
             }
             <button
               class="flex items-center gap-3.5 py-3.5 px-4 border border-dashed border-border rounded-xl text-describe cursor-pointer bg-transparent w-full text-left font-inherit hover:border-primary hover:text-primary"
-              @click=${() => Toast.open('default', '社区工具集市场即将推出')}
+              @click=${() => chrome.tabs.create({ url: chrome.runtime.getURL('pages/market.html') })}
             >
               <dy-avatar size="large" class="bg-neutral/10">🧭</dy-avatar>
               <div class="flex-1 min-w-0">

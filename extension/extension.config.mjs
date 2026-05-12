@@ -46,6 +46,7 @@ export default {
                           '@': {
                             'options-*': '/options/elements/*',
                             'popup-*': '/popup/elements/*',
+                            'market-*': '/pages/elements/*',
                           },
                         },
                       },

@@ -1,0 +1,14 @@
+{
+  "name": "browser4agent-market-api",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typegen": "wrangler types",
+    "seed": "node seed-local-kv.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.18.0"
+  }
+}

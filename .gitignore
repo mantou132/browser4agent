@@ -1,6 +1,7 @@
 target
 dist
 .swc
+.wrangler
 .claude
 key.pem
 .DS_Store

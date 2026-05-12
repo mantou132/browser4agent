@@ -1,0 +1,7 @@
+name = "browser4agent-market"
+main = "index.js"
+compatibility_date = "2025-04-01"
+
+[[kv_namespaces]]
+binding = "MARKET_KV"
+id = "c1bc4f6fc87d4ac88871342d6d329e6f"
