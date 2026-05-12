@@ -9,7 +9,7 @@
     }
   },
   "description": "让 AI Agent 读取浏览器标签页内容、操控浏览器（管理标签页/窗口等），调用标签页工具",
-  "permissions": ["tabs", "nativeMessaging", "scripting", "activeTab", "cookies", "alarms", "storage"],
+  "permissions": ["tabs", "nativeMessaging", "scripting", "activeTab", "cookies", "alarms", "storage", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "chrome:background": { "service_worker": "background.js" },
   "firefox:background": { "scripts": ["background.js"] },

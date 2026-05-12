@@ -8,15 +8,6 @@ export function getToolsetId(url) {
   return String(fnv1a(url));
 }
 
-function matchPattern(url, pattern) {
-  if (!url || !pattern) return false;
-  try {
-    return new URLPattern(pattern).test(url);
-  } catch {
-    return false;
-  }
-}
-
 export function isToolEnabled(toolStates, toolsetId, toolName) {
   return toolStates[toolKey(toolsetId, toolName)] !== false;
 }
@@ -39,7 +30,7 @@ export async function getAvailableTabTools(tabId) {
     if (!toolset.enabled) continue;
     for (const tool of toolset.tools || []) {
       if (!isToolEnabled(toolStates, toolset.id, tool.name)) continue;
-      if (!matchPattern(tab.url, tool.pattern)) continue;
+      if (!new URLPattern(tool.pattern).test(tab.url)) continue;
       tools.push({
         toolsetId: toolset.id,
         toolsetName: toolset.name,

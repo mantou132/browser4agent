@@ -13,6 +13,25 @@ import {
 } from './tools.js';
 
 const NATIVE_HOST_NAME = 'browser4agent';
+const WELCOME_URL = chrome.runtime.getURL('pages/welcome.html');
+
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'install') {
+    chrome.tabs.create({ url: WELCOME_URL });
+  }
+});
+
+chrome.contextMenus.create({
+  id: 'open-welcome',
+  title: '欢迎页面',
+  contexts: ['action'],
+});
+
+chrome.contextMenus.onClicked.addListener((info) => {
+  if (info.menuItemId === 'open-welcome') {
+    chrome.tabs.create({ url: WELCOME_URL });
+  }
+});
 
 let port = null;
 

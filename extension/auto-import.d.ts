@@ -1,7 +1,8 @@
 // AUTOMATICALLY GENERATED, DO NOT MODIFY MANUALLY.
 // DELETING WILL REGENERATE
 
-export {}
+export {};
+
 declare global {
   const raw: typeof import('@mantou/gem')['raw'];
   const css: typeof import('@mantou/gem')['css'];

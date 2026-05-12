@@ -47,8 +47,6 @@ export async function setToolsetEnabled(id, enabled) {
   await persist({ toolsets: next });
 }
 
-export { toolKey };
-
 export function isToolEnabled(toolsetId, toolName) {
   return isToolEnabledFromState(mcpStore.toolStates, toolsetId, toolName);
 }

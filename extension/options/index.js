@@ -5,7 +5,7 @@ import { loadToolset } from '../shared/mcp/loader.js';
 import { addToolset, initStore, mcpStore } from '../shared/mcp/store.js';
 import { getToolsetId } from '../shared/mcp/toolsets.js';
 
-const toolsets = require.context('../toolsets', false, /\.json$/);
+const toolsets = require.context('../public/toolsets', false, /\.json$/);
 
 @customElement('mcp-options-page')
 @connectStore(mcpStore)
@@ -69,11 +69,9 @@ class McpOptionsPageElement extends GemElement {
     try {
       const { meta, tools } = await loadToolset(url);
       await addToolset({
+        ...meta,
         id,
         url,
-        name: meta.name,
-        description: meta.description || '',
-        icon: meta.icon || '',
         type: new URL(url).protocol === 'blob' ? 'official' : 'community',
         enabled: true,
         tools,

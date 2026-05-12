@@ -35,9 +35,7 @@ class McpToolsetCardElement extends GemElement {
       const { meta, tools } = await loadToolset(this.toolset.url);
       await addToolset({
         ...this.toolset,
-        name: meta.name,
-        description: meta.description || '',
-        icon: meta.icon || '',
+        ...meta,
         tools,
       });
       Toast.open('success', `已刷新：${meta.name}（${tools.length} 个工具）`);

@@ -1,15 +1,6 @@
 import { icons } from 'duoyun-ui/lib/icons';
 import { initStore, isToolEnabled, mcpStore, setToolEnabled } from '../shared/mcp/store.js';
 
-function matchPattern(url, pattern) {
-  if (!url || !pattern) return false;
-  try {
-    return new URLPattern(pattern).test(url);
-  } catch {
-    return false;
-  }
-}
-
 @customElement('mcp-popup-page')
 @connectStore(mcpStore)
 class McpPopupPageElement extends GemElement {
@@ -38,7 +29,7 @@ class McpPopupPageElement extends GemElement {
     for (const ts of mcpStore.toolsets) {
       if (!ts.enabled) continue;
       for (const tool of ts.tools || []) {
-        if (matchPattern(url, tool.pattern)) {
+        if (new URLPattern(tool.pattern).test(url)) {
           out.push({ toolsetId: ts.id, toolsetName: ts.name, tool });
         }
       }

@@ -1,25 +1,18 @@
 {
-  "name": "browser4agent",
-  "version": "1.0.0",
   "private": true,
+  "name": "root",
+  "version": "0.0.0",
   "scripts": {
-    "dev": "extension dev ./extension",
-    "build": "extension build ./extension",
-    "postinstall": "patch-package"
-  },
-  "license": "ISC",
-  "dependencies": {
-    "@mantou/gem": "^2.2.2",
-    "@swc/helpers": "^0.5.21",
-    "duoyun-ui": "^2.2.2",
-    "quickjs-emscripten": "^0.32.0"
+    "lint": "biome check --write",
+    "prepare": "husky install"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.3.0",
-    "extension": "^3.16.0",
-    "patch-package": "^8.0.1",
-    "postcss": "^8.5.14",
-    "swc-plugin-gem": "^0.1.9",
-    "tailwindcss": "^4.3.0"
-  }
+    "@biomejs/biome": "^2.2.6",
+    "husky": "^8.0.3",
+    "lint-staged": "^15.1.0"
+  },
+  "lint-staged": {
+    "*.ts": "biome check --write"
+  },
+  "packageManager": "pnpm@10.28.0"
 }

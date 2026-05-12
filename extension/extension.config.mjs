@@ -1,12 +1,13 @@
-import { CopyRspackPlugin } from '@rspack/core';
+/** @type {import('extension').FileConfig} */
+
+const profile = (name) => `./dist/extension-profile-${name}`;
 
 export default {
   commands: {
     dev: {
       browser: 'chrome',
       startingUrl: 'https://example.com',
-      persistProfile: true,
-      preferences: { darkMode: false },
+      profile: profile('chrome'),
     },
     build: {
       browser: 'chrome,firefox',
@@ -42,13 +43,13 @@ export default {
                       autoImport: {
                         extends: 'gem',
                         elements: {
-                          extension: {
+                          '@': {
                             'options-*': '/options/elements/*',
                             'popup-*': '/popup/elements/*',
                           },
                         },
                       },
-                      autoImportDts: 'extension/auto-import.d.ts',
+                      autoImportDts: 'auto-import.d.ts',
                     },
                   ],
                 ],
@@ -58,15 +59,6 @@ export default {
         },
       ],
     });
-    config.plugins ??= [];
-    config.plugins.push(
-      new CopyRspackPlugin({
-        patterns: [
-          { from: `./extension/toolsets`, to: 'toolsets' },
-          { from: `./extension/serialize.js`, to: 'serialize.js' },
-        ],
-      }),
-    );
     return config;
   },
 };

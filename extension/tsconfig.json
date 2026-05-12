@@ -21,10 +21,10 @@
     "target": "ES2022",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "paths": {
-      "extension/*": ["./extension/*"]
+      "@/*": ["./*"]
     },
     "outDir": "./dist"
   },
-  "include": ["extension", "node_modules/duoyun-ui/**/*.d.ts"],
-  "exclude": []
+  "include": ["./", "node_modules/duoyun-ui"],
+  "exclude": ["dist"]
 }
