@@ -106,7 +106,9 @@ class McpOptionsPageElement extends GemElement {
           <header class="flex items-center justify-between gap-3 mb-5">
             <div>
               <h2 class="m-0 text-base text-highlight">工具集</h2>
-              <p class="mt-1 mb-0 text-describe text-xs">工具集是一个 JSON 文件，里面列出的工具字段类似 WebMCP，并额外包含 pattern 用来匹配页面。</p>
+              <p class="mt-1 mb-0 text-describe text-xs">
+                工具集是一个 JSON 文件，里面的每个工具包含 name、description、execute、inputSchema、pattern 等字段
+              </p>
             </div>
             <dy-button @click=${this.#openAdd}>添加工具集</dy-button>
           </header>

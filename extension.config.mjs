@@ -36,6 +36,9 @@ export default {
                   [
                     'swc-plugin-gem',
                     {
+                      styleMinify: true,
+                      // hmr: true,
+                      selectorCompatible: true,
                       autoImport: {
                         extends: 'gem',
                         elements: {

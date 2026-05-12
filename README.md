@@ -48,16 +48,14 @@ AI Agent 可以在标签页中调用工具，比如对页面执行特定操作�
 ## 从源码构建
 
 ```bash
+# 浏览器扩展，构建产物位于 dist/xxx
+npm run build
+# 浏览器扩展 Native Host
+# 构建产物位于 `target/release/browser4agent`（Windows 上为 `.exe`）
 cargo build --release
 ```
-
-构建产物位于 `target/release/browser4agent`（Windows 上为 `.exe`）。
 
 ## Roadmap
 
 - **确保读取用户感官上的数据** — 有些页面是虚拟渲染，需要用 hack 手段读取到全部内容
 - **工具集市场** — 让用户分享自己的工具集
-
-## 许可证
-
-MIT

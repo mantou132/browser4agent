@@ -1,8 +1,10 @@
 // SWC bug: https://github.com/swc-project/swc/issues/11846
 
 import { ContextMenu } from 'duoyun-ui/elements/contextmenu';
+import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
-import { removeToolset, setToolsetEnabled } from '../../shared/mcp/store.js';
+import { loadToolset } from '../../shared/mcp/loader.js';
+import { addToolset, removeToolset, setToolsetEnabled } from '../../shared/mcp/store.js';
 
 @customElement('options-toolset-card')
 class McpToolsetCardElement extends GemElement {
@@ -26,6 +28,34 @@ class McpToolsetCardElement extends GemElement {
     });
     await removeToolset(this.toolset.id);
     this.update();
+  };
+
+  #refresh = async () => {
+    try {
+      const { meta, tools } = await loadToolset(this.toolset.url);
+      await addToolset({
+        ...this.toolset,
+        name: meta.name,
+        description: meta.description || '',
+        icon: meta.icon || '',
+        tools,
+      });
+      Toast.open('success', `已刷新：${meta.name}（${tools.length} 个工具）`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      Toast.open('error', `刷新失败：${msg}`);
+    }
+  };
+
+  #openMenu = (e) => {
+    e.preventDefault();
+    ContextMenu.open(
+      [
+        { text: '刷新', handle: () => this.#refresh() },
+        { text: '删除', danger: true, handle: () => this.#remove(e) },
+      ],
+      { activeElement: e.target, openLeft: true },
+    );
   };
 
   #subscribe = () => {
@@ -57,7 +87,7 @@ class McpToolsetCardElement extends GemElement {
         </div>
         <div class="flex items-center gap-2.5 shrink-0" v-else>
           <dy-switch neutral="positive" .checked=${!!t.enabled} @change=${this.#toggle}></dy-switch>
-          <dy-button square color="cancel" .icon=${icons.delete} @click=${this.#remove}></dy-button>
+          <dy-button square color="cancel" .icon=${icons.more} @contextmenu=${this.#openMenu} @click=${this.#openMenu}></dy-button>
         </div>
       </div>
     `;
