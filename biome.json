@@ -44,5 +44,8 @@
         "noUnusedVariables": "off"
       }
     }
+  },
+  "files": {
+    "includes": ["**", "!cf/worker-configuration.d.ts"]
   }
 }

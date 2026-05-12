@@ -37,9 +37,7 @@ const router = [
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const matches = router
-      .map((r) => ({ route: r, result: r.pattern.exec(url.href) }))
-      .filter((m) => m.result);
+    const matches = router.map((r) => ({ route: r, result: r.pattern.exec(url.href) })).filter((m) => m.result);
 
     if (!matches.length) return Response.json({ error: 'not found' }, { status: 404 });
 

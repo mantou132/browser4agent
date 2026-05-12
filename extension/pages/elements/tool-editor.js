@@ -158,7 +158,7 @@ class MarketToolEditorElement extends GemElement {
       { label: '工具名称', type: 'text', field: 'name', required: true, autofocus: true },
       { label: 'URL 匹配模式', type: 'text', field: 'pattern', required: true, placeholder: 'https://example.com/*' },
       { label: '描述', type: 'textarea', field: 'description', rows: 2 },
-      ...paramEntries.map(([key, prop], i) => [
+      ...paramEntries.map(([_key, _prop], i) => [
         { label: `参数 ${i + 1} 名称`, type: 'text', field: `param_${i}_name` },
         {
           label: `参数 ${i + 1} 类型`,
@@ -245,7 +245,7 @@ class MarketToolEditorElement extends GemElement {
       </div>
       <div class="editor">
         <dy-pat-form
-          v-if=${this.#currentFormData}
+          v-if=${!!this.#currentFormData}
           ${this.#formRef}
           .formItems=${this.#currentFormItems}
           .data=${this.#currentFormData}

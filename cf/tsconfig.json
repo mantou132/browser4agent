@@ -25,6 +25,6 @@
     },
     "outDir": "./dist"
   },
-  "include": ["./", "worker-configuration.d.ts"],
-  "exclude": ["dist"]
+  "include": ["./"],
+  "exclude": []
 }
