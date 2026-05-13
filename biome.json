@@ -46,6 +46,11 @@
     }
   },
   "files": {
-    "includes": ["**", "!cf/worker-configuration.d.ts", "!extension/auto-import.d.ts"]
+    "includes": [
+      "**",
+      "!cf/worker-configuration.d.ts",
+      "!extension/auto-import.d.ts",
+      "!extension/public/toolsets/*.json"
+    ]
   }
 }

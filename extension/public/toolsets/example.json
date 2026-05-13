@@ -16,7 +16,7 @@
           }
         }
       },
-      "execute": "async ({ maxLength = 300 } = {}) => ({ title: document.title, url: location.href, summary: document.body?.innerText?.trim().slice(0, maxLength) || '' })"
+      "execute": "async ({ maxLength = 300 } = {}) => {\n  return {\n    title: document.title,\n    url: location.href,\n    summary: document.body?.innerText?.trim().slice(0, maxLength) || '',\n  };\n}"
     },
     {
       "name": "highlight_text",
@@ -34,9 +34,11 @@
             "description": "CSS 背景色"
           }
         },
-        "required": ["text"]
+        "required": [
+          "text"
+        ]
       },
-      "execute": "async ({ text, color = 'yellow' } = {}) => { if (!text) throw new Error('text is required'); const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT); let count = 0; const nodes = []; while (walker.nextNode()) { const node = walker.currentNode; if (node.nodeValue.includes(text)) nodes.push(node); } for (const node of nodes) { const parts = node.nodeValue.split(text); const fragment = document.createDocumentFragment(); parts.forEach((part, index) => { if (part) fragment.append(part); if (index < parts.length - 1) { const mark = document.createElement('mark'); mark.textContent = text; mark.style.background = color; fragment.append(mark); count++; } }); node.parentNode.replaceChild(fragment, node); } return { count }; }"
+      "execute": "async ({ text, color = 'yellow' } = {}) => {\n  if (!text) throw new Error('text is required');\n  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);\n  let count = 0;\n  const nodes = [];\n  while (walker.nextNode()) {\n    const node = walker.currentNode;\n    if (node.nodeValue.includes(text)) nodes.push(node);\n  }\n  for (const node of nodes) {\n    const parts = node.nodeValue.split(text);\n    const fragment = document.createDocumentFragment();\n    parts.forEach((part, index) => {\n      if (part) fragment.append(part);\n      if (index < parts.length - 1) {\n        const mark = document.createElement('mark');\n        mark.textContent = text;\n        mark.style.background = color || '';\n        fragment.append(mark);\n        count++;\n      }\n    });\n    node.parentNode.replaceChild(fragment, node);\n  }\n  return { count };\n}"
     },
     {
       "name": "fill_input",
@@ -54,9 +56,12 @@
             "description": "要填写的值"
           }
         },
-        "required": ["selector", "value"]
+        "required": [
+          "selector",
+          "value"
+        ]
       },
-      "execute": "async ({ selector, value } = {}) => { if (!selector) throw new Error('selector is required'); const el = document.querySelector(selector); if (!el) throw new Error(`No element found: ${selector}`); el.focus?.(); el.value = value ?? ''; el.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: String(value ?? '') })); el.dispatchEvent(new Event('change', { bubbles: true })); return { selector, value: el.value }; }"
+      "execute": "async ({ selector, value } = {}) => {\n  if (!selector) throw new Error('selector is required');\n  const el = document.querySelector(selector);\n  if (!el) throw new Error(`No element found: ${selector}`);\n  el.focus?.();\n  el.value = value ?? '';\n  el.dispatchEvent(\n    new InputEvent('input', {\n      bubbles: true,\n      inputType: 'insertText',\n      data: String(value ?? ''),\n    }),\n  );\n  el.dispatchEvent(new Event('change', { bubbles: true }));\n  return { selector, value: el.value };\n}"
     }
   ]
 }

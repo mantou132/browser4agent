@@ -1,0 +1,16 @@
+{
+  "name": "toolset-parser",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "bin": {
+    "toolset-parser": "./cli.js"
+  },
+  "dependencies": {
+    "typescript": "^5.8.0"
+  }
+}

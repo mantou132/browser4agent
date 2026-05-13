@@ -30,6 +30,10 @@ importers:
         version: 15.5.2
 
   cf:
+    dependencies:
+      toolset-parser:
+        specifier: workspace:*
+        version: link:../toolset-parser
     devDependencies:
       wrangler:
         specifier: ^4.18.0
@@ -68,6 +72,15 @@ importers:
       tailwindcss:
         specifier: ^4.3.0
         version: 4.3.0(patch_hash=5b49c34902c73b1b4ab18c6be7fb2fc2abd1bee3cd8674aa46ec14ca33ed144c)
+      toolset-parser:
+        specifier: workspace:*
+        version: link:../toolset-parser
+
+  toolset-parser:
+    dependencies:
+      typescript:
+        specifier: ^5.8.0
+        version: 5.9.3
 
 packages:
 

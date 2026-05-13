@@ -1,6 +1,7 @@
 packages:
   - extension
   - cf
+  - toolset-parser
 
 patchedDependencies:
   '@mantou/gem': patches/@mantou__gem.patch

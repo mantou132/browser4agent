@@ -21,10 +21,6 @@ jobs:
             target: aarch64-apple-darwin
             artifact: browser4agent-aarch64-macos
             ext: ''
-          - os: macos-13
-            target: x86_64-apple-darwin
-            artifact: browser4agent-x86_64-macos
-            ext: ''
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: browser4agent-x86_64-windows

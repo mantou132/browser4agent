@@ -1,3 +1,5 @@
+import { parseToolsetJs, ValidationError } from 'toolset-parser';
+
 const route = (method, pathname, handler) => ({ method, pattern: new URLPattern({ pathname }), handler });
 
 const router = [
@@ -13,11 +15,26 @@ const router = [
 
   route('POST', '/api/toolsets', async (req, env, _params) => {
     const body = await req.json();
-    if (!body.name) return Response.json({ error: 'name is required' }, { status: 400 });
-    const existing = await env.MARKET_KV.get(body.name, 'json');
+
+    let toolset;
+    if (body.jsContent) {
+      try {
+        toolset = parseToolsetJs(body.jsContent);
+      } catch (err) {
+        if (err instanceof ValidationError) {
+          return Response.json({ error: err.message }, { status: 400 });
+        }
+        return Response.json({ error: 'Failed to parse jsContent' }, { status: 400 });
+      }
+    } else {
+      toolset = body;
+    }
+
+    if (!toolset.name) return Response.json({ error: 'name is required' }, { status: 400 });
+    const existing = await env.MARKET_KV.get(toolset.name, 'json');
     if (existing) return Response.json({ error: 'toolset already exists' }, { status: 409 });
-    await env.MARKET_KV.put(body.name, JSON.stringify(body));
-    return Response.json(body, { status: 201 });
+    await env.MARKET_KV.put(toolset.name, JSON.stringify(toolset));
+    return Response.json(toolset, { status: 201 });
   }),
 
   route('GET', '/api/toolsets/:encodeName', async (_req, env, params) => {

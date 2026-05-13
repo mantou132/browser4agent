@@ -10,7 +10,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const toolsetsDir = join(__dirname, '..', 'extension', 'public', 'toolsets');
+const toolsetsDir = join(__dirname, 'seed');
 
 const files = readdirSync(toolsetsDir).filter((f) => f.endsWith('.json'));
 
