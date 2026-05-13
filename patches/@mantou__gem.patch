@@ -1,0 +1,12 @@
+diff --git a/lib/reactive.js b/lib/reactive.js
+index cf7a74178edab385cae246b247b1be5ca524172d..ed64131156e5cb871906808754a177dc37200ed6 100644
+--- a/lib/reactive.js
++++ b/lib/reactive.js
+@@ -369,7 +369,6 @@ export class GemElement extends HTMLElement {
+         const { observedStores, mode, penetrable } = this.#metadata;
+         // 有渲染函数的 light dom 应该添加边界，防止内容被外部样式化
+         // 如果渲染内容需要应用外部样式，需要手动 `delete` 边界
+-        if (!mode && this.#renderList.length && !penetrable)
+             this.#internals.states.add(BoundaryCSSState);
+         this.#disconnectStore = observedStores?.map((store) => connect(store, this.#update));
+         this.#render(this.#renderItem);

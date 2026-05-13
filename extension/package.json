@@ -3,8 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "extension dev",
-    "build": "extension build",
-    "postinstall": "patch-package"
+    "build": "extension build"
   },
   "license": "ISC",
   "dependencies": {
@@ -17,7 +16,6 @@
     "@tailwindcss/postcss": "^4.3.0",
     "@types/chrome": "^0.1.42",
     "extension": "^3.16.0",
-    "patch-package": "^8.0.1",
     "postcss": "^8.5.14",
     "swc-plugin-gem": "^0.1.9",
     "tailwindcss": "^4.3.0"

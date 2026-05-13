@@ -1,0 +1,13 @@
+diff --git a/preflight.css b/preflight.css
+index 753e79ef0d0fbdb8aaad09733e4dc851ab6d5737..aa504975b7a31966030167e34958141821beb179 100644
+--- a/preflight.css
++++ b/preflight.css
+@@ -4,7 +4,7 @@
+   3. Reset all borders.
+ */
+ 
+-*,
++:not(:state(gem-style-boundary)),
+ ::after,
+ ::before,
+ ::backdrop,
