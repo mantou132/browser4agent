@@ -65,10 +65,10 @@ class AgentMarketPageElement extends GemElement {
     }
   };
 
-  #publishToolset = async () => {
+  #publishToolset = async (defaults = {}) => {
     const editor = await Modal.open({
       header: '编辑工具',
-      body: html`<market-tool-editor></market-tool-editor>`,
+      body: html`<market-tool-editor .initialTools=${defaults.tools}></market-tool-editor>`,
       okText: '下一步',
     });
     const tools = editor.getTools();
@@ -76,6 +76,7 @@ class AgentMarketPageElement extends GemElement {
     const form = await createForm({
       type: 'modal',
       header: '发布工具集',
+      data: defaults,
       formItems: [
         { label: '工具集名称', type: 'text', field: 'name', required: true, autofocus: true },
         { label: '描述', type: 'textarea', field: 'description', rows: 2 },
@@ -91,6 +92,36 @@ class AgentMarketPageElement extends GemElement {
     } catch (e) {
       Toast.open('error', `发布失败：${e instanceof Error ? e.message : String(e)}`);
     }
+  };
+
+  #onDrop = async (evt, handle = this.#publishToolset) => {
+    const file = evt.detail[0];
+    if (!file) return;
+    try {
+      const content = await file.text();
+      let toolset;
+      if (file.name.endsWith('.json')) {
+        const data = JSON.parse(content);
+        toolset = Array.isArray(data) ? { tools: data } : data;
+      } else {
+        toolset = await marketApi.post('/api/toolsets/parse', { content, filename: file.name });
+      }
+      handle(toolset);
+    } catch (e) {
+      Toast.open('error', `解析失败：${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
+  #onDropUpdate = (evt) => {
+    this.#onDrop(evt, async (toolset) => {
+      try {
+        await marketApi.put(new URL(this.#getUrl(toolset.name)).pathname, toolset);
+        Toast.open('success', '工具集已更新');
+        this.#fetchToolsets();
+      } catch (e) {
+        Toast.open('error', `更新失败：${e instanceof Error ? e.message : String(e)}`);
+      }
+    });
   };
 
   #openOptions = () => {
@@ -112,7 +143,13 @@ class AgentMarketPageElement extends GemElement {
             <h1 class="text-2xl m-0 text-highlight">工具集市场</h1>
           </dy-space>
           <div class="flex items-center gap-2">
-            <dy-button .icon=${icons.add} @click=${this.#publishToolset}>发布工具集</dy-button>
+            <dy-drop-area
+              accept=".js,.ts,.json,application/json,text/javascript,text/typescript"
+              @change=${this.#onDrop}
+              tip=""
+            >
+              <dy-button .icon=${icons.add} @click=${this.#publishToolset}>发布工具集</dy-button>
+            </dy-drop-area>
             <dy-button @click=${this.#openOptions}>返回设置</dy-button>
           </div>
         </header>
@@ -126,7 +163,9 @@ class AgentMarketPageElement extends GemElement {
           <div v-else class="flex flex-col gap-5">
             ${toolsets.map(
               (t) => html`
-                <div
+                <dy-drop-area
+                  accept=".js,.ts,.json,application/json,text/javascript,text/typescript"
+                  @change=${this.#onDropUpdate}
                   class="flex items-center gap-3.5 py-3.5 px-4 border border-border rounded-xl"
                 >
                   <dy-avatar size="large" square>${t.icon || '📦'}</dy-avatar>
@@ -137,7 +176,7 @@ class AgentMarketPageElement extends GemElement {
                   </div>
                   <dy-button v-if=${!subscribed.has(getToolsetId(this.#getUrl(t.name)))} @click=${() => this.#subscribe(t)}>订阅</dy-button>
                   <span v-else class="text-xs text-describe">已订阅</span>
-                </div>
+                </dy-drop-area>
               `,
             )}
           </div>
