@@ -16,7 +16,7 @@
           }
         }
       },
-      "execute": "async ({ maxLength = 300 } = {}) => {\n  return {\n    title: document.title,\n    url: location.href,\n    summary: document.body?.innerText?.trim().slice(0, maxLength) || '',\n  };\n}"
+      "execute": "async ({ maxLength = 300 } = {}) => {\nfunction getTextSummary(maxLength) {\n  return document.body?.innerText?.trim().slice(0, maxLength) || '';\n}\nconst DEFAULT_SUMMARY_LENGTH = 300;\n\n  return {\n    title: document.title,\n    url: location.href,\n    summary: getTextSummary(maxLength || DEFAULT_SUMMARY_LENGTH),\n  };\n}"
     },
     {
       "name": "highlight_text",

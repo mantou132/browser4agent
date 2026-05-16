@@ -15,8 +15,9 @@ export function parseToolsetJs(jsContent, filename = 'toolset.js') {
   assertNoParseErrors(sourceFile, `Invalid ${scriptKind === ts.ScriptKind.TS ? 'TypeScript' : 'JavaScript'}`);
 
   const functions = sourceFile.statements.filter((node) => ts.isFunctionDeclaration(node) && node.name);
-  const moduleInfo = extractModuleInfo(functions);
-  const tools = functions.map((node) => extractTool(sourceFile, node, scriptKind));
+  const toolFunctions = functions.filter(isExported);
+  const moduleInfo = extractModuleInfo(sourceFile);
+  const tools = toolFunctions.map((node) => extractTool(sourceFile, node, scriptKind));
 
   const result = {
     name: moduleInfo.name || '',
@@ -41,3 +42,7 @@ function extractTool(sourceFile, node, scriptKind) {
 }
 
 export { ValidationError };
+
+function isExported(node) {
+  return !!node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+}

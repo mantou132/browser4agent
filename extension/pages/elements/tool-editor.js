@@ -1,14 +1,13 @@
 import { icons } from 'duoyun-ui/lib/icons';
+import { theme } from 'duoyun-ui/lib/theme';
 
 const EMPTY_TOOL = () => ({
   name: '',
   pattern: '',
   description: '',
   execute: '',
-  inputSchema: { type: 'object', properties: {}, required: [] },
+  properties: [],
 });
-
-const PARAM_TYPES = ['string', 'number', 'boolean'];
 
 const style = css`
   :scope {
@@ -33,11 +32,11 @@ const style = css`
     border: 1px solid transparent;
   }
   .list-item:hover {
-    background: var(--s-color-neutral-5);
+    background: ${theme.hoverBackgroundColor};
   }
   .list-item.selected {
-    background: color-mix(in srgb, var(--s-color-primary) 10%, transparent);
-    border-color: var(--s-color-primary);
+    background: color-mix(in srgb, ${theme.primaryColor} 10%, transparent);
+    border-color: ${theme.primaryColor};
   }
   .list-item-name {
     font-size: 0.875rem;
@@ -59,7 +58,7 @@ const style = css`
   }
   .param-label {
     font-size: 0.875rem;
-    color: var(--s-color-describe);
+    color: ${theme.describeColor};
   }
   .param-item {
     display: flex;
@@ -70,7 +69,7 @@ const style = css`
     border-radius: 0.25rem;
   }
   .param-item:hover {
-    background: var(--s-color-neutral-5);
+    background: ${theme.hoverBackgroundColor};
   }
   .param-item-name {
     flex: 1;
@@ -86,10 +85,6 @@ class MarketToolEditorElement extends GemElement {
   });
 
   #formRef = createRef();
-
-  getTools() {
-    return this.#state.tools;
-  }
 
   #addTool = () => {
     const tools = [...this.#state.tools, EMPTY_TOOL()];
@@ -110,123 +105,36 @@ class MarketToolEditorElement extends GemElement {
     this.#state({ selectedIndex: index });
   };
 
-  #toFormData = (tool) => {
-    const paramEntries = Object.entries(tool.inputSchema.properties);
-    const data = { name: tool.name, pattern: tool.pattern, description: tool.description, execute: tool.execute };
-    paramEntries.forEach(([key, prop], i) => {
-      data[`param_${i}_name`] = key;
-      data[`param_${i}_type`] = prop.type;
-      data[`param_${i}_desc`] = prop.description || '';
-    });
-    return data;
-  };
+  #formItems = [
+    { label: '工具名称', type: 'text', field: 'name', required: true, autofocus: true },
+    { label: 'URL 匹配模式', type: 'text', field: 'pattern', required: true, placeholder: 'https://example.com/*' },
+    { label: '描述', type: 'textarea', field: 'description', rows: 2 },
+    {
+      label: `参数`,
+      type: 'slot',
+      field: `properties`,
+      list: true,
+      // TODO: param: name, type(string, number, boolean), required, description
+      slot: html`<market-tool-editor-param></market-tool-editor-param>`,
+    },
+    {
+      label: '执行代码',
+      type: 'textarea',
+      field: 'execute',
+      required: true,
+      rows: 6,
+      placeholder: 'async ({ param1 } = {}) => { return { result } }',
+    },
+  ];
 
-  #fromFormData = (data, paramCount) => {
-    const properties = {};
-    const required = [];
-    for (let i = 0; i < paramCount; i++) {
-      const pName = data[`param_${i}_name`];
-      if (pName) {
-        properties[pName] = {
-          type: data[`param_${i}_type`] || 'string',
-          description: data[`param_${i}_desc`] || '',
-        };
-      }
-    }
-    return {
-      name: data.name,
-      pattern: data.pattern,
-      description: data.description,
-      execute: data.execute,
-      inputSchema: { type: 'object', properties, required },
-    };
-  };
-
-  #getParamCount = () =>
-    Object.keys(this.#state.tools[this.#state.selectedIndex]?.inputSchema?.properties || {}).length;
-
-  get #currentFormData() {
-    const tool = this.#state.tools[this.#state.selectedIndex];
-    return tool ? this.#toFormData(tool) : undefined;
-  }
-
-  get #currentFormItems() {
-    const tool = this.#state.tools[this.#state.selectedIndex];
-    if (!tool) return [];
-    const paramEntries = Object.entries(tool.inputSchema.properties);
-    return [
-      { label: '工具名称', type: 'text', field: 'name', required: true, autofocus: true },
-      { label: 'URL 匹配模式', type: 'text', field: 'pattern', required: true, placeholder: 'https://example.com/*' },
-      { label: '描述', type: 'textarea', field: 'description', rows: 2 },
-      ...paramEntries.map(([_key, _prop], i) => [
-        { label: `参数 ${i + 1} 名称`, type: 'text', field: `param_${i}_name` },
-        {
-          label: `参数 ${i + 1} 类型`,
-          type: 'select',
-          field: `param_${i}_type`,
-          options: PARAM_TYPES.map((t) => ({ label: t, value: t })),
-        },
-        { label: `参数 ${i + 1} 描述`, type: 'text', field: `param_${i}_desc` },
-      ]),
-      {
-        label: '执行代码',
-        type: 'textarea',
-        field: 'execute',
-        required: true,
-        rows: 6,
-        placeholder: 'async ({ param1 } = {}) => { return { result } }',
-      },
-    ].flat();
-  }
-
-  #addParam = () => {
+  #onChange = (evt) => {
     const { tools, selectedIndex } = this.#state;
-    const tool = tools[selectedIndex];
-    const paramCount = Object.keys(tool.inputSchema.properties).length;
-    const newKey = `param${paramCount + 1}`;
-    const updated = {
-      ...tool,
-      inputSchema: {
-        ...tool.inputSchema,
-        properties: { ...tool.inputSchema.properties, [newKey]: { type: 'string', description: '' } },
-      },
-    };
-    const newTools = [...tools];
-    newTools[selectedIndex] = updated;
-    this.#state({ tools: newTools });
-  };
-
-  #removeParam = (paramKey) => {
-    const { tools, selectedIndex } = this.#state;
-    const tool = tools[selectedIndex];
-    const { [paramKey]: _, ...rest } = tool.inputSchema.properties;
-    const updated = {
-      ...tool,
-      inputSchema: { ...tool.inputSchema, properties: rest },
-    };
-    const newTools = [...tools];
-    newTools[selectedIndex] = updated;
-    this.#state({ tools: newTools });
-  };
-
-  @effect((i) => [i.#formRef.element?.state?.data])
-  #syncForm = () => {
-    const form = this.#formRef.element;
-    if (!form?.state?.data) return;
-    const data = form.state.data;
-    const index = this.#state.selectedIndex;
-    const paramCount = this.#getParamCount();
-    const newTool = this.#fromFormData(data, paramCount);
-    const tools = [...this.#state.tools];
-    tools[index] = newTool;
-    this.#state({ tools });
+    this.#state({ tools: tools.map((e, i) => (i === selectedIndex ? evt.detail : e)) });
   };
 
   @template()
   #content = () => {
     const { tools, selectedIndex } = this.#state;
-    const tool = tools[selectedIndex];
-    const paramKeys = tool ? Object.keys(tool.inputSchema.properties) : [];
 
     return html`
       <div class="list">
@@ -245,24 +153,26 @@ class MarketToolEditorElement extends GemElement {
       </div>
       <div class="editor">
         <dy-pat-form
-          v-if=${!!this.#currentFormData}
+          v-if=${!!tools[selectedIndex]}
           ${this.#formRef}
-          .formItems=${this.#currentFormItems}
-          .data=${this.#currentFormData}
+          @change=${this.#onChange}
+          .formItems=${this.#formItems}
+          .data=${tools[selectedIndex]}
         ></dy-pat-form>
-        <div class="param-header">
-          <span class="param-label">参数</span>
-          <dy-button type="reverse" .icon=${icons.add} @click=${this.#addParam}>添加</dy-button>
-        </div>
-        ${paramKeys.map(
-          (key) => html`
-            <div class="param-item">
-              <span class="param-item-name">${key}</span>
-              <dy-button square color="cancel" .icon=${icons.delete} @click=${() => this.#removeParam(key)}></dy-button>
-            </div>
-          `,
-        )}
       </div>
     `;
   };
+
+  getTools() {
+    return this.#state.tools.map((e) => ({
+      ...e,
+      properties: undefined,
+      inputSchema: {
+        type: 'object',
+        // TODO: e.properties => inputSchema
+        properties: {},
+        required: e.properties.filter((e) => e.required).map((e) => e.name),
+      },
+    }));
+  }
 }

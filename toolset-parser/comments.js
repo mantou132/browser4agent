@@ -1,7 +1,7 @@
 import ts from 'typescript';
 
-export function extractModuleInfo(functions) {
-  const moduleDoc = functions.flatMap(getJSDocs).find((doc) => findTag(doc, 'module'));
+export function extractModuleInfo(sourceFile) {
+  const moduleDoc = sourceFile.statements.flatMap(getJSDocs).find((doc) => findTag(doc, 'module'));
   return {
     name: findTagText(moduleDoc, 'module'),
     description: findTagText(moduleDoc, 'description') || getCommentText(moduleDoc),

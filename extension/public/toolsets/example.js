@@ -4,17 +4,23 @@
  * @icon 🧪
  */
 
+const DEFAULT_SUMMARY_LENGTH = 300;
+
+function getTextSummary(maxLength) {
+  return document.body?.innerText?.trim().slice(0, maxLength) || '';
+}
+
 /**
  * 读取当前标签页的标题、URL 和页面文本摘要
  * @pattern https://example.com/*
  * @param {{ maxLength?: number }} options
  * @param {number} [options.maxLength=300] - 返回正文摘要的最大字符数
  */
-function get_page_summary({ maxLength = 300 } = {}) {
+export function get_page_summary({ maxLength = 300 } = {}) {
   return {
     title: document.title,
     url: location.href,
-    summary: document.body?.innerText?.trim().slice(0, maxLength) || '',
+    summary: getTextSummary(maxLength || DEFAULT_SUMMARY_LENGTH),
   };
 }
 
@@ -25,7 +31,7 @@ function get_page_summary({ maxLength = 300 } = {}) {
  * @param {string} options.text - 需要高亮的文本
  * @param {string} [options.color] - CSS 背景色
  */
-function highlight_text({ text, color = 'yellow' } = {}) {
+export function highlight_text({ text, color = 'yellow' } = {}) {
   if (!text) throw new Error('text is required');
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
   let count = 0;
@@ -59,7 +65,7 @@ function highlight_text({ text, color = 'yellow' } = {}) {
  * @param {string} options.selector - 输入框 CSS selector
  * @param {string} options.value - 要填写的值
  */
-function fill_input({ selector, value } = {}) {
+export function fill_input({ selector, value } = {}) {
   if (!selector) throw new Error('selector is required');
   const el = document.querySelector(selector);
   if (!el) throw new Error(`No element found: ${selector}`);

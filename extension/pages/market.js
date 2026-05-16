@@ -1,3 +1,4 @@
+import { initRequest } from '@mantou/gem/helper/request';
 import { Modal } from 'duoyun-ui/elements/modal';
 import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
@@ -10,6 +11,8 @@ const MARKET_API =
   import.meta.env.MODE === 'development'
     ? 'http://127.0.0.1:8787'
     : 'https://browser4agent-market.709922234.workers.dev';
+
+const marketApi = initRequest({ origin: MARKET_API });
 
 @customElement('agent-market-page')
 @connectStore(toolStore)
@@ -28,9 +31,7 @@ class AgentMarketPageElement extends GemElement {
 
   #fetchToolsets = async () => {
     try {
-      const res = await fetch(`${MARKET_API}/api/toolsets`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await marketApi.get('/api/toolsets');
       this.#state({ toolsets: data, loading: false });
     } catch (e) {
       this.#state({ error: e instanceof Error ? e.message : String(e), loading: false });
@@ -84,15 +85,7 @@ class AgentMarketPageElement extends GemElement {
     const meta = form.state.data;
 
     try {
-      const res = await fetch(`${MARKET_API}/api/toolsets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...meta, tools }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
+      await marketApi.post('/api/toolsets', { ...meta, tools });
       Toast.open('success', '工具集已发布');
       this.#fetchToolsets();
     } catch (e) {

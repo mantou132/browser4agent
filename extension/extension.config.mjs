@@ -3,6 +3,11 @@
 const profile = (name) => `./dist/extension-profile-${name}`;
 
 export default {
+  browser: {
+    chromium: {
+      browserFlags: ['--auto-open-devtools-for-tabs'],
+    },
+  },
   commands: {
     dev: {
       browser: 'chrome',

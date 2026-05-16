@@ -54,7 +54,7 @@ class AgentOptionsPageElement extends GemElement {
         },
       ],
     });
-    await this.#addByUrl(form.state.data.url.trim());
+    await this.#addByUrl(form.state.data.url?.trim());
   };
 
   #addByUrl = async (url) => {
