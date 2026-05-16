@@ -14,22 +14,7 @@ const router = [
   }),
 
   route('POST', '/api/toolsets', async (req, env, _params) => {
-    const body = await req.json();
-
-    let toolset;
-    if (body.jsContent) {
-      try {
-        toolset = parseToolsetJs(body.jsContent);
-      } catch (err) {
-        if (err instanceof ValidationError) {
-          return Response.json({ error: err.message }, { status: 400 });
-        }
-        return Response.json({ error: 'Failed to parse jsContent' }, { status: 400 });
-      }
-    } else {
-      toolset = body;
-    }
-
+    const toolset = await req.json();
     if (!toolset.name) return Response.json({ error: 'name is required' }, { status: 400 });
     const existing = await env.MARKET_KV.get(toolset.name, 'json');
     if (existing) return Response.json({ error: 'toolset already exists' }, { status: 409 });
@@ -37,11 +22,31 @@ const router = [
     return Response.json(toolset, { status: 201 });
   }),
 
+  route('POST', '/api/toolsets/parse', async (req, _env, _params) => {
+    const { content, filename } = await req.json();
+    if (typeof content !== 'string') return Response.json({ error: 'content is required' }, { status: 400 });
+    try {
+      const toolset = parseToolsetJs(content, filename || 'toolset.ts');
+      return Response.json(toolset);
+    } catch (err) {
+      if (err instanceof ValidationError) return Response.json({ error: err.message }, { status: 400 });
+      return Response.json({ error: 'Failed to parse content' }, { status: 400 });
+    }
+  }),
+
   route('GET', '/api/toolsets/:encodeName', async (_req, env, params) => {
     const name = decodeURIComponent(params.encodeName);
     const value = await env.MARKET_KV.get(name, 'json');
     if (!value) return Response.json({ error: 'not found' }, { status: 404 });
     return Response.json(value);
+  }),
+
+  route('PUT', '/api/toolsets/:encodeName', async (_req, env, params) => {
+    const name = decodeURIComponent(params.encodeName);
+    const value = await env.MARKET_KV.get(name, 'json');
+    if (!value) return Response.json({ error: 'not found' }, { status: 404 });
+    await env.MARKET_KV.put(name, JSON.stringify(value));
+    return Response.json(value, { status: 201 });
   }),
 
   route('DELETE', '/api/toolsets/:encodeName', async (_req, env, params) => {

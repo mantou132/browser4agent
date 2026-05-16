@@ -79,6 +79,8 @@ const style = css`
 @customElement('market-tool-editor')
 @adoptedStyle(style)
 class MarketToolEditorElement extends GemElement {
+  @property initialTools;
+
   #state = createState({
     tools: [EMPTY_TOOL()],
     selectedIndex: 0,
@@ -114,7 +116,6 @@ class MarketToolEditorElement extends GemElement {
       type: 'slot',
       field: `properties`,
       list: true,
-      // TODO: param: name, type(string, number, boolean), required, description
       slot: html`<market-tool-editor-param></market-tool-editor-param>`,
     },
     {
@@ -132,8 +133,30 @@ class MarketToolEditorElement extends GemElement {
     this.#state({ tools: tools.map((e, i) => (i === selectedIndex ? evt.detail : e)) });
   };
 
-  @template()
-  #content = () => {
+  mounted = () => {
+    if (this.initialTools?.length) {
+      this.#state({
+        tools: this.initialTools.map((t) => {
+          const required = new Set(t.inputSchema?.required || []);
+          const props = t.inputSchema?.properties || {};
+          return {
+            name: t.name || '',
+            pattern: t.pattern || '',
+            description: t.description || '',
+            execute: t.execute || '',
+            properties: Object.entries(props).map(([name, s]) => ({
+              name,
+              type: s?.type || 'string',
+              description: s?.description || '',
+              required: required.has(name),
+            })),
+          };
+        }),
+      });
+    }
+  };
+
+  render = () => {
     const { tools, selectedIndex } = this.#state;
 
     return html`
@@ -164,15 +187,22 @@ class MarketToolEditorElement extends GemElement {
   };
 
   getTools() {
-    return this.#state.tools.map((e) => ({
-      ...e,
-      properties: undefined,
-      inputSchema: {
-        type: 'object',
-        // TODO: e.properties => inputSchema
-        properties: {},
-        required: e.properties.filter((e) => e.required).map((e) => e.name),
-      },
-    }));
+    return this.#state.tools.map((e) => {
+      const properties = {};
+      const required = [];
+      for (const p of e.properties) {
+        if (!p?.name) continue;
+        properties[p.name] = {
+          type: p.type || 'string',
+          ...(p.description ? { description: p.description } : {}),
+        };
+        if (p.required) required.push(p.name);
+      }
+      const { properties: _omit, ...rest } = e;
+      return {
+        ...rest,
+        inputSchema: { type: 'object', properties, required },
+      };
+    });
   }
 }

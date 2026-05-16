@@ -67,6 +67,11 @@ jobs:
       - name: Build extension
         run: cd extension && npx extension build --browser chrome,firefox --zip
 
+      - name: Rename zips
+        run: |
+          mv extension/dist/chrome/*.zip extension/dist/chrome/extension-chrome.zip
+          mv extension/dist/firefox/*.zip extension/dist/firefox/extension-firefox.zip
+
       - uses: actions/upload-artifact@v4
         with:
           name: extension-chrome-zip
