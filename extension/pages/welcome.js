@@ -4,17 +4,17 @@ class AgentWelcomePageElement extends GemElement {
     {
       name: 'macOS',
       icon: '🍎',
-      url: 'https://github.com/nicepkg/browser4agent/releases/latest/download/browser4agent-darwin-arm64',
+      url: 'https://github.com/mantou132/browser4agent/releases/latest/download/browser4agent-aarch64-macos',
     },
     {
       name: 'Linux',
       icon: '🐧',
-      url: 'https://github.com/nicepkg/browser4agent/releases/latest/download/browser4agent-linux-x64',
+      url: 'https://github.com/mantou132/browser4agent/releases/latest/download/browser4agent-x86_64-linux',
     },
     {
       name: 'Windows',
       icon: '🪟',
-      url: 'https://github.com/nicepkg/browser4agent/releases/latest/download/browser4agent-windows-x64.exe',
+      url: 'https://github.com/mantou132/browser4agent/releases/latest/download/browser4agent-x86_64-windows.exe',
     },
   ];
 

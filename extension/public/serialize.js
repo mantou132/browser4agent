@@ -1,4 +1,4 @@
-(async () => {
+async function getSimpleHTML() {
   const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'HEAD', 'NOSCRIPT', 'TEMPLATE', 'IMG', 'IFRAME', 'SVG']);
   const VOID_TAGS = new Set([
     'AREA',
@@ -70,4 +70,6 @@
   const result = serialize(document.body);
   restore?.();
   return result;
-})();
+}
+
+getSimpleHTML();

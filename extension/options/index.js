@@ -15,8 +15,7 @@ class AgentOptionsPageElement extends GemElement {
       return {
         ...toolsets(key),
         type: 'official',
-        // 确保 url 固定，id 从 url 生成
-        url: chrome.runtime.getURL(`toolsets/${key}`),
+        url: new URL(`toolsets/${key}`, location.origin).href,
       };
     }),
   });
