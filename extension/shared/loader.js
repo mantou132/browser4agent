@@ -18,6 +18,13 @@ function serializeToolset(data) {
     name: typeof data.name === 'string' ? data.name : '',
     description: typeof data.description === 'string' ? data.description : '',
     icon: typeof data.icon === 'string' ? data.icon : '',
+    author:
+      data.author && typeof data.author === 'object'
+        ? {
+            name: typeof data.author.name === 'string' ? data.author.name : '',
+            email: typeof data.author.email === 'string' ? data.author.email : '',
+          }
+        : undefined,
   };
 }
 

@@ -66,9 +66,10 @@ class AgentMarketPageElement extends GemElement {
   };
 
   #publishToolset = async (defaults = {}) => {
+    const data = { ...defaults, author: { ...defaults.author } };
     const editor = await Modal.open({
       header: '编辑工具',
-      body: html`<market-tool-editor .initialTools=${defaults.tools}></market-tool-editor>`,
+      body: html`<market-tool-editor .initialTools=${data.tools}></market-tool-editor>`,
       okText: '下一步',
     });
     const tools = editor.getTools();
@@ -76,11 +77,13 @@ class AgentMarketPageElement extends GemElement {
     const form = await createForm({
       type: 'modal',
       header: '发布工具集',
-      data: defaults,
+      data,
       formItems: [
         { label: '工具集名称', type: 'text', field: 'name', required: true, autofocus: true },
         { label: '描述', type: 'textarea', field: 'description', rows: 2 },
         { label: '图标', type: 'text', field: 'icon', placeholder: 'emoji' },
+        { label: '作者名称', type: 'text', field: ['author', 'name'] },
+        { label: '作者 Email', type: 'text', field: ['author', 'email'] },
       ],
     });
     const meta = form.state.data;
@@ -112,20 +115,16 @@ class AgentMarketPageElement extends GemElement {
     }
   };
 
-  #onDropUpdate = (evt) => {
+  #onDropUpdate = (evt, target) => {
     this.#onDrop(evt, async (toolset) => {
       try {
-        await marketApi.put(new URL(this.#getUrl(toolset.name)).pathname, toolset);
+        await marketApi.put(new URL(this.#getUrl(target.name)).pathname, toolset);
         Toast.open('success', '工具集已更新');
         this.#fetchToolsets();
       } catch (e) {
         Toast.open('error', `更新失败：${e instanceof Error ? e.message : String(e)}`);
       }
     });
-  };
-
-  #openOptions = () => {
-    chrome.runtime.openOptionsPage();
   };
 
   @template()
@@ -150,7 +149,6 @@ class AgentMarketPageElement extends GemElement {
             >
               <dy-button .icon=${icons.add} @click=${this.#publishToolset}>发布工具集</dy-button>
             </dy-drop-area>
-            <dy-button @click=${this.#openOptions}>返回设置</dy-button>
           </div>
         </header>
 
@@ -165,14 +163,19 @@ class AgentMarketPageElement extends GemElement {
               (t) => html`
                 <dy-drop-area
                   accept=".js,.ts,.json,application/json,text/javascript,text/typescript"
-                  @change=${this.#onDropUpdate}
+                  @change=${(evt) => this.#onDropUpdate(evt, t)}
                   class="flex items-center gap-3.5 py-3.5 px-4 border border-border rounded-xl"
                 >
                   <dy-avatar size="large" square>${t.icon || '📦'}</dy-avatar>
                   <div class="flex-1 min-w-0">
                     <strong class="text-sm text-highlight">${t.name}</strong>
                     <div class="text-xs mt-1 text-describe">${t.description || ''}</div>
-                    <div class="text-xs mt-1 text-describe">${t.toolsCount ?? '?'} 个工具</div>
+                    <div class="text-xs mt-1 text-describe">
+                      ${t.toolsCount ?? '?'} 个工具 · 安装 ${t.installCount ?? 0} 次
+                    </div>
+                    <div class="text-xs mt-1 text-describe" v-if=${!!(t.author?.name || t.author?.email)}>
+                      作者：${t.author?.name || t.author?.email}
+                    </div>
                   </div>
                   <dy-button v-if=${!subscribed.has(getToolsetId(this.#getUrl(t.name)))} @click=${() => this.#subscribe(t)}>订阅</dy-button>
                   <span v-else class="text-xs text-describe">已订阅</span>

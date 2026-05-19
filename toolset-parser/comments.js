@@ -2,10 +2,12 @@ import ts from 'typescript';
 
 export function extractModuleInfo(sourceFile) {
   const moduleDoc = sourceFile.statements.flatMap(getJSDocs).find((doc) => findTag(doc, 'module'));
+  const author = parseAuthor(findTagText(moduleDoc, 'author'), findTagText(moduleDoc, 'email'));
   return {
     name: findTagText(moduleDoc, 'module'),
     description: findTagText(moduleDoc, 'description') || getCommentText(moduleDoc),
     icon: findTagText(moduleDoc, 'icon'),
+    author,
   };
 }
 
@@ -31,4 +33,20 @@ function getJSDocs(node) {
 
 function findTag(doc, tagName) {
   return [...(doc?.tags || [])].find((tag) => tag.tagName.text === tagName);
+}
+
+function parseAuthor(author = '', emailTag = '') {
+  const email =
+    emailTag ||
+    author
+      .match(/<([^<>\s]+@[^<>\s]+)>|([^\s<>]+@[^\s<>]+)/)
+      ?.slice(1)
+      .find(Boolean) ||
+    '';
+  const name = author
+    .replace(/<[^<>]*>/g, '')
+    .replace(/[^\s<>]+@[^\s<>]+/g, '')
+    .trim();
+  if (!name && !email) return undefined;
+  return { name, email };
 }

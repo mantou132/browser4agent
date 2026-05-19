@@ -2,19 +2,38 @@ import { parseToolsetJs, ValidationError } from 'toolset-parser';
 
 const route = (method, pathname, handler) => ({ method, pattern: new URLPattern({ pathname }), handler });
 
+const normalizeToolset = (toolset) =>
+  toolset && {
+    ...toolset,
+    installCount: Number(toolset.installCount) || 0,
+    author: {
+      name: toolset.author?.name || '',
+      email: toolset.author?.email || '',
+    },
+  };
+
+const serializeToolsetSummary = (toolset) => ({
+  ...toolset,
+  tools: undefined,
+  toolsCount: toolset.tools?.length ?? 0,
+  installCount: toolset.installCount ?? 0,
+});
+
+const isSameAuthor = (a, b) => a.name === b.name && a.email === b.email;
+
 const router = [
   route('GET', '/api/toolsets', async (_req, env, _params) => {
     const list = await env.MARKET_KV.list();
     const toolsets = [];
     for (const key of list.keys) {
       const value = await env.MARKET_KV.get(key.name, 'json');
-      toolsets.push({ ...value, tools: undefined, toolsCount: value.tools?.length ?? 0 });
+      toolsets.push(serializeToolsetSummary(normalizeToolset(value)));
     }
     return Response.json(toolsets);
   }),
 
   route('POST', '/api/toolsets', async (req, env, _params) => {
-    const toolset = await req.json();
+    const toolset = normalizeToolset(await req.json());
     if (!toolset.name) return Response.json({ error: 'name is required' }, { status: 400 });
     const existing = await env.MARKET_KV.get(toolset.name, 'json');
     if (existing) return Response.json({ error: 'toolset already exists' }, { status: 409 });
@@ -36,17 +55,25 @@ const router = [
 
   route('GET', '/api/toolsets/:encodeName', async (_req, env, params) => {
     const name = decodeURIComponent(params.encodeName);
-    const value = await env.MARKET_KV.get(name, 'json');
-    if (!value) return Response.json({ error: 'not found' }, { status: 404 });
-    return Response.json(value);
+    const toolset = normalizeToolset(await env.MARKET_KV.get(name, 'json'));
+    if (!toolset) return Response.json({ error: 'not found' }, { status: 404 });
+    const installed = { ...toolset, installCount: toolset.installCount + 1 };
+    await env.MARKET_KV.put(name, JSON.stringify(installed));
+    return Response.json(installed);
   }),
 
-  route('PUT', '/api/toolsets/:encodeName', async (_req, env, params) => {
+  route('PUT', '/api/toolsets/:encodeName', async (req, env, params) => {
     const name = decodeURIComponent(params.encodeName);
-    const value = await env.MARKET_KV.get(name, 'json');
-    if (!value) return Response.json({ error: 'not found' }, { status: 404 });
-    await env.MARKET_KV.put(name, JSON.stringify(value));
-    return Response.json(value, { status: 201 });
+    const existing = normalizeToolset(await env.MARKET_KV.get(name, 'json'));
+    if (!existing) return Response.json({ error: 'not found' }, { status: 404 });
+    const update = normalizeToolset(await req.json());
+    if (update.name !== existing.name) return Response.json({ error: 'toolset name must match' }, { status: 400 });
+    if (!isSameAuthor(update.author, existing.author)) {
+      return Response.json({ error: 'toolset author must match' }, { status: 400 });
+    }
+    const toolset = normalizeToolset({ ...existing, ...update, installCount: existing.installCount });
+    await env.MARKET_KV.put(name, JSON.stringify(toolset));
+    return Response.json(toolset, { status: 201 });
   }),
 
   route('DELETE', '/api/toolsets/:encodeName', async (_req, env, params) => {

@@ -115,6 +115,18 @@ class AgentOptionsPageElement extends GemElement {
                 ? toolsets.map((t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`)
                 : html`<dy-empty class="py-20" text="暂未订阅任何工具集"></dy-empty>`
             }
+          </div>
+        </section>
+
+        <section class="mt-7">
+          <header class="flex items-center justify-between gap-3 mb-5">
+            <div>
+              <h2 class="m-0 text-base text-highlight">推荐工具集</h2>
+              <p class="mt-1 text-describe text-xs">来自社区的精选工具集。</p>
+            </div>
+          </header>
+          <div class="flex flex-col gap-5">
+            ${this.#recommended.map((t) => html`<options-toolset-card .recommended=${true} @subscription=${() => this.#addByUrl(t.url)} .toolset=${t}></options-toolset-card>`)}
             <div
               class="flex items-center gap-3.5 py-3.5 px-4 border border-dashed border-border rounded-xl text-describe cursor-pointer hover:border-primary hover:text-primary"
               @click=${() => chrome.tabs.create({ url: chrome.runtime.getURL('pages/market.html') })}
@@ -126,18 +138,6 @@ class AgentOptionsPageElement extends GemElement {
               </div>
               <dy-use .element=${icons.right}></dy-use>
             </div>
-          </div>
-        </section>
-
-        <section v-if=${!!this.#recommended.length} class="mt-7">
-          <header class="flex items-center justify-between gap-3 mb-5">
-            <div>
-              <h2 class="m-0 text-base text-highlight">推荐工具集</h2>
-              <p class="mt-1 text-describe text-xs">来自社区的精选工具集。</p>
-            </div>
-          </header>
-          <div class="flex flex-col gap-5">
-            ${this.#recommended.map((t) => html`<options-toolset-card .recommended=${true} @subscription=${() => this.#addByUrl(t.url)} .toolset=${t}></options-toolset-card>`)}
           </div>
         </section>
       </div>

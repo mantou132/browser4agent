@@ -2,6 +2,7 @@
  * @module Example Page Tools
  * @description 用于测试页面工具订阅、匹配和执行的示例工具集
  * @icon 🧪
+ * @author mantou132 <709922234@qq.com>
  */
 
 const DEFAULT_SUMMARY_LENGTH = 300;

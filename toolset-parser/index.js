@@ -23,6 +23,7 @@ export function parseToolsetJs(jsContent, filename = 'toolset.js') {
     name: moduleInfo.name || '',
     description: moduleInfo.description || '',
     icon: moduleInfo.icon || '',
+    author: moduleInfo.author,
     tools,
   };
 

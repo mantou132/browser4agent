@@ -2,6 +2,10 @@
   "name": "Example Page Tools",
   "description": "用于测试页面工具订阅、匹配和执行的示例工具集",
   "icon": "🧪",
+  "author": {
+    "name": "mantou132",
+    "email": "709922234@qq.com"
+  },
   "tools": [
     {
       "name": "get_page_summary",
