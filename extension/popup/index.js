@@ -1,6 +1,9 @@
 import { icons } from 'duoyun-ui/lib/icons';
 import { openExtensionPage } from '@/shared/tabs.js';
+import { setPageI18n, t } from '../shared/i18n.js';
 import { initStore, isToolEnabled, setToolEnabled, toolStore } from '../shared/store.js';
+
+setPageI18n();
 
 @customElement('agent-popup-page')
 @connectStore(toolStore)
@@ -60,19 +63,19 @@ class AgentPopupPageElement extends GemElement {
 
         <div class="pt-3 pb-2 px-3.5 border-b border-border">
           <div class="flex items-center gap-2 min-w-0">
-            <div class="shrink-0 text-xs text-describe">当前标签</div>
+            <div class="shrink-0 text-xs text-describe">${t('currentTab')}</div>
             <div class="flex-1 min-w-0 text-xs text-highlight flex items-center gap-1.5 truncate" title=${url}>
               <span>🔗</span>
-              <span class="truncate">${url || '(无 URL)'}</span>
+              <span class="truncate">${url || t('noUrl')}</span>
             </div>
           </div>
-          <div class="text-xs text-neutral mt-1">下面显示的是 AI Agent 可在当前页面使用的工具</div>
+          <div class="text-xs text-neutral mt-1">${t('availableToolsDesc')}</div>
         </div>
 
         <div class="flex-1 overflow-y-auto py-1.5 px-2">
           ${
             matched.length === 0
-              ? html`<div class="py-10 px-5 text-center text-describe text-sm">没有匹配的工具</div>`
+              ? html`<div class="py-10 px-5 text-center text-describe text-sm">${t('noMatchingTools')}</div>`
               : matched.map(
                   ({ toolsetId, toolsetName, tool }) => html`
                     <div class="flex items-center gap-2.5 py-2 px-1.5 rounded-sm hover:bg-bg-hover">
@@ -93,8 +96,8 @@ class AgentPopupPageElement extends GemElement {
         </div>
 
         <footer class="flex items-center justify-between py-2.5 px-3.5 border-t border-border text-xs">
-          <span class="text-describe">共 ${enabledCount} 个工具已启用</span>
-          <dy-action-text class="text-primary" @click=${this.#openOptions}>管理工具集</dy-action-text>
+          <span class="text-describe">${t('enabledToolCount', enabledCount)}</span>
+          <dy-action-text class="text-primary" @click=${this.#openOptions}>${t('manageToolsets')}</dy-action-text>
         </footer>
       </div>
     `;

@@ -1,3 +1,5 @@
+import { t } from '../../shared/i18n.js';
+
 const TYPE_OPTIONS = [
   { label: 'string', value: 'string' },
   { label: 'number', value: 'number' },
@@ -49,7 +51,7 @@ class MarketToolEditorParamElement extends GemElement {
     const v = this.value || {};
     return html`
       <dy-input
-        placeholder="参数名"
+        placeholder=${t('paramNamePlaceholder')}
         .value=${v.name}
         @change=${(e) => this.#emit({ name: e.detail })}
       ></dy-input>
@@ -63,11 +65,11 @@ class MarketToolEditorParamElement extends GemElement {
           .checked=${!!v.required}
           @change=${(e) => this.#emit({ required: e.detail })}
         ></dy-switch>
-        必填
+        ${t('required')}
       </label>
       <dy-input
         class="desc"
-        placeholder="参数描述"
+        placeholder=${t('paramDescriptionPlaceholder')}
         .value=${v.description}
         @change=${(e) => this.#emit({ description: e.detail })}
       ></dy-input>

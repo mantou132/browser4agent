@@ -1,0 +1,403 @@
+{
+  "actionTitle": {
+    "message": "AI Agent Tools"
+  },
+  "addTool": {
+    "message": "Add Tool"
+  },
+  "addedToolset": {
+    "message": "Added: $NAME$ ($COUNT$ tools)",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "appDescription": {
+    "message": "Let AI agents read browser tab content, control the browser (tabs, windows, and more), and call tab tools."
+  },
+  "appName": {
+    "message": "Browser for AI Agent"
+  },
+  "authorEmail": {
+    "message": "Author Email"
+  },
+  "authorName": {
+    "message": "Author Name"
+  },
+  "authorPrefix": {
+    "message": "Author: "
+  },
+  "availableToolsDesc": {
+    "message": "Tools that the AI Agent can use on the current page are shown below."
+  },
+  "backToSettings": {
+    "message": "Back to Settings"
+  },
+  "browserExtensionDesc": {
+    "message": "Read and control pages"
+  },
+  "browserExtensionTitle": {
+    "message": "Browser Extension"
+  },
+  "community": {
+    "message": "Community"
+  },
+  "communityToolsets": {
+    "message": "Community Toolsets"
+  },
+  "communityToolsetsDesc": {
+    "message": "Drop a new file onto an existing card to update that toolset."
+  },
+  "configureMcp": {
+    "message": "Configure the MCP connection for your AI Agent automatically"
+  },
+  "configureNativeHost": {
+    "message": "Configure Native Messaging Host"
+  },
+  "configureNewTool": {
+    "message": "Configure New Tool"
+  },
+  "contextToolsetMarket": {
+    "message": "Toolset Market"
+  },
+  "contextWelcomePage": {
+    "message": "Welcome Page"
+  },
+  "coveredTools": {
+    "message": "Covered Tools"
+  },
+  "coveredToolsDesc": {
+    "message": "Total callable tools provided by these toolsets"
+  },
+  "currentTab": {
+    "message": "Current Tab"
+  },
+  "custom": {
+    "message": "Custom"
+  },
+  "delete": {
+    "message": "Delete"
+  },
+  "description": {
+    "message": "Description"
+  },
+  "downloadAria": {
+    "message": "Download $NAME$ version",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "downloadExecutable": {
+    "message": "Download executable"
+  },
+  "downloadExe": {
+    "message": "Download .exe"
+  },
+  "editTool": {
+    "message": "Edit Tool"
+  },
+  "emptySubscribedToolsets": {
+    "message": "No subscribed toolsets yet"
+  },
+  "emptyToolsets": {
+    "message": "No toolsets yet"
+  },
+  "enabledToolCount": {
+    "message": "$COUNT$ tools enabled",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "executeCode": {
+    "message": "Execution Code"
+  },
+  "exploreMoreToolsets": {
+    "message": "Explore More Toolsets"
+  },
+  "exploreMoreToolsetsDesc": {
+    "message": "Visit the community toolset market to discover more web automation capabilities"
+  },
+  "faq": {
+    "message": "FAQ"
+  },
+  "flowAgentDesc": {
+    "message": "Orchestrates tasks"
+  },
+  "flowHostDesc": {
+    "message": "Local secure bridge"
+  },
+  "howItWorks": {
+    "message": "How It Works"
+  },
+  "icon": {
+    "message": "Icon"
+  },
+  "installCount": {
+    "message": "$COUNT$ installs",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "invalidUrl": {
+    "message": "Invalid URL"
+  },
+  "like": {
+    "message": "Like"
+  },
+  "marketEyebrow": {
+    "message": "Community Toolsets"
+  },
+  "manageToolsets": {
+    "message": "Manage Toolsets"
+  },
+  "marketSubtitle": {
+    "message": "Discover community toolsets you can subscribe to directly, or upload JSON, JavaScript, or TypeScript files to publish your own automation capabilities."
+  },
+  "marketTitle": {
+    "message": "Toolset Market"
+  },
+  "marketToolsets": {
+    "message": "Market Toolsets"
+  },
+  "marketToolsetsDesc": {
+    "message": "Toolsets currently listed in the market"
+  },
+  "myToolsets": {
+    "message": "My Toolsets"
+  },
+  "myToolsetsDesc": {
+    "message": "Toolsets can be JSON, JS, or TS files. Each tool includes name, description, execute, inputSchema, pattern, and related fields."
+  },
+  "nativeHostPrivacy": {
+    "message": "This program is a local service for communication between the browser and AI Agent. It does not collect or upload data."
+  },
+  "needHelp": {
+    "message": "Need help?"
+  },
+  "newToolDesc": {
+    "message": "Fill in the basic info, parameters, and execution code before publishing."
+  },
+  "nextStep": {
+    "message": "Next"
+  },
+  "noDescription": {
+    "message": "No description"
+  },
+  "noMatchingTools": {
+    "message": "No matching tools"
+  },
+  "noUrl": {
+    "message": "(No URL)"
+  },
+  "official": {
+    "message": "Official"
+  },
+  "openMarket": {
+    "message": "Open Market"
+  },
+  "openOnce": {
+    "message": "Open Once"
+  },
+  "openOnceDesc": {
+    "message": "The program will automatically complete this setup:"
+  },
+  "optionsSubtitle": {
+    "message": "Manage the toolsets available to AI Agents, enable the capabilities you need, and discover more automation workflows from the community market."
+  },
+  "optionsTitle": {
+    "message": "Extension Settings"
+  },
+  "paramCount": {
+    "message": "$COUNT$ parameters",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "paramDescriptionPlaceholder": {
+    "message": "Parameter description"
+  },
+  "parameters": {
+    "message": "Parameters"
+  },
+  "paramNamePlaceholder": {
+    "message": "Parameter name"
+  },
+  "pendingUrlPattern": {
+    "message": "URL match pattern not set"
+  },
+  "publishToolset": {
+    "message": "Publish Toolset"
+  },
+  "publishToolsetTip": {
+    "message": "Click to create a toolset, or drop a JSON, JavaScript, or TypeScript file here to publish it."
+  },
+  "readyDesc": {
+    "message": "You can now let the AI Agent handle tasks on web pages for you."
+  },
+  "readyTitle": {
+    "message": "You are ready!"
+  },
+  "recommendedDesc": {
+    "message": "Start with official examples, or visit the market to explore community toolsets."
+  },
+  "recommendedToolsets": {
+    "message": "Recommended Toolsets"
+  },
+  "refresh": {
+    "message": "Refresh"
+  },
+  "refreshedToolset": {
+    "message": "Refreshed: $NAME$ ($COUNT$ tools)",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "removeToolsetConfirm": {
+    "message": "Remove toolset \"$NAME$\"?",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "reportIssue": {
+    "message": "Report Issue"
+  },
+  "required": {
+    "message": "Required"
+  },
+  "stepDownloadDesc": {
+    "message": "Choose the version for your operating system, then download and save it locally."
+  },
+  "stepDownloadTitle": {
+    "message": "Download Native Messaging Host"
+  },
+  "stepInstallDesc": {
+    "message": "Open the downloaded file and follow the prompts to finish initialization."
+  },
+  "stepInstallTitle": {
+    "message": "Install and Initialize"
+  },
+  "stepStartDesc": {
+    "message": "After initialization, return to the extension settings page to subscribe to toolsets."
+  },
+  "stepStartTitle": {
+    "message": "Start Using"
+  },
+  "subscribe": {
+    "message": "Subscribe"
+  },
+  "subscribed": {
+    "message": "Subscribed"
+  },
+  "subscribeToolset": {
+    "message": "Subscribe Toolset"
+  },
+  "subscribeUrl": {
+    "message": "Subscribe URL"
+  },
+  "thanksForLike": {
+    "message": "Thanks for the like"
+  },
+  "toolCount": {
+    "message": "$COUNT$ tools",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "toolListDesc": {
+    "message": "$COUNT$ tools. Select an item on the left to edit its details.",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "toolName": {
+    "message": "Tool Name"
+  },
+  "toolsetAlreadySubscribed": {
+    "message": "This toolset is already subscribed"
+  },
+  "toolsetLoadFailed": {
+    "message": "Toolset load failed: HTTP $STATUS$",
+    "placeholders": {
+      "status": {
+        "content": "$1"
+      }
+    }
+  },
+  "toolsetName": {
+    "message": "Toolset Name"
+  },
+  "toolsetNoTools": {
+    "message": "This toolset does not declare any tools"
+  },
+  "toolsetPublished": {
+    "message": "Toolset published"
+  },
+  "toolsetUpdated": {
+    "message": "Toolset updated"
+  },
+  "toolsetUrlHelpAfterPattern": {
+    "message": "."
+  },
+  "toolsetUrlHelpBeforePattern": {
+    "message": "Supports JSON, JavaScript, and TypeScript files. In JS/TS, each exported function becomes a tool, with metadata from JSDoc tags such as "
+  },
+  "toolsetUrlLabel": {
+    "message": "Toolset URL"
+  },
+  "toolsetUrlPlaceholder": {
+    "message": "https://example.com/toolset.json or toolset.ts"
+  },
+  "toolsList": {
+    "message": "Tools"
+  },
+  "totalInstalls": {
+    "message": "Total Installs"
+  },
+  "totalInstallsDesc": {
+    "message": "Number of times community toolsets have been subscribed and installed"
+  },
+  "unlike": {
+    "message": "Unlike"
+  },
+  "unliked": {
+    "message": "Like removed"
+  },
+  "unnamedTool": {
+    "message": "Unnamed Tool"
+  },
+  "urlPattern": {
+    "message": "URL Match Pattern"
+  },
+  "viewDocs": {
+    "message": "View Docs"
+  },
+  "welcomeSubtitle": {
+    "message": "Let AI Agents safely read and control the browser, automating your web workflows."
+  },
+  "welcomeTitle": {
+    "message": "Welcome to Browser for AI Agent"
+  }
+}

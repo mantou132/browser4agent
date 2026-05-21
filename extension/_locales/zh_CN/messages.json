@@ -1,0 +1,403 @@
+{
+  "actionTitle": {
+    "message": "AI Agent 工具"
+  },
+  "addTool": {
+    "message": "添加工具"
+  },
+  "addedToolset": {
+    "message": "已添加：$NAME$（$COUNT$ 个工具）",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "appDescription": {
+    "message": "让 AI Agent 读取浏览器标签页内容、操控浏览器（管理标签页/窗口等），调用标签页工具"
+  },
+  "appName": {
+    "message": "Browser for AI Agent"
+  },
+  "authorEmail": {
+    "message": "作者 Email"
+  },
+  "authorName": {
+    "message": "作者名称"
+  },
+  "authorPrefix": {
+    "message": "作者："
+  },
+  "availableToolsDesc": {
+    "message": "下面显示的是 AI Agent 可在当前页面使用的工具"
+  },
+  "backToSettings": {
+    "message": "返回设置"
+  },
+  "browserExtensionDesc": {
+    "message": "读取和操控页面"
+  },
+  "browserExtensionTitle": {
+    "message": "浏览器扩展"
+  },
+  "community": {
+    "message": "社区"
+  },
+  "communityToolsets": {
+    "message": "社区工具集"
+  },
+  "communityToolsetsDesc": {
+    "message": "拖拽新文件到已有卡片可更新对应工具集。"
+  },
+  "configureMcp": {
+    "message": "自动为你的 AI Agent 配置 MCP 连接"
+  },
+  "configureNativeHost": {
+    "message": "配置 Native Messaging Host"
+  },
+  "configureNewTool": {
+    "message": "配置新工具"
+  },
+  "contextToolsetMarket": {
+    "message": "工具集市场"
+  },
+  "contextWelcomePage": {
+    "message": "欢迎页面"
+  },
+  "coveredTools": {
+    "message": "覆盖工具"
+  },
+  "coveredToolsDesc": {
+    "message": "这些工具集提供的可调用工具总数"
+  },
+  "currentTab": {
+    "message": "当前标签"
+  },
+  "custom": {
+    "message": "自定义"
+  },
+  "delete": {
+    "message": "删除"
+  },
+  "description": {
+    "message": "描述"
+  },
+  "downloadAria": {
+    "message": "下载 $NAME$ 版本",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "downloadExecutable": {
+    "message": "下载可执行文件"
+  },
+  "downloadExe": {
+    "message": "下载 .exe"
+  },
+  "editTool": {
+    "message": "编辑工具"
+  },
+  "emptySubscribedToolsets": {
+    "message": "暂未订阅任何工具集"
+  },
+  "emptyToolsets": {
+    "message": "暂无工具集"
+  },
+  "enabledToolCount": {
+    "message": "共 $COUNT$ 个工具已启用",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "executeCode": {
+    "message": "执行代码"
+  },
+  "exploreMoreToolsets": {
+    "message": "探索更多工具集"
+  },
+  "exploreMoreToolsetsDesc": {
+    "message": "访问社区工具集市场，发现更多网页自动化能力"
+  },
+  "faq": {
+    "message": "常见问题"
+  },
+  "flowAgentDesc": {
+    "message": "编排任务"
+  },
+  "flowHostDesc": {
+    "message": "本地安全通信桥"
+  },
+  "howItWorks": {
+    "message": "工作原理"
+  },
+  "icon": {
+    "message": "图标"
+  },
+  "installCount": {
+    "message": "安装 $COUNT$ 次",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "invalidUrl": {
+    "message": "无效 URL"
+  },
+  "like": {
+    "message": "点赞"
+  },
+  "marketEyebrow": {
+    "message": "Community Toolsets"
+  },
+  "manageToolsets": {
+    "message": "管理工具集"
+  },
+  "marketSubtitle": {
+    "message": "发现可直接订阅的社区工具集，也可以上传 JSON、JavaScript 或 TypeScript 文件发布自己的自动化能力。"
+  },
+  "marketTitle": {
+    "message": "工具集市场"
+  },
+  "marketToolsets": {
+    "message": "市场工具集"
+  },
+  "marketToolsetsDesc": {
+    "message": "当前市场已收录的工具集数量"
+  },
+  "myToolsets": {
+    "message": "我的工具集"
+  },
+  "myToolsetsDesc": {
+    "message": "工具集可以是 JSON、JS 或 TS 文件；每个工具包含 name、description、execute、inputSchema、pattern 等字段"
+  },
+  "nativeHostPrivacy": {
+    "message": "该程序是浏览器与 AI Agent 通信的本地服务，不会收集或上传任何数据。"
+  },
+  "needHelp": {
+    "message": "需要帮助？"
+  },
+  "newToolDesc": {
+    "message": "填写基础信息、参数和执行代码后即可发布。"
+  },
+  "nextStep": {
+    "message": "下一步"
+  },
+  "noDescription": {
+    "message": "暂无描述"
+  },
+  "noMatchingTools": {
+    "message": "没有匹配的工具"
+  },
+  "noUrl": {
+    "message": "（无 URL）"
+  },
+  "official": {
+    "message": "官方"
+  },
+  "openMarket": {
+    "message": "打开市场"
+  },
+  "openOnce": {
+    "message": "只需打开一次"
+  },
+  "openOnceDesc": {
+    "message": "程序将自动完成以下配置："
+  },
+  "optionsSubtitle": {
+    "message": "管理 AI Agent 可调用的工具集，启用需要的能力，并从社区市场发现更多自动化方案。"
+  },
+  "optionsTitle": {
+    "message": "扩展设置"
+  },
+  "paramCount": {
+    "message": "$COUNT$ 个参数",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "paramDescriptionPlaceholder": {
+    "message": "参数描述"
+  },
+  "parameters": {
+    "message": "参数"
+  },
+  "paramNamePlaceholder": {
+    "message": "参数名"
+  },
+  "pendingUrlPattern": {
+    "message": "待设置 URL 匹配模式"
+  },
+  "publishToolset": {
+    "message": "发布工具集"
+  },
+  "publishToolsetTip": {
+    "message": "点击创建工具集，或将 JSON、JavaScript、TypeScript 文件拖放到这里发布。"
+  },
+  "readyDesc": {
+    "message": "现在你可以让 AI Agent 帮你处理网页上的各种任务了。"
+  },
+  "readyTitle": {
+    "message": "你已准备就绪！"
+  },
+  "recommendedDesc": {
+    "message": "从官方示例开始，也可以前往市场探索社区工具集。"
+  },
+  "recommendedToolsets": {
+    "message": "推荐工具集"
+  },
+  "refresh": {
+    "message": "刷新"
+  },
+  "refreshedToolset": {
+    "message": "已刷新：$NAME$（$COUNT$ 个工具）",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "count": {
+        "content": "$2"
+      }
+    }
+  },
+  "removeToolsetConfirm": {
+    "message": "确认移除工具集「$NAME$」？",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "reportIssue": {
+    "message": "反馈问题"
+  },
+  "required": {
+    "message": "必填"
+  },
+  "stepDownloadDesc": {
+    "message": "选择与你的操作系统匹配的版本，下载并保存到本地。"
+  },
+  "stepDownloadTitle": {
+    "message": "下载 Native Messaging Host"
+  },
+  "stepInstallDesc": {
+    "message": "打开下载的文件，按照提示完成初始化配置。"
+  },
+  "stepInstallTitle": {
+    "message": "安装并初始化"
+  },
+  "stepStartDesc": {
+    "message": "完成初始化后，返回扩展设置页面可以订阅工具集。"
+  },
+  "stepStartTitle": {
+    "message": "开始使用"
+  },
+  "subscribe": {
+    "message": "订阅"
+  },
+  "subscribed": {
+    "message": "已订阅"
+  },
+  "subscribeToolset": {
+    "message": "订阅工具集"
+  },
+  "subscribeUrl": {
+    "message": "订阅 URL"
+  },
+  "thanksForLike": {
+    "message": "感谢点赞"
+  },
+  "toolCount": {
+    "message": "$COUNT$ 个工具",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "toolListDesc": {
+    "message": "共 $COUNT$ 个工具，选择左侧项目编辑详细配置。",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "toolName": {
+    "message": "工具名称"
+  },
+  "toolsetAlreadySubscribed": {
+    "message": "该工具集已订阅"
+  },
+  "toolsetLoadFailed": {
+    "message": "工具集加载失败: HTTP $STATUS$",
+    "placeholders": {
+      "status": {
+        "content": "$1"
+      }
+    }
+  },
+  "toolsetName": {
+    "message": "工具集名称"
+  },
+  "toolsetNoTools": {
+    "message": "该工具集没有声明任何工具"
+  },
+  "toolsetPublished": {
+    "message": "工具集已发布"
+  },
+  "toolsetUpdated": {
+    "message": "工具集已更新"
+  },
+  "toolsetUrlHelpAfterPattern": {
+    "message": " 等 JSDoc 标注元数据。"
+  },
+  "toolsetUrlHelpBeforePattern": {
+    "message": "支持 JSON、JavaScript、TypeScript 文件。JS/TS 中每个导出函数为一个工具，使用 "
+  },
+  "toolsetUrlLabel": {
+    "message": "工具集 URL"
+  },
+  "toolsetUrlPlaceholder": {
+    "message": "https://example.com/toolset.json 或 toolset.ts"
+  },
+  "toolsList": {
+    "message": "工具列表"
+  },
+  "totalInstalls": {
+    "message": "累计安装"
+  },
+  "totalInstallsDesc": {
+    "message": "社区工具集被订阅安装的次数"
+  },
+  "unlike": {
+    "message": "取消点赞"
+  },
+  "unliked": {
+    "message": "已取消点赞"
+  },
+  "unnamedTool": {
+    "message": "未命名工具"
+  },
+  "urlPattern": {
+    "message": "URL 匹配模式"
+  },
+  "viewDocs": {
+    "message": "查看文档"
+  },
+  "welcomeSubtitle": {
+    "message": "让 AI Agent 安全地读取和操控浏览器，自动化你的网页操作。"
+  },
+  "welcomeTitle": {
+    "message": "欢迎使用 Browser for AI Agent"
+  }
+}

@@ -2,12 +2,15 @@ import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
 import { theme } from 'duoyun-ui/lib/theme';
 import { createForm } from 'duoyun-ui/patterns/form';
+import { setPageI18n, t } from '../shared/i18n.js';
 import { loadToolset } from '../shared/loader.js';
 import { addToolset, initStore, toolStore } from '../shared/store.js';
 import { openExtensionPage } from '../shared/tabs.js';
 import { getToolsetId } from '../shared/toolsets.js';
 
 const toolsets = require.context('../public/toolsets', false, /\.json$/);
+
+setPageI18n('optionsTitle');
 
 const style = css`
   :scope {
@@ -49,13 +52,13 @@ class AgentOptionsPageElement extends GemElement {
     const form = await createForm({
       type: 'modal',
       style: { width: '30em' },
-      header: '订阅工具集',
+      header: t('subscribeToolset'),
       formItems: [
         {
-          label: '工具集 URL',
+          label: t('toolsetUrlLabel'),
           type: 'text',
           field: 'url',
-          placeholder: 'https://example.com/toolset.json 或 toolset.ts',
+          placeholder: t('toolsetUrlPlaceholder'),
           autofocus: true,
           required: true,
         },
@@ -63,8 +66,9 @@ class AgentOptionsPageElement extends GemElement {
           type: 'slot',
           slot: html`
             <small style=${styleMap({ color: theme.describeColor })}>
-              支持 JSON、JavaScript、TypeScript 文件。JS/TS 中每个导出函数为一个工具，使用
-              <code>@pattern</code> 等 JSDoc 标注元数据。
+              ${t('toolsetUrlHelpBeforePattern')}
+              <code>@pattern</code>
+              ${t('toolsetUrlHelpAfterPattern')}
             </small>
           `,
         },
@@ -76,15 +80,15 @@ class AgentOptionsPageElement extends GemElement {
   #addByUrl = async (url) => {
     if (!url) return;
     if (!URL.canParse(url)) {
-      return Toast.open('warning', '无效 URL');
+      return Toast.open('warning', t('invalidUrl'));
     }
     const id = getToolsetId(url);
     if (toolStore.toolsets.find((t) => t.id === id)) {
-      return Toast.open('warning', '该工具集已订阅');
+      return Toast.open('warning', t('toolsetAlreadySubscribed'));
     }
     const { meta, tools } = await loadToolset(url);
     await addToolset({ ...meta, id, url, type: 'custom', enabled: true, tools });
-    Toast.open('success', `已添加：${meta.name}（${tools.length} 个工具）`);
+    Toast.open('success', t('addedToolset', [meta.name, tools.length]));
   };
 
   #openMarket = async () => {
@@ -109,14 +113,14 @@ class AgentOptionsPageElement extends GemElement {
               />
               <div class="min-w-0">
                 <p class="m-0 text-sm font-semibold text-primary">Browser for AI Agent</p>
-                <h1 class="m-0 mt-2 text-3xl font-bold leading-tight text-highlight">扩展设置</h1>
+                <h1 class="m-0 mt-2 text-3xl font-bold leading-tight text-highlight">${t('optionsTitle')}</h1>
                 <p class="mb-0 mt-3 max-w-2xl text-sm leading-6 text-describe sm:text-base">
-                  管理 AI Agent 可调用的工具集，启用需要的能力，并从社区市场发现更多自动化方案。
+                  ${t('optionsSubtitle')}
                 </p>
               </div>
             </div>
             <div class="relative mt-6 flex flex-wrap gap-3 sm:mt-0 sm:justify-end">
-              <dy-button @click=${this.#openMarket}>打开市场</dy-button>
+              <dy-button @click=${this.#openMarket}>${t('openMarket')}</dy-button>
             </div>
           </div>
         </header>
@@ -124,18 +128,18 @@ class AgentOptionsPageElement extends GemElement {
         <section class="rounded-lg border border-border bg-white/90 p-5 shadow-xl shadow-slate-200/60 backdrop-blur sm:p-6">
           <header class="mb-5 flex items-center justify-between gap-3">
             <div>
-              <h2 class="m-0 text-lg font-bold text-highlight">我的工具集</h2>
+              <h2 class="m-0 text-lg font-bold text-highlight">${t('myToolsets')}</h2>
               <p class="mt-1 mb-0 text-describe text-xs">
-                工具集可以是 JSON、JS 或 TS 文件；每个工具包含 name、description、execute、inputSchema、pattern 等字段
+                ${t('myToolsetsDesc')}
               </p>
             </div>
-            <dy-button @click=${this.#openAdd}>订阅 URL</dy-button>
+            <dy-button @click=${this.#openAdd}>${t('subscribeUrl')}</dy-button>
           </header>
           <div class="flex flex-col gap-5">
             ${
               toolsets.length
                 ? toolsets.map((t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`)
-                : html`<dy-empty class="py-20" text="暂未订阅任何工具集"></dy-empty>`
+                : html`<dy-empty class="py-20" text=${t('emptySubscribedToolsets')}></dy-empty>`
             }
           </div>
         </section>
@@ -143,8 +147,8 @@ class AgentOptionsPageElement extends GemElement {
         <section class="rounded-lg border border-border bg-white/90 p-5 shadow-xl shadow-slate-200/60 backdrop-blur sm:p-6">
           <header class="mb-5 flex items-center justify-between gap-3">
             <div>
-              <h2 class="m-0 text-lg font-bold text-highlight">推荐工具集</h2>
-              <p class="mt-1 mb-0 text-describe text-xs">从官方示例开始，也可以前往市场探索社区工具集。</p>
+              <h2 class="m-0 text-lg font-bold text-highlight">${t('recommendedToolsets')}</h2>
+              <p class="mt-1 mb-0 text-describe text-xs">${t('recommendedDesc')}</p>
             </div>
           </header>
           <div class="flex flex-col gap-5">
@@ -155,8 +159,8 @@ class AgentOptionsPageElement extends GemElement {
             >
               <span class="grid size-14 shrink-0 place-items-center rounded-lg bg-white text-2xl shadow-sm">🧭</span>
               <div class="flex-1 min-w-0">
-                <div class="mb-1 text-sm font-semibold text-highlight group-hover:text-primary">探索更多工具集</div>
-                <div class="text-xs leading-5">访问社区工具集市场，发现更多网页自动化能力</div>
+                <div class="mb-1 text-sm font-semibold text-highlight group-hover:text-primary">${t('exploreMoreToolsets')}</div>
+                <div class="text-xs leading-5">${t('exploreMoreToolsetsDesc')}</div>
               </div>
               <dy-use .element=${icons.right}></dy-use>
             </div>

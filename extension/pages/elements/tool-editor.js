@@ -1,5 +1,6 @@
 import { icons } from 'duoyun-ui/lib/icons';
 import { theme } from 'duoyun-ui/lib/theme';
+import { t } from '../../shared/i18n.js';
 
 const EMPTY_TOOL = () => ({
   name: '',
@@ -209,18 +210,18 @@ class MarketToolEditorElement extends GemElement {
   };
 
   #formItems = [
-    { label: '工具名称', type: 'text', field: 'name', required: true, autofocus: true },
-    { label: 'URL 匹配模式', type: 'text', field: 'pattern', required: true, placeholder: 'https://example.com/*' },
-    { label: '描述', type: 'textarea', field: 'description', rows: 2 },
+    { label: t('toolName'), type: 'text', field: 'name', required: true, autofocus: true },
+    { label: t('urlPattern'), type: 'text', field: 'pattern', required: true, placeholder: 'https://example.com/*' },
+    { label: t('description'), type: 'textarea', field: 'description', rows: 2 },
     {
-      label: `参数`,
+      label: t('parameters'),
       type: 'slot',
       field: `properties`,
       list: true,
       slot: html`<market-tool-editor-param></market-tool-editor-param>`,
     },
     {
-      label: '执行代码',
+      label: t('executeCode'),
       type: 'textarea',
       field: 'execute',
       required: true,
@@ -264,35 +265,35 @@ class MarketToolEditorElement extends GemElement {
     return html`
       <div class="list">
         <div class="list-header">
-          <h3 class="list-title">工具列表</h3>
-          <p class="list-desc">共 ${tools.length} 个工具，选择左侧项目编辑详细配置。</p>
+          <h3 class="list-title">${t('toolsList')}</h3>
+          <p class="list-desc">${t('toolListDesc', tools.length)}</p>
         </div>
         <div class="list-body">
           ${tools.map(
-            (t, i) => html`
+            (tool, i) => html`
               <div
                 class="list-item ${i === selectedIndex ? 'selected' : ''}"
                 @click=${() => this.#selectTool(i)}
               >
                 <span class="list-item-index">${i + 1}</span>
                 <span class="list-item-main">
-                  <span class="list-item-name">${t.name || '未命名工具'}</span>
-                  <span class="list-item-desc">${t.pattern || '待设置 URL 匹配模式'}</span>
+                  <span class="list-item-name">${tool.name || t('unnamedTool')}</span>
+                  <span class="list-item-desc">${tool.pattern || t('pendingUrlPattern')}</span>
                 </span>
                 <dy-button square color="cancel" .icon=${icons.delete} @click=${(evt) => this.#removeTool(i, evt)}></dy-button>
               </div>
             `,
           )}
         </div>
-        <dy-button class="add-button" type="reverse" .icon=${icons.add} @click=${this.#addTool}>添加工具</dy-button>
+        <dy-button class="add-button" type="reverse" .icon=${icons.add} @click=${this.#addTool}>${t('addTool')}</dy-button>
       </div>
       <div class="editor">
         <div class="editor-header">
           <div>
-            <h3 class="editor-title">${selectedTool?.name || '配置新工具'}</h3>
-            <p class="editor-desc">${selectedTool?.description || '填写基础信息、参数和执行代码后即可发布。'}</p>
+            <h3 class="editor-title">${selectedTool?.name || t('configureNewTool')}</h3>
+            <p class="editor-desc">${selectedTool?.description || t('newToolDesc')}</p>
           </div>
-          <span class="editor-meta">${selectedTool?.properties?.length || 0} 个参数</span>
+          <span class="editor-meta">${t('paramCount', selectedTool?.properties?.length || 0)}</span>
         </div>
         <div class="form-wrap">
           <dy-pat-form

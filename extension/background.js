@@ -1,3 +1,4 @@
+import { t } from './shared/i18n.js';
 import {
   executeScript,
   executeScriptInBackground,
@@ -24,13 +25,13 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 chrome.contextMenus.create({
   id: 'open-welcome',
-  title: '欢迎页面',
+  title: t('contextWelcomePage'),
   contexts: ['action'],
 });
 
 chrome.contextMenus.create({
   id: 'open-market',
-  title: '工具集市场',
+  title: t('contextToolsetMarket'),
   contexts: ['action'],
 });
 

@@ -29,6 +29,7 @@
 - `extension/options/`：扩展设置页
 - `extension/popup/`：工具弹窗
 - `extension/shared/`：扩展侧公共状态、工具集加载、市场 API、帮助函数
+- `extension/_locales/`：扩展 i18n 文案，默认 `zh_CN`，同时维护英文 `en`
 - `extension/public/toolsets/`：内置工具集
 - `extension/read-content-hacks/`：特定站点的读取补丁
 - `cf/`：扩展中的工具集市场后端
@@ -39,6 +40,7 @@
 - `extension/extension.config.mjs`：扩展构建配置和 Gem SWC 插件
 - `extension/theme.js`：duoyun-ui 全局主题
 - `extension/tailwind.css`：扩展全局 Tailwind 主题和基础样式
+- `extension/shared/i18n.js`：扩展侧 `t()` 翻译帮助函数和页面语言/标题同步
 - `extension/tools.js`：MCP 工具实现
 
 ## 常用命令

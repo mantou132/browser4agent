@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 import { marketApi } from './market-api.js';
 
 function serializeTool(t) {
@@ -44,13 +45,13 @@ async function parseToolsetContent(content) {
 
 export async function loadToolset(url) {
   const res = await fetch(url, { credentials: 'omit' });
-  if (!res.ok) throw new Error(`工具集加载失败: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(t('toolsetLoadFailed', res.status));
 
   const contentType = res.headers.get('content-type') || '';
   const useParser = isJsTsUrl(url) || isJsTsContentType(contentType);
   const data = useParser ? await parseToolsetContent(await res.text()) : await res.json();
 
-  if (!Array.isArray(data.tools) || !data.tools.length) throw new Error('该工具集没有声明任何工具');
+  if (!Array.isArray(data.tools) || !data.tools.length) throw new Error(t('toolsetNoTools'));
   if (!data.name) data.name = new URL(url).hostname;
   return { meta: serializeToolset(data), tools: data.tools.map(serializeTool) };
 }

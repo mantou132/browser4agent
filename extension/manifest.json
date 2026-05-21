@@ -1,6 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Browser for AI Agent",
+  "default_locale": "zh_CN",
+  "name": "__MSG_appName__",
   "version": "0.1.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmf/ivxXaTn26G0cUSJRIkrryI6guRbdZx8AFSbm3BAMfkYT6snslh+sCO9jTedmnfHSgtQr/3pfMK/9CEVuuH4vFhqb5kN3KQHHtrQZBPIKmb0ukSL/62bn2CW1B02BFRA0q/1yKeHG00cZFOoZPfaOE+YRWwc7Krf4k1/IKS330SoatdSOnuISvNJoVCClGEJg8vXWrrKCC4kx8sJxyUH5vBVlpYbWiTQsXxMana7BVB7L+r7VLZ6kjpX0n6SoW+eBgZOLBj220H2qCvlyjUqeueUZK18DNG1Y0JO8iMSjuL6NV1VE1vcXYrT3GueMKYe8lOiTWmb+YOCvkljVZtwIDAQAB",
   "browser_specific_settings": {
@@ -8,7 +9,7 @@
       "id": "browser4agent@xianqiao.wang"
     }
   },
-  "description": "让 AI Agent 读取浏览器标签页内容、操控浏览器（管理标签页/窗口等），调用标签页工具",
+  "description": "__MSG_appDescription__",
   "permissions": ["tabs", "nativeMessaging", "scripting", "activeTab", "cookies", "alarms", "storage", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "chrome:background": { "service_worker": "background.js" },
@@ -16,7 +17,7 @@
   "action": {
     "default_popup": "popup/popup.html",
     "default_icon": "icon128.png",
-    "default_title": "AI Agent 工具"
+    "default_title": "__MSG_actionTitle__"
   },
   "options_ui": {
     "page": "options/options.html",

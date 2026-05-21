@@ -1,7 +1,10 @@
 import { icons } from 'duoyun-ui/lib/icons';
+import { setPageI18n, t } from '../shared/i18n.js';
 
 const REPO_URL = 'https://github.com/mantou132/browser4agent';
 const DOWNLOAD_URL = `${REPO_URL}/releases/latest/download`;
+
+setPageI18n('welcomeTitle');
 
 const style = css`
   :scope {
@@ -21,44 +24,44 @@ class AgentWelcomePageElement extends GemElement {
     {
       name: 'Windows',
       type: 'windows',
-      description: '下载 .exe',
+      description: t('downloadExe'),
       url: `${DOWNLOAD_URL}/browser4agent-x86_64-windows.exe`,
     },
     {
       name: 'macOS',
       type: 'macos',
-      description: '下载可执行文件',
+      description: t('downloadExecutable'),
       url: `${DOWNLOAD_URL}/browser4agent-aarch64-macos`,
     },
     {
       name: 'Linux',
       type: 'linux',
-      description: '下载可执行文件',
+      description: t('downloadExecutable'),
       url: `${DOWNLOAD_URL}/browser4agent-x86_64-linux`,
     },
   ];
 
   #helpLinks = [
-    { label: '查看文档', url: `${REPO_URL}#readme` },
-    { label: '常见问题', url: 'https://github.com/mantou132/browser4agent/issues?q=is%3Aissue' },
-    { label: '反馈问题', url: 'https://github.com/mantou132/browser4agent/issues/new' },
+    { label: t('viewDocs'), url: `${REPO_URL}#readme` },
+    { label: t('faq'), url: 'https://github.com/mantou132/browser4agent/issues?q=is%3Aissue' },
+    { label: t('reportIssue'), url: 'https://github.com/mantou132/browser4agent/issues/new' },
   ];
 
   #flowItems = [
     {
       type: 'agent',
       title: 'AI Agent (MCP)',
-      description: '编排任务',
+      description: t('flowAgentDesc'),
     },
     {
       type: 'host',
       title: 'Native Host',
-      description: '本地安全通信桥',
+      description: t('flowHostDesc'),
     },
     {
       type: 'extension',
-      title: '浏览器扩展',
-      description: '读取和操控页面',
+      title: t('browserExtensionTitle'),
+      description: t('browserExtensionDesc'),
     },
   ];
 
@@ -159,7 +162,7 @@ class AgentWelcomePageElement extends GemElement {
       target="_blank"
       rel="noreferrer"
       class="group flex min-h-24 items-center gap-5 rounded-lg border border-border bg-white px-6 py-5 text-left no-underline shadow-sm transition hover:-translate-y-0.5 hover:border-primary hover:shadow-lg hover:shadow-indigo-500/10"
-      aria-label=${`下载 ${platform.name} 版本`}
+      aria-label=${t('downloadAria', platform.name)}
     >
       <span class="grid size-12 shrink-0 place-items-center text-slate-600 transition group-hover:text-primary">
         ${this.#renderPlatformIcon(platform.type)}
@@ -202,42 +205,42 @@ class AgentWelcomePageElement extends GemElement {
             alt="Browser for AI Agent"
           />
           <h1 class="m-0 text-3xl font-bold leading-tight text-highlight sm:text-[2.5rem]">
-            欢迎使用 Browser for AI Agent
+            ${t('welcomeTitle')}
           </h1>
           <p class="mx-auto mb-0 mt-4 max-w-2xl text-base leading-7 text-describe sm:text-lg">
-            让 AI Agent 安全地读取和操控浏览器，自动化你的网页操作。
+            ${t('welcomeSubtitle')}
           </p>
         </header>
 
         <section class="overflow-hidden rounded-lg border border-border bg-white/90 shadow-2xl shadow-slate-200/70 backdrop-blur">
           <div class="p-7 sm:p-8">
-            ${this.#renderStepHeader('1', '下载 Native Messaging Host', '选择与你的操作系统匹配的版本，下载并保存到本地。')}
+            ${this.#renderStepHeader('1', t('stepDownloadTitle'), t('stepDownloadDesc'))}
             <div class="mt-6 grid gap-4 sm:grid-cols-3">${this.#platforms.map(this.#renderDownloadCard)}</div>
             <p class="mt-6 flex items-start gap-2 text-sm leading-6 text-describe">
               <dy-use class="mt-0.5 shrink-0 text-base" .element=${icons.info}></dy-use>
-              <span>该程序是浏览器与 AI Agent 通信的本地服务，不会收集或上传任何数据。</span>
+              <span>${t('nativeHostPrivacy')}</span>
             </p>
           </div>
 
           <div class="h-px bg-border"></div>
 
           <div class="p-7 sm:p-8">
-            ${this.#renderStepHeader('2', '安装并初始化', '打开下载的文件，按照提示完成初始化配置。')}
+            ${this.#renderStepHeader('2', t('stepInstallTitle'), t('stepInstallDesc'))}
             <div class="mt-6 rounded-lg border border-indigo-200 bg-indigo-50/80 p-6 sm:flex sm:items-start sm:gap-6">
               <span class="mb-5 grid size-16 shrink-0 place-items-center rounded-lg bg-white text-primary shadow-sm sm:mb-0">
                 ${this.#renderFlowIcon('host')}
               </span>
               <div class="min-w-0">
-                <h3 class="m-0 text-lg font-bold leading-6 text-highlight">只需打开一次</h3>
-                <p class="mb-0 mt-2 text-sm leading-6 text-text">程序将自动完成以下配置：</p>
+                <h3 class="m-0 text-lg font-bold leading-6 text-highlight">${t('openOnce')}</h3>
+                <p class="mb-0 mt-2 text-sm leading-6 text-text">${t('openOnceDesc')}</p>
                 <ul class="m-0 mt-4 flex list-none flex-col gap-3 p-0 text-sm leading-6 text-highlight">
                   <li class="flex items-center gap-3">
                     <dy-use class="text-positive" .element=${icons.check}></dy-use>
-                    <span>配置 Native Messaging Host</span>
+                    <span>${t('configureNativeHost')}</span>
                   </li>
                   <li class="flex items-center gap-3">
                     <dy-use class="text-positive" .element=${icons.check}></dy-use>
-                    <span>自动为你的 AI Agent 配置 MCP 连接</span>
+                    <span>${t('configureMcp')}</span>
                   </li>
                 </ul>
               </div>
@@ -247,16 +250,16 @@ class AgentWelcomePageElement extends GemElement {
           <div class="h-px bg-border"></div>
 
           <div class="p-7 sm:p-8">
-            ${this.#renderStepHeader('3', '开始使用', '完成初始化后，返回扩展设置页面可以订阅工具集。')}
+            ${this.#renderStepHeader('3', t('stepStartTitle'), t('stepStartDesc'))}
             <div class="mt-7 pl-0 sm:pl-14">
-              <p class="m-0 text-lg font-bold leading-7 text-primary">你已准备就绪！</p>
-              <p class="mb-0 mt-3 text-sm leading-6 text-text">现在你可以让 AI Agent 帮你处理网页上的各种任务了。</p>
+              <p class="m-0 text-lg font-bold leading-7 text-primary">${t('readyTitle')}</p>
+              <p class="mb-0 mt-3 text-sm leading-6 text-text">${t('readyDesc')}</p>
             </div>
           </div>
         </section>
 
         <section class="rounded-lg border border-border bg-white/90 p-7 shadow-xl shadow-slate-200/60 sm:p-8">
-          <h2 class="m-0 text-base font-bold text-highlight">工作原理</h2>
+          <h2 class="m-0 text-base font-bold text-highlight">${t('howItWorks')}</h2>
           <div class="mt-6 flex flex-col gap-5 sm:flex-row sm:items-center">
             ${this.#flowItems.map(this.#renderFlowItem)}
           </div>
@@ -267,7 +270,7 @@ class AgentWelcomePageElement extends GemElement {
         >
           <span class="flex items-center gap-2">
             <dy-use class="text-describe" .element=${icons.help}></dy-use>
-            <span>需要帮助？</span>
+            <span>${t('needHelp')}</span>
           </span>
           <nav class="flex flex-wrap items-center justify-center gap-x-8 gap-y-3">
             ${this.#helpLinks.map(
