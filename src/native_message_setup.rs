@@ -103,8 +103,8 @@ fn write_registry(_name: &str, _browser: Browser, _manifest_path: &Path) -> Resu
 pub fn install_native_message_host(
     name: &str,
     description: &str,
-    chrome_extension_id: Option<&str>,
-    firefox_extension_id: Option<&str>,
+    chrome_extension_ids: &[&str],
+    firefox_extension_ids: &[&str],
 ) -> Result<()> {
     let exe_path = std::env::current_exe().unwrap_or_default();
     let exe_str = exe_path.to_string_lossy();
@@ -125,17 +125,16 @@ pub fn install_native_message_host(
             "type": "stdio"
         });
 
-        if let Some((key, value)) = if browser.is_firefox() {
-            firefox_extension_id.map(|id| ("allowed_extensions", json!([id])))
-        } else {
-            chrome_extension_id.map(|id| {
-                (
-                    "allowed_origins",
-                    json!([format!("chrome-extension://{}/", id)]),
-                )
-            })
-        } {
-            manifest[key] = value;
+        if browser.is_firefox() {
+            if !firefox_extension_ids.is_empty() {
+                manifest["allowed_extensions"] = json!(firefox_extension_ids);
+            }
+        } else if !chrome_extension_ids.is_empty() {
+            let origins: Vec<String> = chrome_extension_ids
+                .iter()
+                .map(|id| format!("chrome-extension://{}/", id))
+                .collect();
+            manifest["allowed_origins"] = json!(origins);
         }
 
         let manifest_path = dir.join(format!("{}.json", name));

@@ -64,6 +64,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Strip manifest key (Web Store rejects packages containing it)
+        run: jq 'del(.key)' extension/manifest.json > extension/manifest.tmp && mv extension/manifest.tmp extension/manifest.json
+
       - name: Build extension
         run: cd extension && npx extension build --browser chrome,firefox --zip
 

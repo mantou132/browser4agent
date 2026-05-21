@@ -25,8 +25,12 @@ async fn main() -> Result<()> {
         native_message_setup::install_native_message_host(
             "browser4agent",
             "Browser for AI Agent",
-            Some("kaanjpgabaklepokebpdojepkccmbpng"),
-            Some("browser4agent@xianqiao.wang"),
+            &[
+                "kaanjpgabaklepokebpdojepkccmbpng",
+                "cddjomjjojijahpjngcfebapepdecaff",
+                "kgofhkkibnooojbchfppjblmajdcboib",
+            ],
+            &["browser4agent@xianqiao.wang"],
         )?;
 
         ai_tool_setup::setup_ai_tools()?;

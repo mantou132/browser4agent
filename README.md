@@ -1,56 +1,62 @@
 # Browser for AI Agent
 
-一个让 AI Agent 读取浏览器标签页内容、操控浏览器的浏览器扩展。
+[English](./README.md) | [中文](./README.zh-CN.md)
 
-**读取内容**：可以让 AI Agent 直接读取页面内容、Cookie、localStorage、页面错误等。
+A browser extension that lets AI agents read the contents of browser tabs and control the browser.
 
-**操控浏览器**：通过在扩展后台执行脚本，方便 AI Agent 自主管理标签页和窗口。
+**Read content**: AI agents can directly read page content, cookies, localStorage, page errors, and more.
 
-**在标签页中执行脚本**：在页面中执行脚本，简单的可以由 AI Agent 直接写，复杂任务应该通过页面标签工具让 AI Agent 直接调用，页面工具在下面有详细说明。
+**Control the browser**: by running scripts in the extension's background, AI agents can autonomously manage tabs and windows.
 
-> ⚠️ **安全警告**：
-> - 确保你的 AI Agent 环境不受提示词攻击，否则攻击者可以通过扩展读取你的浏览器数据。
-> - 确保页面工具来源可信，恶意工具可以在你的浏览器中执行任意脚本。
+**Run scripts in tabs**: execute scripts inside pages. Simple ones can be written by the AI agent on the fly; complex tasks should be exposed as page tools that the AI agent calls directly. Page tools are described in detail below.
 
-## 安装与使用
+> ⚠️ **Security warning**:
+> - Make sure your AI agent environment is not vulnerable to prompt injection — otherwise an attacker can read your browser data through the extension.
+> - Make sure page tools come from trusted sources; malicious tools can execute arbitrary scripts in your browser.
 
-### 1. 下载并安装浏览器扩展
+## Install and use
 
-将 `dist/xxx` 目录作为未打包扩展加载到浏览器中：
+### 1. Download and install the browser extension
 
-- Chrome/Edge：打开 `chrome://extensions`，开启「开发者模式」，点击「加载已解压的扩展程序」，选择 `dist/chrome` 目录
-- Firefox：打开 `about:debugging`，点击「临时加载附加组件」，选择 `dist/firefox` 目录中的 `manifest.json`
+Load the `dist/xxx` directory as an unpacked extension in your browser:
 
-> **注意：** 由于扩展需要监听本地端口，所以同时安装到多个浏览器并且都激活时只有一个工作。
+- Chrome/Edge: open `chrome://extensions`, enable "Developer mode", click "Load unpacked", and choose the `dist/chrome` directory
+- Firefox: open `about:debugging`, click "Load Temporary Add-on", and choose `manifest.json` inside the `dist/firefox` directory
 
-### 2. 下载可执行程序并初始化
+> **Note:** Because the extension needs to listen on a local port, only one browser will work if the extension is installed and active in multiple browsers at the same time.
 
-双击可执行程序，将自动注册 Native Messaging Host（写入清单文件，Windows 上还会写入注册表），使浏览器扩展能够找到并连接该程序。
-并自动在本机的 AI Agent 中配置 MCP，完成后按任意键关闭窗口。
-如果没有为你使用的 AI Agent 配置 MCP，请自行根据 AI Agent 文档配置，URL：`http://127.0.0.1:39271/mcp`
+### 2. Download the executable and initialize
 
-> **注意：** 初始化完成后，不能再移动或删除可执行文件，因为浏览器会根据注册的路径启动它。
+Double-click the executable. It will automatically register the Native Messaging Host (a manifest file is written, plus a registry entry on Windows) so the browser extension can locate and connect to it.
+It will also configure MCP for the AI agents installed on your machine. Press any key to close the window when finished.
+If your AI agent is not configured automatically, set it up manually per the AI agent's documentation. URL: `http://127.0.0.1:39271/mcp`
 
-### 页面工具
+> **Note:** After initialization, do not move or delete the executable — the browser launches it from the registered path.
 
-AI Agent 可以在标签页中调用工具，比如对页面执行特定操作。工具有两种来源：
+### Page tools
 
-- **订阅工具集**：在扩展设置中订阅工具集，根据标签页 URL 从工具集中筛选出可用工具。
-- **开发者提供工具**：页面开发者主动通过 [WebMCP][5] API 注册工具。
+AI agents can invoke tools inside a tab to perform specific operations on the page. Tools come from two sources:
+
+- **Subscribed toolsets**: subscribe to toolsets in the extension settings; available tools are filtered by the tab URL.
+- **Developer-provided tools**: page developers register tools via the [WebMCP][5] API.
 
 [5]: https://webmachinelearning.github.io/webmcp/
 
-## 支持的浏览器
+## Supported browsers
 
-- Base Chromium
+- Chromium-based browsers
 - Firefox
 
-## 从源码构建
+## Build from source
 
 ```bash
-# 浏览器扩展，构建产物位于 dist/xxx
+# Browser extension, output in dist/xxx
 npm run build
-# 浏览器扩展 Native Host
-# 构建产物位于 `target/release/browser4agent`（Windows 上为 `.exe`）
+# Native Host for the browser extension
+# Output at `target/release/browser4agent` (`.exe` on Windows)
 cargo build --release
 ```
+
+# Privacy policy
+
+Browser for AI Agent processes browser data only to provide its core MCP browser automation features. Depending on the user's request, the extension may access tab metadata, page content, cookies, localStorage, page errors, screenshots, and toolset configuration. Data is sent only to the local Native Messaging Host and the user-configured MCP client/AI agent. We do not sell user data, use it for advertising, or use it for unrelated purposes. Users should only connect trusted AI agents and install trusted toolsets.
