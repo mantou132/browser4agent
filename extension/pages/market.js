@@ -1,26 +1,31 @@
-import { initRequest } from '@mantou/gem/helper/request';
 import { Modal } from 'duoyun-ui/elements/modal';
 import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
 import { createForm } from 'duoyun-ui/patterns/form';
 import { loadToolset } from '../shared/loader.js';
+import { MARKET_API, marketApi } from '../shared/market-api.js';
 import { addToolset, initStore, toolStore } from '../shared/store.js';
+import { openExtensionPage } from '../shared/tabs.js';
 import { getToolsetId } from '../shared/toolsets.js';
 
-const MARKET_API =
-  import.meta.env.MODE === 'development'
-    ? 'http://127.0.0.1:8787'
-    : 'https://browser4agent-market.709922234.workers.dev';
-
-const marketApi = initRequest({ origin: MARKET_API });
+const style = css`
+  :scope {
+    display: block;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at 82% 10%, rgba(129, 140, 248, 0.2), transparent 32rem),
+      radial-gradient(circle at 12% 92%, rgba(139, 92, 246, 0.13), transparent 28rem),
+      linear-gradient(135deg, white 0%, #f8fafc 52%, #f5f3ff 100%);
+  }
+`;
 
 @customElement('agent-market-page')
 @connectStore(toolStore)
+@adoptedStyle(style)
 class AgentMarketPageElement extends GemElement {
   #state = createState({
     toolsets: [],
     loading: true,
-    error: '',
   });
 
   @mounted()
@@ -32,9 +37,9 @@ class AgentMarketPageElement extends GemElement {
   #fetchToolsets = async () => {
     try {
       const data = await marketApi.get('/api/toolsets');
-      this.#state({ toolsets: data, loading: false });
-    } catch (e) {
-      this.#state({ error: e instanceof Error ? e.message : String(e), loading: false });
+      this.#state({ toolsets: data });
+    } finally {
+      this.#state({ loading: false });
     }
   };
 
@@ -48,21 +53,9 @@ class AgentMarketPageElement extends GemElement {
     if (toolStore.toolsets.find((t) => t.id === id)) {
       return Toast.open('warning', '该工具集已订阅');
     }
-    try {
-      const { meta, tools } = await loadToolset(toolsetUrl);
-      await addToolset({
-        ...meta,
-        id,
-        url: toolsetUrl,
-        type: 'community',
-        enabled: true,
-        tools,
-      });
-      Toast.open('success', `已添加：${meta.name}（${tools.length} 个工具）`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      Toast.open('error', `加载失败：${msg}`);
-    }
+    const { meta, tools } = await loadToolset(toolsetUrl);
+    await addToolset({ ...meta, id, url: toolsetUrl, type: 'community', enabled: true, tools });
+    Toast.open('success', `已添加：${meta.name}（${tools.length} 个工具）`);
   };
 
   #publishToolset = async (defaults = {}) => {
@@ -88,60 +81,90 @@ class AgentMarketPageElement extends GemElement {
     });
     const meta = form.state.data;
 
-    try {
-      await marketApi.post('/api/toolsets', { ...meta, tools });
-      Toast.open('success', '工具集已发布');
-      this.#fetchToolsets();
-    } catch (e) {
-      Toast.open('error', `发布失败：${e instanceof Error ? e.message : String(e)}`);
-    }
+    await marketApi.post('/api/toolsets', { ...meta, tools });
+    Toast.open('success', '工具集已发布');
+    this.#fetchToolsets();
   };
 
   #onDrop = async (evt, handle = this.#publishToolset) => {
     const file = evt.detail[0];
     if (!file) return;
-    try {
-      const content = await file.text();
-      let toolset;
-      if (file.name.endsWith('.json')) {
-        const data = JSON.parse(content);
-        toolset = Array.isArray(data) ? { tools: data } : data;
-      } else {
-        toolset = await marketApi.post('/api/toolsets/parse', { content, filename: file.name });
-      }
-      handle(toolset);
-    } catch (e) {
-      Toast.open('error', `解析失败：${e instanceof Error ? e.message : String(e)}`);
+    const content = await file.text();
+    let toolset;
+    if (file.name.endsWith('.json')) {
+      const data = JSON.parse(content);
+      toolset = Array.isArray(data) ? { tools: data } : data;
+    } else {
+      toolset = await marketApi.post('/api/toolsets/parse', { content, filename: file.name });
     }
+    handle(toolset);
   };
 
   #onDropUpdate = (evt, target) => {
     this.#onDrop(evt, async (toolset) => {
-      try {
-        await marketApi.put(new URL(this.#getUrl(target.name)).pathname, toolset);
-        Toast.open('success', '工具集已更新');
-        this.#fetchToolsets();
-      } catch (e) {
-        Toast.open('error', `更新失败：${e instanceof Error ? e.message : String(e)}`);
-      }
+      await marketApi.put(new URL(this.#getUrl(target.name)).pathname, toolset);
+      Toast.open('success', '工具集已更新');
+      this.#fetchToolsets();
     });
   };
 
+  #openOptions = async () => {
+    await openExtensionPage('options/index.html');
+  };
+
+  #renderStat = (label, value, description) => html`
+    <div class="rounded-lg border border-border bg-white/80 p-5 shadow-sm shadow-slate-200/60 backdrop-blur">
+      <div class="text-2xl font-bold leading-8 text-highlight">${value}</div>
+      <div class="mt-1 text-sm font-semibold text-text">${label}</div>
+      <div class="mt-2 text-xs leading-5 text-describe">${description}</div>
+    </div>
+  `;
+
   @template()
   #content = () => {
-    const { toolsets, loading, error } = this.#state;
+    const { toolsets, loading } = this.#state;
     const subscribed = new Set(toolStore.toolsets.map((t) => t.id));
     const manifest = chrome.runtime.getManifest();
     const icon = chrome.runtime.getURL(manifest.icons['128']);
+    const totalTools = toolsets.reduce((count, t) => count + (t.toolsCount || 0), 0);
+    const totalInstalls = toolsets.reduce((count, t) => count + (t.installCount || 0), 0);
 
     return html`
-      <div class="max-w-220 mx-auto pt-8 pb-16 px-7">
-        <header class="flex items-center justify-between gap-3 mb-8">
-          <dy-space size="large">
-            <img src=${icon} class="w-12 h-12" />
-            <h1 class="text-2xl m-0 text-highlight">工具集市场</h1>
-          </dy-space>
-          <div class="flex items-center gap-2">
+      <main class="mx-auto flex w-full max-w-[64rem] flex-col gap-7 px-5 py-8 sm:px-7 sm:py-12">
+        <header class="overflow-hidden rounded-lg border border-border bg-white/90 shadow-2xl shadow-slate-200/70 backdrop-blur">
+          <div class="relative p-7 sm:flex sm:items-center sm:justify-between sm:gap-8 sm:p-8">
+            <div class="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-indigo-100/70 blur-3xl"></div>
+            <div class="relative flex min-w-0 items-start gap-5">
+              <img
+                src=${icon}
+                class="size-18 shrink-0 rounded-[1.125rem] shadow-xl shadow-indigo-500/20"
+                alt="Browser for AI Agent"
+              />
+              <div class="min-w-0">
+                <p class="m-0 text-sm font-semibold text-primary">Community Toolsets</p>
+                <h1 class="m-0 mt-2 text-3xl font-bold leading-tight text-highlight">工具集市场</h1>
+                <p class="mb-0 mt-3 max-w-2xl text-sm leading-6 text-describe sm:text-base">
+                  发现可直接订阅的社区工具集，也可以上传 JSON、JavaScript 或 TypeScript 文件发布自己的自动化能力。
+                </p>
+              </div>
+            </div>
+            <div class="relative mt-6 flex flex-wrap gap-3 sm:mt-0 sm:justify-end">
+              <dy-button @click=${this.#openOptions}>返回设置</dy-button>
+            </div>
+          </div>
+          <div class="grid gap-3 border-t border-border bg-slate-50/70 p-5 sm:grid-cols-3 sm:p-6">
+            ${this.#renderStat('市场工具集', loading ? '...' : toolsets.length, '当前市场已收录的工具集数量')}
+            ${this.#renderStat('覆盖工具', loading ? '...' : totalTools, '这些工具集提供的可调用工具总数')}
+            ${this.#renderStat('累计安装', loading ? '...' : totalInstalls, '社区工具集被订阅安装的次数')}
+          </div>
+        </header>
+
+        <section class="rounded-lg border border-border bg-white/90 p-5 shadow-xl shadow-slate-200/60 backdrop-blur sm:p-6">
+          <header class="mb-5 flex items-center justify-between gap-3">
+            <div>
+              <h2 class="m-0 text-lg font-bold text-highlight">社区工具集</h2>
+              <p class="mb-0 mt-1 text-xs leading-5 text-describe">拖拽新文件到已有卡片可更新对应工具集。</p>
+            </div>
             <dy-drop-area
               accept=".js,.ts,.json,application/json,text/javascript,text/typescript"
               @change=${this.#onDrop}
@@ -149,14 +172,8 @@ class AgentMarketPageElement extends GemElement {
             >
               <dy-button .icon=${icons.add} @click=${this.#publishToolset}>发布工具集</dy-button>
             </dy-drop-area>
-          </div>
-        </header>
-
-        <dy-divider></dy-divider>
-
-        <section class="mt-7">
+          </header>
           <dy-loading v-if=${loading} class="py-20"></dy-loading>
-          <dy-empty v-else-if=${!!error} class="py-20" text=${`加载失败：${error}`}></dy-empty>
           <dy-empty v-else-if=${!toolsets.length} class="py-20" text="暂无工具集"></dy-empty>
           <div v-else class="flex flex-col gap-5">
             ${toolsets.map(
@@ -164,27 +181,33 @@ class AgentMarketPageElement extends GemElement {
                 <dy-drop-area
                   accept=".js,.ts,.json,application/json,text/javascript,text/typescript"
                   @change=${(evt) => this.#onDropUpdate(evt, t)}
-                  class="flex items-center gap-3.5 py-3.5 px-4 border border-border rounded-xl"
+                  class="group flex items-center gap-4 rounded-lg border border-border bg-white/90 p-5 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-primary hover:shadow-lg hover:shadow-indigo-500/10"
                 >
-                  <dy-avatar size="large" square>${t.icon || '📦'}</dy-avatar>
+                  <span class="grid size-14 shrink-0 place-items-center rounded-lg bg-indigo-50 text-2xl shadow-inner shadow-indigo-100">
+                    ${t.icon || '📦'}
+                  </span>
                   <div class="flex-1 min-w-0">
-                    <strong class="text-sm text-highlight">${t.name}</strong>
-                    <div class="text-xs mt-1 text-describe">${t.description || ''}</div>
-                    <div class="text-xs mt-1 text-describe">
-                      ${t.toolsCount ?? '?'} 个工具 · 安装 ${t.installCount ?? 0} 次
+                    <div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                      <strong class="text-sm text-highlight">${t.name}</strong>
+                      <dy-tag small>${t.toolsCount ?? '?'} 个工具</dy-tag>
+                      <span class="text-xs text-describe">安装 ${t.installCount ?? 0} 次</span>
                     </div>
-                    <div class="text-xs mt-1 text-describe" v-if=${!!(t.author?.name || t.author?.email)}>
-                      作者：${t.author?.name || t.author?.email}
+                    <div class="mb-2 text-sm leading-6 text-describe">${t.description || '暂无描述'}</div>
+                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral">
+                      <span v-if=${!!(t.author?.name || t.author?.email)}>作者：${t.author?.name || t.author?.email}</span>
+                      <span>${this.#getUrl(t.name)}</span>
                     </div>
                   </div>
-                  <dy-button v-if=${!subscribed.has(getToolsetId(this.#getUrl(t.name)))} @click=${() => this.#subscribe(t)}>订阅</dy-button>
-                  <span v-else class="text-xs text-describe">已订阅</span>
+                  <div class="shrink-0">
+                    <dy-button type="reverse" v-if=${!subscribed.has(getToolsetId(this.#getUrl(t.name)))} @click=${() => this.#subscribe(t)}>订阅</dy-button>
+                    <span v-else class="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-primary">已订阅</span>
+                  </div>
                 </dy-drop-area>
               `,
             )}
           </div>
         </section>
-      </div>
+      </main>
     `;
   };
 }

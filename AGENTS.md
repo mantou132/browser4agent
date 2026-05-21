@@ -2,6 +2,57 @@
 
 1. 遇到没有明确的事情不要自由发挥，应该询问确定
 2. 始终根据目的考虑代码，如果有更简洁的方案应该提出来
+3. 项目结构或入口有变化时，要同步更新本文件，避免后续 Agent 重新摸索
+
+# 项目结构
+
+这个仓库有 2 部分：
+
+1. `src/` 是 Rust Native Host + MCP Server
+2. `extension/` 是浏览器扩展，基于 Gem + duoyun-ui
+
+## 运行链路
+
+1. 浏览器扩展在安装后打开 `extension/pages/welcome.html`
+2. 扩展后台在 `extension/background.js` 里连接本地 Native Host
+3. Rust 程序在 `src/main.rs` 里判断运行模式
+4. Setup 模式：
+  1. `src/native_message_setup.rs` 负责安装 Native Messaging Host
+  2. `src/ai_tool_setup.rs` 尝试给 Codex / Claude / VS Code / Cursor / Zed 配 MCP
+5. MCP 模式：
+  1. `src/native_host.rs` 负责本地消息循环和 MCP HTTP 服务
+  2. `src/mcp_server.rs` MCP 服务端
+
+## 目录职责
+
+- `extension/pages/`：欢迎页、市场页等独立页面
+- `extension/options/`：扩展设置页
+- `extension/popup/`：工具弹窗
+- `extension/shared/`：扩展侧公共状态、工具集加载、市场 API、帮助函数
+- `extension/public/toolsets/`：内置工具集
+- `extension/read-content-hacks/`：特定站点的读取补丁
+- `cf/`：扩展中的工具集市场后端
+- `toolset-parser/`：工具集解析器
+
+## 关键文件
+
+- `extension/extension.config.mjs`：扩展构建配置和 Gem SWC 插件
+- `extension/theme.js`：duoyun-ui 全局主题
+- `extension/tailwind.css`：扩展全局 Tailwind 主题和基础样式
+- `extension/tools.js`：MCP 工具实现
+
+## 常用命令
+
+- `pnpm --dir extension build`：构建扩展
+- `pnpm --dir extension dev`：开发模式
+- `pnpm lint`：格式化 JS/TS/HTML
+- `cargo build --release`：构建 Native Host
+
+## 维护要求
+
+- 改入口、目录职责、运行链路、构建方式时，优先同步更新这里
+- 如果新增页面、模块或目录，先判断是否需要补到“目录职责”和“关键文件”
+- 这里不写细节实现，只写后续 Agent 需要的导航信息
 
 # 前端开发
 

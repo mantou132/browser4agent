@@ -11,68 +11,168 @@ const EMPTY_TOOL = () => ({
 
 const style = css`
   :scope {
-    display: flex;
+    display: grid;
+    grid-template-columns: 16rem minmax(0, 1fr);
     gap: 1rem;
-    min-height: 18rem;
-    width: 38rem;
+    min-height: 30rem;
+    width: min(58rem, calc(100vw - 4rem));
+    padding: 0.25rem;
   }
   .list {
-    width: 33%;
     display: flex;
     flex-direction: column;
+    gap: 0.75rem;
+    overflow: hidden;
+    border: 1px solid ${theme.borderColor};
+    border-radius: 0.875rem;
+    background:
+      radial-gradient(circle at 85% 0%, color-mix(in srgb, ${theme.primaryColor} 14%, transparent), transparent 11rem),
+      color-mix(in srgb, ${theme.lightBackgroundColor} 72%, white);
+    padding: 0.875rem;
+  }
+  .list-header {
+    padding: 0.25rem 0.25rem 0.5rem;
+  }
+  .list-title {
+    margin: 0;
+    color: ${theme.highlightColor};
+    font-size: 1rem;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  .list-desc {
+    margin: 0.25rem 0 0;
+    color: ${theme.describeColor};
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+  .list-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
     gap: 0.5rem;
+    overflow: auto;
   }
   .list-item {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 0.75rem;
-    border-radius: 0.5rem;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
     cursor: pointer;
-    border: 1px solid transparent;
+    border: 1px solid ${theme.borderColor};
+    background: color-mix(in srgb, white 86%, transparent);
+    box-shadow: 0 0.25rem 0.875rem rgba(15, 23, 42, 0.04);
+    transition:
+      border-color 0.2s,
+      box-shadow 0.2s,
+      transform 0.2s,
+      background 0.2s;
   }
   .list-item:hover {
-    background: ${theme.hoverBackgroundColor};
+    border-color: ${theme.primaryColor};
+    background: white;
+    box-shadow: 0 0.625rem 1.5rem rgba(99, 102, 241, 0.12);
+    transform: translateY(-1px);
   }
   .list-item.selected {
-    background: color-mix(in srgb, ${theme.primaryColor} 10%, transparent);
+    background: color-mix(in srgb, ${theme.primaryColor} 9%, white);
     border-color: ${theme.primaryColor};
+    box-shadow: 0 0.625rem 1.5rem rgba(99, 102, 241, 0.14);
+  }
+  .list-item-index {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.625rem;
+    color: ${theme.primaryColor};
+    background: color-mix(in srgb, ${theme.primaryColor} 10%, white);
+    font-size: 0.8125rem;
+    font-weight: 700;
+  }
+  .list-item-main {
+    min-width: 0;
+    flex: 1;
   }
   .list-item-name {
+    display: block;
     font-size: 0.875rem;
+    font-weight: 600;
+    color: ${theme.highlightColor};
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    flex: 1;
+  }
+  .list-item-desc {
+    display: block;
+    margin-top: 0.125rem;
+    color: ${theme.describeColor};
+    font-size: 0.75rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .editor {
-    width: 66%;
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid ${theme.borderColor};
+    border-radius: 0.875rem;
+    background: color-mix(in srgb, white 92%, transparent);
+    box-shadow: 0 1rem 2.25rem rgba(15, 23, 42, 0.06);
   }
-  .param-header {
+  .editor-header {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    border-bottom: 1px solid ${theme.borderColor};
+    background: linear-gradient(135deg, white, color-mix(in srgb, ${theme.primaryColor} 6%, white));
+    padding: 1rem 1.125rem;
   }
-  .param-label {
-    font-size: 0.875rem;
+  .editor-title {
+    margin: 0;
+    color: ${theme.highlightColor};
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  .editor-desc {
+    margin: 0.25rem 0 0;
     color: ${theme.describeColor};
+    font-size: 0.75rem;
+    line-height: 1.5;
   }
-  .param-item {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.875rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
+  .editor-meta {
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: color-mix(in srgb, ${theme.primaryColor} 10%, white);
+    color: ${theme.primaryColor};
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.625rem;
   }
-  .param-item:hover {
-    background: ${theme.hoverBackgroundColor};
-  }
-  .param-item-name {
+  .form-wrap {
     flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 1rem 1.125rem 1.125rem;
+  }
+  .add-button {
+    flex-shrink: 0;
+  }
+  @media (max-width: 760px) {
+    :scope {
+      grid-template-columns: 1fr;
+      width: calc(100vw - 2rem);
+    }
+    .list {
+      max-height: 18rem;
+    }
   }
 `;
 
@@ -93,7 +193,8 @@ class MarketToolEditorElement extends GemElement {
     this.#state({ tools, selectedIndex: tools.length - 1 });
   };
 
-  #removeTool = (index) => {
+  #removeTool = (index, evt) => {
+    evt?.stopPropagation();
     const tools = this.#state.tools.filter((_, i) => i !== index);
     if (!tools.length) {
       this.#state({ tools: [EMPTY_TOOL()], selectedIndex: 0 });
@@ -158,30 +259,50 @@ class MarketToolEditorElement extends GemElement {
 
   render = () => {
     const { tools, selectedIndex } = this.#state;
+    const selectedTool = tools[selectedIndex];
 
     return html`
       <div class="list">
-        ${tools.map(
-          (t, i) => html`
-            <div
-              class="list-item ${i === selectedIndex ? 'selected' : ''}"
-              @click=${() => this.#selectTool(i)}
-            >
-              <span class="list-item-name">${t.name || '(未命名)'}</span>
-              <dy-button square color="cancel" .icon=${icons.delete} @click=${() => this.#removeTool(i)}></dy-button>
-            </div>
-          `,
-        )}
-        <dy-button type="reverse" .icon=${icons.add} @click=${this.#addTool}>添加工具</dy-button>
+        <div class="list-header">
+          <h3 class="list-title">工具列表</h3>
+          <p class="list-desc">共 ${tools.length} 个工具，选择左侧项目编辑详细配置。</p>
+        </div>
+        <div class="list-body">
+          ${tools.map(
+            (t, i) => html`
+              <div
+                class="list-item ${i === selectedIndex ? 'selected' : ''}"
+                @click=${() => this.#selectTool(i)}
+              >
+                <span class="list-item-index">${i + 1}</span>
+                <span class="list-item-main">
+                  <span class="list-item-name">${t.name || '未命名工具'}</span>
+                  <span class="list-item-desc">${t.pattern || '待设置 URL 匹配模式'}</span>
+                </span>
+                <dy-button square color="cancel" .icon=${icons.delete} @click=${(evt) => this.#removeTool(i, evt)}></dy-button>
+              </div>
+            `,
+          )}
+        </div>
+        <dy-button class="add-button" type="reverse" .icon=${icons.add} @click=${this.#addTool}>添加工具</dy-button>
       </div>
       <div class="editor">
-        <dy-pat-form
-          v-if=${!!tools[selectedIndex]}
-          ${this.#formRef}
-          @change=${this.#onChange}
-          .formItems=${this.#formItems}
-          .data=${tools[selectedIndex]}
-        ></dy-pat-form>
+        <div class="editor-header">
+          <div>
+            <h3 class="editor-title">${selectedTool?.name || '配置新工具'}</h3>
+            <p class="editor-desc">${selectedTool?.description || '填写基础信息、参数和执行代码后即可发布。'}</p>
+          </div>
+          <span class="editor-meta">${selectedTool?.properties?.length || 0} 个参数</span>
+        </div>
+        <div class="form-wrap">
+          <dy-pat-form
+            v-if=${!!selectedTool}
+            ${this.#formRef}
+            @change=${this.#onChange}
+            .formItems=${this.#formItems}
+            .data=${selectedTool}
+          ></dy-pat-form>
+        </div>
       </div>
     `;
   };

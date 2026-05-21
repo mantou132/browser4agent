@@ -12,11 +12,16 @@ export function isToolEnabled(toolStates, toolsetId, toolName) {
   return toolStates[toolKey(toolsetId, toolName)] !== false;
 }
 
+export function isToolsetLiked(likedToolsets, toolsetId) {
+  return likedToolsets[toolsetId] === true;
+}
+
 export async function getToolConfig() {
-  const data = await chrome.storage.sync.get(['toolsets', 'toolStates']);
+  const data = await chrome.storage.sync.get(['toolsets', 'toolStates', 'likedToolsets']);
   return {
     toolsets: Array.isArray(data.toolsets) ? data.toolsets : [],
     toolStates: data.toolStates && typeof data.toolStates === 'object' ? data.toolStates : {},
+    likedToolsets: data.likedToolsets && typeof data.likedToolsets === 'object' ? data.likedToolsets : {},
   };
 }
 

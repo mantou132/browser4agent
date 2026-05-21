@@ -1,14 +1,28 @@
 import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
+import { theme } from 'duoyun-ui/lib/theme';
 import { createForm } from 'duoyun-ui/patterns/form';
 import { loadToolset } from '../shared/loader.js';
 import { addToolset, initStore, toolStore } from '../shared/store.js';
+import { openExtensionPage } from '../shared/tabs.js';
 import { getToolsetId } from '../shared/toolsets.js';
 
 const toolsets = require.context('../public/toolsets', false, /\.json$/);
 
+const style = css`
+  :scope {
+    display: block;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at 85% 12%, rgba(129, 140, 248, 0.2), transparent 32rem),
+      radial-gradient(circle at 8% 88%, rgba(139, 92, 246, 0.12), transparent 28rem),
+      linear-gradient(135deg, white 0%, #f8fafc 52%, #f5f3ff 100%);
+  }
+`;
+
 @customElement('agent-options-page')
 @connectStore(toolStore)
+@adoptedStyle(style)
 class AgentOptionsPageElement extends GemElement {
   #state = createState({
     recommended: toolsets.keys().map((key) => {
@@ -34,22 +48,25 @@ class AgentOptionsPageElement extends GemElement {
   #openAdd = async () => {
     const form = await createForm({
       type: 'modal',
-      header: '添加工具集',
+      style: { width: '30em' },
+      header: '订阅工具集',
       formItems: [
         {
-          label: '工具集 JSON URL',
+          label: '工具集 URL',
           type: 'text',
           field: 'url',
-          placeholder: 'https://example.com/toolset.json',
+          placeholder: 'https://example.com/toolset.json 或 toolset.ts',
           autofocus: true,
           required: true,
         },
         {
           type: 'slot',
-          slot: html`<small class="text-describe">
-            JSON 中的每个工具包含 <code>registerTool</code> 字段，并使用 <code>pattern</code>
-            匹配页面。
-          </small>`,
+          slot: html`
+            <small style=${styleMap({ color: theme.describeColor })}>
+              支持 JSON、JavaScript、TypeScript 文件。JS/TS 中每个导出函数为一个工具，使用
+              <code>@pattern</code> 等 JSDoc 标注元数据。
+            </small>
+          `,
         },
       ],
     });
@@ -65,21 +82,13 @@ class AgentOptionsPageElement extends GemElement {
     if (toolStore.toolsets.find((t) => t.id === id)) {
       return Toast.open('warning', '该工具集已订阅');
     }
-    try {
-      const { meta, tools } = await loadToolset(url);
-      await addToolset({
-        ...meta,
-        id,
-        url,
-        type: new URL(url).protocol.includes('extension') ? 'official' : 'community',
-        enabled: true,
-        tools,
-      });
-      Toast.open('success', `已添加：${meta.name}（${tools.length} 个工具）`);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      Toast.open('error', `加载失败：${msg}`);
-    }
+    const { meta, tools } = await loadToolset(url);
+    await addToolset({ ...meta, id, url, type: 'custom', enabled: true, tools });
+    Toast.open('success', `已添加：${meta.name}（${tools.length} 个工具）`);
+  };
+
+  #openMarket = async () => {
+    await openExtensionPage('pages/market.html');
   };
 
   @template()
@@ -88,26 +97,39 @@ class AgentOptionsPageElement extends GemElement {
     const manifest = chrome.runtime.getManifest();
     const icon = chrome.runtime.getURL(manifest.icons['128']);
     return html`
-      <div class="max-w-220 mx-auto pt-8 pb-16 px-7">
-        <header class="gap-3.5 mb-8">
-          <dy-space size="large">
-            <img src=${icon} class="w-12 h-12" />
-            <h1 class="text-2xl m-0 text-highlight">扩展设置</h1>
-          </dy-space>
-          <p class="mt-1 mb-0 text-describe text-sm">订阅、管理和发现工具集</p>
+      <main class="mx-auto flex w-full max-w-[64rem] flex-col gap-7 px-5 py-8 sm:px-7 sm:py-12">
+        <header class="overflow-hidden rounded-lg border border-border bg-white/90 shadow-2xl shadow-slate-200/70 backdrop-blur">
+          <div class="relative p-7 sm:flex sm:items-center sm:justify-between sm:gap-8 sm:p-8">
+            <div class="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-indigo-100/70 blur-3xl"></div>
+            <div class="relative flex min-w-0 items-start gap-5">
+              <img
+                src=${icon}
+                class="size-18 shrink-0 rounded-[1.125rem] shadow-xl shadow-indigo-500/20"
+                alt="Browser for AI Agent"
+              />
+              <div class="min-w-0">
+                <p class="m-0 text-sm font-semibold text-primary">Browser for AI Agent</p>
+                <h1 class="m-0 mt-2 text-3xl font-bold leading-tight text-highlight">扩展设置</h1>
+                <p class="mb-0 mt-3 max-w-2xl text-sm leading-6 text-describe sm:text-base">
+                  管理 AI Agent 可调用的工具集，启用需要的能力，并从社区市场发现更多自动化方案。
+                </p>
+              </div>
+            </div>
+            <div class="relative mt-6 flex flex-wrap gap-3 sm:mt-0 sm:justify-end">
+              <dy-button @click=${this.#openMarket}>打开市场</dy-button>
+            </div>
+          </div>
         </header>
 
-        <dy-divider></dy-divider>
-
-        <section class="mt-7">
-          <header class="flex items-center justify-between gap-3 mb-5">
+        <section class="rounded-lg border border-border bg-white/90 p-5 shadow-xl shadow-slate-200/60 backdrop-blur sm:p-6">
+          <header class="mb-5 flex items-center justify-between gap-3">
             <div>
-              <h2 class="m-0 text-base text-highlight">工具集</h2>
+              <h2 class="m-0 text-lg font-bold text-highlight">我的工具集</h2>
               <p class="mt-1 mb-0 text-describe text-xs">
-                工具集是一个 JSON 文件，里面的每个工具包含 name、description、execute、inputSchema、pattern 等字段
+                工具集可以是 JSON、JS 或 TS 文件；每个工具包含 name、description、execute、inputSchema、pattern 等字段
               </p>
             </div>
-            <dy-button @click=${this.#openAdd}>添加工具集</dy-button>
+            <dy-button @click=${this.#openAdd}>订阅 URL</dy-button>
           </header>
           <div class="flex flex-col gap-5">
             ${
@@ -118,29 +140,29 @@ class AgentOptionsPageElement extends GemElement {
           </div>
         </section>
 
-        <section class="mt-7">
-          <header class="flex items-center justify-between gap-3 mb-5">
+        <section class="rounded-lg border border-border bg-white/90 p-5 shadow-xl shadow-slate-200/60 backdrop-blur sm:p-6">
+          <header class="mb-5 flex items-center justify-between gap-3">
             <div>
-              <h2 class="m-0 text-base text-highlight">推荐工具集</h2>
-              <p class="mt-1 text-describe text-xs">来自社区的精选工具集。</p>
+              <h2 class="m-0 text-lg font-bold text-highlight">推荐工具集</h2>
+              <p class="mt-1 mb-0 text-describe text-xs">从官方示例开始，也可以前往市场探索社区工具集。</p>
             </div>
           </header>
           <div class="flex flex-col gap-5">
             ${this.#recommended.map((t) => html`<options-toolset-card .recommended=${true} @subscription=${() => this.#addByUrl(t.url)} .toolset=${t}></options-toolset-card>`)}
             <div
-              class="flex items-center gap-3.5 py-3.5 px-4 border border-dashed border-border rounded-xl text-describe cursor-pointer hover:border-primary hover:text-primary"
-              @click=${() => chrome.tabs.create({ url: chrome.runtime.getURL('pages/market.html') })}
+              class="group flex cursor-pointer items-center gap-4 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/60 p-5 text-describe transition hover:-translate-y-0.5 hover:border-primary hover:bg-indigo-50 hover:text-primary hover:shadow-lg hover:shadow-indigo-500/10"
+              @click=${this.#openMarket}
             >
-              <dy-avatar size="large" square>🧭</dy-avatar>
+              <span class="grid size-14 shrink-0 place-items-center rounded-lg bg-white text-2xl shadow-sm">🧭</span>
               <div class="flex-1 min-w-0">
-                <div class="text-sm mb-2">探索更多工具集</div>
-                <div class="text-xs">访问社区工具集市场，发现更多工具</div>
+                <div class="mb-1 text-sm font-semibold text-highlight group-hover:text-primary">探索更多工具集</div>
+                <div class="text-xs leading-5">访问社区工具集市场，发现更多网页自动化能力</div>
               </div>
               <dy-use .element=${icons.right}></dy-use>
             </div>
           </div>
         </section>
-      </div>
+      </main>
     `;
   };
 }

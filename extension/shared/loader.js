@@ -1,3 +1,5 @@
+import { marketApi } from './market-api.js';
+
 function serializeTool(t) {
   if (!t || typeof t !== 'object') throw new Error('Invalid tool object');
   if (!t.name || typeof t.name !== 'string') throw new Error('Tool requires a string `name`');
@@ -28,10 +30,26 @@ function serializeToolset(data) {
   };
 }
 
+function isJsTsUrl(url) {
+  return /\.(?:[cm]?[jt]s)$/i.test(new URL(url).pathname);
+}
+
+function isJsTsContentType(contentType) {
+  return /javascript|typescript/i.test(contentType);
+}
+
+async function parseToolsetContent(content) {
+  return marketApi.post('/api/toolsets/parse', { content, filename: 'toolset.ts' });
+}
+
 export async function loadToolset(url) {
   const res = await fetch(url, { credentials: 'omit' });
   if (!res.ok) throw new Error(`工具集加载失败: HTTP ${res.status}`);
-  const data = await res.json();
+
+  const contentType = res.headers.get('content-type') || '';
+  const useParser = isJsTsUrl(url) || isJsTsContentType(contentType);
+  const data = useParser ? await parseToolsetContent(await res.text()) : await res.json();
+
   if (!Array.isArray(data.tools) || !data.tools.length) throw new Error('该工具集没有声明任何工具');
   if (!data.name) data.name = new URL(url).hostname;
   return { meta: serializeToolset(data), tools: data.tools.map(serializeTool) };

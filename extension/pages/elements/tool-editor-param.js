@@ -8,10 +8,14 @@ const style = css`
   :scope {
     display: grid;
     grid-template-columns: 1fr 8rem auto;
-    gap: 0.5rem;
+    gap: 0.625rem;
     align-items: center;
-    margin-block-end: 1.8em;
+    margin-block-end: 1rem;
     width: 100%;
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    background: color-mix(in srgb, var(--color-bg-light) 64%, white);
+    padding: 0.75rem;
   }
   .desc {
     grid-column: 1 / -1;
@@ -19,9 +23,11 @@ const style = css`
   .required {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: 0.375rem;
+    justify-content: flex-end;
     font-size: 0.75rem;
     white-space: nowrap;
+    color: var(--color-describe);
   }
   * {
     inline-size: auto;

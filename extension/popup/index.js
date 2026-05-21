@@ -1,4 +1,5 @@
 import { icons } from 'duoyun-ui/lib/icons';
+import { openExtensionPage } from '@/shared/tabs.js';
 import { initStore, isToolEnabled, setToolEnabled, toolStore } from '../shared/store.js';
 
 @customElement('agent-popup-page')
@@ -15,7 +16,7 @@ class AgentPopupPageElement extends GemElement {
   };
 
   #openOptions = () => {
-    chrome.runtime.openOptionsPage();
+    openExtensionPage('options/index.html');
     window.close();
   };
 

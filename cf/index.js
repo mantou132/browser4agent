@@ -6,6 +6,7 @@ const normalizeToolset = (toolset) =>
   toolset && {
     ...toolset,
     installCount: Number(toolset.installCount) || 0,
+    likeCount: Number(toolset.likeCount) || 0,
     author: {
       name: toolset.author?.name || '',
       email: toolset.author?.email || '',
@@ -17,6 +18,7 @@ const serializeToolsetSummary = (toolset) => ({
   tools: undefined,
   toolsCount: toolset.tools?.length ?? 0,
   installCount: toolset.installCount ?? 0,
+  likeCount: toolset.likeCount ?? 0,
 });
 
 const isSameAuthor = (a, b) => a.name === b.name && a.email === b.email;
@@ -51,6 +53,24 @@ const router = [
       if (err instanceof ValidationError) return Response.json({ error: err.message }, { status: 400 });
       return Response.json({ error: 'Failed to parse content' }, { status: 400 });
     }
+  }),
+
+  route('POST', '/api/toolsets/:encodeName/like', async (_req, env, params) => {
+    const name = decodeURIComponent(params.encodeName);
+    const existing = normalizeToolset(await env.MARKET_KV.get(name, 'json'));
+    if (!existing) return Response.json({ error: 'not found' }, { status: 404 });
+    const liked = { ...existing, likeCount: existing.likeCount + 1 };
+    await env.MARKET_KV.put(name, JSON.stringify(liked));
+    return Response.json({ likeCount: liked.likeCount });
+  }),
+
+  route('DELETE', '/api/toolsets/:encodeName/like', async (_req, env, params) => {
+    const name = decodeURIComponent(params.encodeName);
+    const existing = normalizeToolset(await env.MARKET_KV.get(name, 'json'));
+    if (!existing) return Response.json({ error: 'not found' }, { status: 404 });
+    const unliked = { ...existing, likeCount: Math.max(0, existing.likeCount - 1) };
+    await env.MARKET_KV.put(name, JSON.stringify(unliked));
+    return Response.json({ likeCount: unliked.likeCount });
   }),
 
   route('GET', '/api/toolsets/:encodeName', async (_req, env, params) => {

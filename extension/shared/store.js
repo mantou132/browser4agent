@@ -2,11 +2,13 @@
 // Components consume it via @connectStore(toolStore).
 
 import { createStore } from '@mantou/gem';
-import { getToolConfig, isToolEnabled as isToolEnabledFromState, toolKey } from './toolsets.js';
+import { marketApi } from './market-api.js';
+import { getToolConfig, isToolEnabled as isToolEnabledFromState, isToolsetLiked, toolKey } from './toolsets.js';
 
 export const toolStore = createStore({
   toolsets: [],
   toolStates: {},
+  likedToolsets: {},
 });
 
 export async function initStore() {
@@ -15,6 +17,7 @@ export async function initStore() {
     const patch = {};
     if (changes.toolsets) patch.toolsets = changes.toolsets.newValue ?? [];
     if (changes.toolStates) patch.toolStates = changes.toolStates.newValue ?? {};
+    if (changes.likedToolsets) patch.likedToolsets = changes.likedToolsets.newValue ?? {};
     if (Object.keys(patch).length) toolStore(patch);
   });
   toolStore(await getToolConfig());
@@ -54,4 +57,31 @@ export function isToolEnabled(toolsetId, toolName) {
 export async function setToolEnabled(toolsetId, toolName, enabled) {
   const next = { ...toolStore.toolStates, [toolKey(toolsetId, toolName)]: enabled };
   await persist({ toolStates: next });
+}
+
+export async function likeToolset(toolsetId, name) {
+  if (isToolsetLiked(toolStore.likedToolsets, toolsetId)) return;
+  const nextLiked = { ...toolStore.likedToolsets, [toolsetId]: true };
+  await persist({ likedToolsets: nextLiked });
+  try {
+    await marketApi.post(`/api/toolsets/${encodeURIComponent(name)}/like`);
+  } catch (e) {
+    const reverted = { ...toolStore.likedToolsets };
+    delete reverted[toolsetId];
+    await persist({ likedToolsets: reverted });
+    throw e;
+  }
+}
+
+export async function unlikeToolset(toolsetId, name) {
+  if (!isToolsetLiked(toolStore.likedToolsets, toolsetId)) return;
+  const reverted = { ...toolStore.likedToolsets };
+  delete reverted[toolsetId];
+  await persist({ likedToolsets: reverted });
+  try {
+    await marketApi.del(`/api/toolsets/${encodeURIComponent(name)}/like`);
+  } catch (e) {
+    await persist({ likedToolsets: { ...toolStore.likedToolsets, [toolsetId]: true } });
+    throw e;
+  }
 }
