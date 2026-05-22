@@ -2,6 +2,7 @@ import { Modal } from 'duoyun-ui/elements/modal';
 import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
 import { createForm } from 'duoyun-ui/patterns/form';
+import { visible } from '@/shared/decorators.js';
 import { setPageI18n, t } from '../shared/i18n.js';
 import { loadToolset } from '../shared/loader.js';
 import { MARKET_API, marketApi } from '../shared/market-api.js';
@@ -32,6 +33,7 @@ class AgentMarketPageElement extends GemElement {
   });
 
   @mounted()
+  @visible()
   #boot = async () => {
     initStore();
     this.#fetchToolsets();
@@ -56,9 +58,19 @@ class AgentMarketPageElement extends GemElement {
     if (toolStore.toolsets.find((item) => item.id === id)) {
       return Toast.open('warning', t('toolsetAlreadySubscribed'));
     }
-    const { meta, tools } = await loadToolset(toolsetUrl);
+    const { meta, tools } = await loadToolset(`${toolsetUrl}/install`);
     await addToolset({ ...meta, id, url: toolsetUrl, type: 'community', enabled: true, tools });
     Toast.open('success', t('addedToolset', [meta.name, tools.length]));
+  };
+
+  #viewToolset = async (toolset) => {
+    const { meta, tools } = await loadToolset(this.#getUrl(toolset.name));
+    await Modal.open({
+      header: `${t('viewToolset')}: ${meta.name || toolset.name}`,
+      body: html`<market-tool-editor .initialTools=${tools}></market-tool-editor>`,
+      cancelText: t('close'),
+      disableDefaultOKBtn: true,
+    });
   };
 
   #publishToolset = async (defaults = {}) => {
@@ -193,7 +205,7 @@ class AgentMarketPageElement extends GemElement {
                   </span>
                   <div class="flex-1 min-w-0">
                     <div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-                      <strong class="text-sm text-highlight">${toolset.name}</strong>
+                      <dy-action-text class="font-bold text-sm text-highlight" @click=${() => this.#viewToolset(toolset)}>${toolset.name}</dy-action-text>
                       <dy-tag small>${t('toolCount', toolset.toolsCount ?? '?')}</dy-tag>
                       <span class="text-xs text-describe">${t('installCount', toolset.installCount ?? 0)}</span>
                     </div>

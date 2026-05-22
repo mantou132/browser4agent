@@ -25,7 +25,7 @@ export async function initStore() {
 
 async function persist(patch) {
   toolStore(patch);
-  await chrome.storage.sync.set(patch);
+  await chrome.storage.local.set(patch);
 }
 
 export async function addToolset(toolset) {

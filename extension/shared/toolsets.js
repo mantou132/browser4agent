@@ -17,7 +17,7 @@ export function isToolsetLiked(likedToolsets, toolsetId) {
 }
 
 export async function getToolConfig() {
-  const data = await chrome.storage.sync.get(['toolsets', 'toolStates', 'likedToolsets']);
+  const data = await chrome.storage.local.get(['toolsets', 'toolStates', 'likedToolsets']);
   return {
     toolsets: Array.isArray(data.toolsets) ? data.toolsets : [],
     toolStates: data.toolStates && typeof data.toolStates === 'object' ? data.toolStates : {},

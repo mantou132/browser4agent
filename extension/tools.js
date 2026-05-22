@@ -156,8 +156,12 @@ export async function executeScript(tabId, funcStr, args) {
         const blobUrl = URL.createObjectURL(blob);
         const script = document.createElement('script');
         if (nonce) script.setAttribute('nonce', nonce);
-        script.src = blobUrl;
         script.onerror = reject;
+        try {
+          script.textContent = window.__firstPolicy.createScript(blobContent);
+        } catch {
+          script.textContent = window.__browser4agentPolicy.createScript(blobContent);
+        }
         document.head.append(script);
         try {
           return await promise;

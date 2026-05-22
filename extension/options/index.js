@@ -2,6 +2,7 @@ import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
 import { theme } from 'duoyun-ui/lib/theme';
 import { createForm } from 'duoyun-ui/patterns/form';
+import { visible } from '@/shared/decorators.js';
 import { setPageI18n, t } from '../shared/i18n.js';
 import { loadToolset } from '../shared/loader.js';
 import { addToolset, initStore, toolStore } from '../shared/store.js';
@@ -44,6 +45,7 @@ class AgentOptionsPageElement extends GemElement {
   }
 
   @mounted()
+  @visible()
   #boot = () => {
     initStore();
   };

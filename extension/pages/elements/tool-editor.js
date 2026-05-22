@@ -15,8 +15,7 @@ const style = css`
     display: grid;
     grid-template-columns: 16rem minmax(0, 1fr);
     gap: 1rem;
-    min-height: 30rem;
-    width: min(58rem, calc(100vw - 4rem));
+    height: 60vh;
     padding: 0.25rem;
   }
   .list {
@@ -54,6 +53,8 @@ const style = css`
     flex-direction: column;
     gap: 0.5rem;
     overflow: auto;
+    padding-inline: 0.875rem;
+    margin-inline: -0.875rem;
   }
   .list-item {
     display: flex;
@@ -169,7 +170,6 @@ const style = css`
   @media (max-width: 760px) {
     :scope {
       grid-template-columns: 1fr;
-      width: calc(100vw - 2rem);
     }
     .list {
       max-height: 18rem;

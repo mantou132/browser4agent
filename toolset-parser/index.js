@@ -1,5 +1,5 @@
 import ts from 'typescript';
-import { extractModuleInfo, findTagText, getCommentText, getToolDoc } from './comments.js';
+import { extractModuleInfo, findTagText, getCommentText, getToolDoc, unescapePattern } from './comments.js';
 import { assertNoParseErrors, ValidationError } from './error.js';
 import { buildExecuteString } from './execute.js';
 import { buildInputSchema } from './schema.js';
@@ -36,7 +36,7 @@ function extractTool(sourceFile, node, scriptKind) {
   return {
     name: node.name.text,
     description: getCommentText(doc) || findTagText(doc, 'description'),
-    pattern: findTagText(doc, 'pattern'),
+    pattern: unescapePattern(findTagText(doc, 'pattern')),
     inputSchema: buildInputSchema(doc),
     execute: buildExecuteString(node, sourceFile, scriptKind),
   };

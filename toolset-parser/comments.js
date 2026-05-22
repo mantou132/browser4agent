@@ -27,6 +27,11 @@ export function cleanComment(comment) {
   return (ts.getTextOfJSDocComment(comment) || '').replace(/^\s*-\s*/, '').trim();
 }
 
+// Unescape @pattern in JSDoc: \/ -> / (avoids closing the surrounding block comment).
+export function unescapePattern(pattern) {
+  return (pattern || '').replace(/\\\//g, '/');
+}
+
 function getJSDocs(node) {
   return node.jsDoc ? [...node.jsDoc] : [];
 }

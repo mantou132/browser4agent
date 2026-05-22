@@ -14,26 +14,7 @@ A browser extension that lets AI agents read the contents of browser tabs and co
 > - Make sure your AI agent environment is not vulnerable to prompt injection — otherwise an attacker can read your browser data through the extension.
 > - Make sure page tools come from trusted sources; malicious tools can execute arbitrary scripts in your browser.
 
-## Install and use
-
-### 1. Download and install the browser extension
-
-Load the `dist/xxx` directory as an unpacked extension in your browser:
-
-- Chrome/Edge: open `chrome://extensions`, enable "Developer mode", click "Load unpacked", and choose the `dist/chrome` directory
-- Firefox: open `about:debugging`, click "Load Temporary Add-on", and choose `manifest.json` inside the `dist/firefox` directory
-
-> **Note:** Because the extension needs to listen on a local port, only one browser will work if the extension is installed and active in multiple browsers at the same time.
-
-### 2. Download the executable and initialize
-
-Double-click the executable. It will automatically register the Native Messaging Host (a manifest file is written, plus a registry entry on Windows) so the browser extension can locate and connect to it.
-It will also configure MCP for the AI agents installed on your machine. Press any key to close the window when finished.
-If your AI agent is not configured automatically, set it up manually per the AI agent's documentation. URL: `http://127.0.0.1:39271/mcp`
-
-> **Note:** After initialization, do not move or delete the executable — the browser launches it from the registered path.
-
-### Page tools
+## Page tools
 
 AI agents can invoke tools inside a tab to perform specific operations on the page. Tools come from two sources:
 
@@ -42,20 +23,21 @@ AI agents can invoke tools inside a tab to perform specific operations on the pa
 
 [5]: https://webmachinelearning.github.io/webmcp/
 
-## Supported browsers
-
-- Chromium-based browsers
-- Firefox
-
 ## Build from source
 
 ```bash
-# Browser extension, output in dist/xxx
-npm run build
+# Browser extension, output in extension/dist/<browser>
+pnpm -C extension run build --browser=chrome
 # Native Host for the browser extension
-# Output at `target/release/browser4agent` (`.exe` on Windows)
-cargo build --release
+cargo run
 ```
+
+Load the `extension/dist/xxx` directory as an unpacked extension in your browser:
+
+- Chrome/Edge: open `chrome://extensions`, enable "Developer mode", click "Load unpacked", and choose the `dist/chrome` directory
+- Firefox: open `about:debugging`, click "Load Temporary Add-on", and choose `manifest.json` inside the `dist/firefox` directory
+
+> **Note:** Because the extension needs to listen on a local port, only one browser will work if the extension is installed and active in multiple browsers at the same time.
 
 # Privacy policy
 

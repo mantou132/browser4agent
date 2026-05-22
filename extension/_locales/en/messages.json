@@ -43,6 +43,9 @@
   "browserExtensionTitle": {
     "message": "Browser Extension"
   },
+  "close": {
+    "message": "Close"
+  },
   "community": {
     "message": "Community"
   },
@@ -393,6 +396,9 @@
   },
   "viewDocs": {
     "message": "View Docs"
+  },
+  "viewToolset": {
+    "message": "View Toolset"
   },
   "welcomeSubtitle": {
     "message": "Let AI Agents safely read and control the browser, automating your web workflows."

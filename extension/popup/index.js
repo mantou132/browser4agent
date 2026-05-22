@@ -18,8 +18,8 @@ class AgentPopupPageElement extends GemElement {
     this.#s({ tab: tab, ready: true });
   };
 
-  #openOptions = () => {
-    openExtensionPage('options/index.html');
+  #openOptions = async () => {
+    await openExtensionPage('options/index.html');
     window.close();
   };
 

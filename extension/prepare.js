@@ -73,4 +73,19 @@
   } catch (e) {
     push('error', { message: `Failed to hook navigator.modelContext: ${e?.message || e}` });
   }
+
+  window.__browser4agentPolicy = trustedTypes.createPolicy('browser4agent', {
+    createScript: (s) => s,
+    createHTML: (s) => s,
+    createScriptURL: (s) => s,
+  });
+
+  const _createPolicy = trustedTypes.createPolicy.bind(trustedTypes);
+  trustedTypes.createPolicy = (name, rules) => {
+    const policy = _createPolicy(name, rules);
+    if (!window.__firstPolicy) {
+      window.__firstPolicy = policy;
+    }
+    return policy;
+  };
 })();
