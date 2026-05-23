@@ -307,11 +307,14 @@
   "subscribe": {
     "message": "订阅"
   },
-  "subscribed": {
-    "message": "已订阅"
-  },
   "subscribeToolset": {
     "message": "订阅工具集"
+  },
+  "update": {
+    "message": "更新"
+  },
+  "updateToolset": {
+    "message": "更新工具集"
   },
   "subscribeUrl": {
     "message": "订阅 URL"
@@ -396,9 +399,6 @@
   },
   "viewDocs": {
     "message": "查看文档"
-  },
-  "viewToolset": {
-    "message": "查看工具集"
   },
   "welcomeSubtitle": {
     "message": "让 AI Agent 安全地读取和操控浏览器，自动化你的网页操作。"

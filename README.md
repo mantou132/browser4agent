@@ -28,7 +28,7 @@ AI agents can invoke tools inside a tab to perform specific operations on the pa
 Install the browser extension; the welcome page that opens afterwards walks you through downloading and registering the Native Host, plus optional MCP / Skills setup for your AI agent.
 
 - **Chrome Web Store / Firefox Add-ons**: pending review.
-- **From the latest release**: download `extension-chrome.zip` or `extension-firefox.zip` from the [latest release](https://github.com/mantou132/browser-data-mcp/releases/latest), unzip it, then load it via "Load an unpacked extension" below.
+- **From the latest release**: download `extension-chrome.zip` or `extension-firefox.zip` from the [latest release](https://github.com/mantou132/browser4agent/releases/latest), unzip it, then load it via "Load an unpacked extension" below.
 
 ### Load an unpacked extension
 

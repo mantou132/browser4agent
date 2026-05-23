@@ -28,7 +28,7 @@ AI Agent 可以在标签页中调用工具，比如对页面执行特定操作�
 安装浏览器扩展即可；扩展安装完成后会自动打开欢迎页，按页面指引下载并注册 Native Host，并可选地为你检测到的 AI Agent 配置 MCP 或安装 Skills。
 
 - **Chrome 应用商店 / Firefox Add-ons**：审核中。
-- **从最新 Release 下载**：在 [latest release](https://github.com/mantou132/browser-data-mcp/releases/latest) 下载 `extension-chrome.zip` 或 `extension-firefox.zip`，解压后按下文「加载未打包扩展」加载。
+- **从最新 Release 下载**：在 [latest release](https://github.com/mantou132/browser4agent/releases/latest) 下载 `extension-chrome.zip` 或 `extension-firefox.zip`，解压后按下文「加载未打包扩展」加载。
 
 ### 加载未打包扩展
 

@@ -307,11 +307,14 @@
   "subscribe": {
     "message": "Subscribe"
   },
-  "subscribed": {
-    "message": "Subscribed"
-  },
   "subscribeToolset": {
     "message": "Subscribe Toolset"
+  },
+  "update": {
+    "message": "Update"
+  },
+  "updateToolset": {
+    "message": "Update Toolset"
   },
   "subscribeUrl": {
     "message": "Subscribe URL"
@@ -396,9 +399,6 @@
   },
   "viewDocs": {
     "message": "View Docs"
-  },
-  "viewToolset": {
-    "message": "View Toolset"
   },
   "welcomeSubtitle": {
     "message": "Let AI Agents safely read and control the browser, automating your web workflows."

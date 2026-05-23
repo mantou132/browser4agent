@@ -52,25 +52,18 @@ class AgentMarketPageElement extends GemElement {
     return `${MARKET_API}/api/toolsets/${encodeURIComponent(name)}`;
   };
 
-  #subscribe = async (toolset) => {
+  #confirmAndInstall = async (toolset, { isUpdate }) => {
     const toolsetUrl = this.#getUrl(toolset.name);
     const id = getToolsetId(toolsetUrl);
-    if (toolStore.toolsets.find((item) => item.id === id)) {
-      return Toast.open('warning', t('toolsetAlreadySubscribed'));
-    }
+    const preview = await loadToolset(toolsetUrl);
+    await Modal.open({
+      header: `${t(isUpdate ? 'updateToolset' : 'subscribeToolset')}: ${preview.meta.name || toolset.name}`,
+      body: html`<market-tool-editor .initialTools=${preview.tools}></market-tool-editor>`,
+      okText: t(isUpdate ? 'update' : 'subscribe'),
+    });
     const { meta, tools } = await loadToolset(`${toolsetUrl}/install`);
     await addToolset({ ...meta, id, url: toolsetUrl, type: 'community', enabled: true, tools });
-    Toast.open('success', t('addedToolset', [meta.name, tools.length]));
-  };
-
-  #viewToolset = async (toolset) => {
-    const { meta, tools } = await loadToolset(this.#getUrl(toolset.name));
-    await Modal.open({
-      header: `${t('viewToolset')}: ${meta.name || toolset.name}`,
-      body: html`<market-tool-editor .initialTools=${tools}></market-tool-editor>`,
-      cancelText: t('close'),
-      disableDefaultOKBtn: true,
-    });
+    Toast.open('success', t(isUpdate ? 'toolsetUpdated' : 'addedToolset', [meta.name, tools.length]));
   };
 
   #publishToolset = async (defaults = {}) => {
@@ -205,7 +198,7 @@ class AgentMarketPageElement extends GemElement {
                   </span>
                   <div class="flex-1 min-w-0">
                     <div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-                      <dy-action-text class="font-bold text-sm text-highlight" @click=${() => this.#viewToolset(toolset)}>${toolset.name}</dy-action-text>
+                      <span class="font-bold text-sm text-highlight">${toolset.name}</span>
                       <dy-tag small>${t('toolCount', toolset.toolsCount ?? '?')}</dy-tag>
                       <span class="text-xs text-describe">${t('installCount', toolset.installCount ?? 0)}</span>
                     </div>
@@ -216,8 +209,8 @@ class AgentMarketPageElement extends GemElement {
                     </div>
                   </div>
                   <div class="shrink-0">
-                    <dy-button type="reverse" v-if=${!subscribed.has(getToolsetId(this.#getUrl(toolset.name)))} @click=${() => this.#subscribe(toolset)}>${t('subscribe')}</dy-button>
-                    <span v-else class="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-primary">${t('subscribed')}</span>
+                    <dy-button type="reverse" v-if=${!subscribed.has(getToolsetId(this.#getUrl(toolset.name)))} @click=${() => this.#confirmAndInstall(toolset, { isUpdate: false })}>${t('subscribe')}</dy-button>
+                    <dy-button v-else type="reverse" .icon=${icons.refresh} @click=${() => this.#confirmAndInstall(toolset, { isUpdate: true })}>${t('update')}</dy-button>
                   </div>
                 </dy-drop-area>
               `,
