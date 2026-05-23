@@ -18,10 +18,15 @@
 3. Rust 程序在 `src/main.rs` 里判断运行模式
 4. Setup 模式：
   1. `src/native_message_setup.rs` 负责安装 Native Messaging Host
-  2. `src/ai_tool_setup.rs` 尝试给 Codex / Claude / VS Code / Cursor / Zed 配 MCP
+  2. `src/mcp_setup.rs` 尝试给 Codex / Claude / VS Code / Cursor / Zed 配 MCP
+  3. `src/skill_setup.rs` 为检测到的 agent 安装 SKILL
+  4. `src/main.rs` 在安装 Native Messaging Host 后让用户选择安装 MCP 或 Skills；
 5. MCP 模式：
   1. `src/native_host.rs` 负责本地消息循环和 MCP HTTP 服务
   2. `src/mcp_server.rs` MCP 服务端
+6. CLI 模式：
+  1. `src/cli.rs` 解析 `--tool` / `--input`（或 stdin JSON）
+  2. 转发单次工具调用到后台 MCP HTTP 服务 `127.0.0.1:39271/mcp`，打印结果后退出
 
 ## 目录职责
 
@@ -42,6 +47,8 @@
 - `extension/tailwind.css`：扩展全局 Tailwind 主题和基础样式
 - `extension/shared/i18n.js`：扩展侧 `t()` 翻译帮助函数和页面语言/标题同步
 - `extension/tools.js`：MCP 工具实现
+- `src/cli.rs`：命令行单次工具调用入口
+- `src/skill.md`：Skill 模板内容，内容应该和 MCP server 的描述语义上同步
 
 ## 常用命令
 

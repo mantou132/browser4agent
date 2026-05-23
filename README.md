@@ -23,21 +23,30 @@ AI agents can invoke tools inside a tab to perform specific operations on the pa
 
 [5]: https://webmachinelearning.github.io/webmcp/
 
+## Install
+
+Install the browser extension; the welcome page that opens afterwards walks you through downloading and registering the Native Host, plus optional MCP / Skills setup for your AI agent.
+
+- **Chrome Web Store / Firefox Add-ons**: pending review.
+- **From the latest release**: download `extension-chrome.zip` or `extension-firefox.zip` from the [latest release](https://github.com/mantou132/browser-data-mcp/releases/latest), unzip it, then load it via "Load an unpacked extension" below.
+
+### Load an unpacked extension
+
+- Chrome / Edge: open `chrome://extensions`, enable "Developer mode", click "Load unpacked", and choose the unzipped extension directory.
+- Firefox: open `about:debugging`, click "Load Temporary Add-on", and choose `manifest.json` inside the unzipped directory.
+
+> **Note:** Because the extension needs to listen on a local port, only one browser will work if the extension is installed and active in multiple browsers at the same time.
+
 ## Build from source
 
 ```bash
 # Browser extension, output in extension/dist/<browser>
 pnpm -C extension run build --browser=chrome
-# Native Host for the browser extension
+# Native Host — runs the binary in setup mode after build
 cargo run
 ```
 
-Load the `extension/dist/xxx` directory as an unpacked extension in your browser:
-
-- Chrome/Edge: open `chrome://extensions`, enable "Developer mode", click "Load unpacked", and choose the `dist/chrome` directory
-- Firefox: open `about:debugging`, click "Load Temporary Add-on", and choose `manifest.json` inside the `dist/firefox` directory
-
-> **Note:** Because the extension needs to listen on a local port, only one browser will work if the extension is installed and active in multiple browsers at the same time.
+Load `extension/dist/<browser>` via "Load an unpacked extension" above.
 
 # Privacy policy
 

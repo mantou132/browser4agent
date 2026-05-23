@@ -23,18 +23,27 @@ AI Agent 可以在标签页中调用工具，比如对页面执行特定操作�
 
 [5]: https://webmachinelearning.github.io/webmcp/
 
+## 安装
+
+安装浏览器扩展即可；扩展安装完成后会自动打开欢迎页，按页面指引下载并注册 Native Host，并可选地为你检测到的 AI Agent 配置 MCP 或安装 Skills。
+
+- **Chrome 应用商店 / Firefox Add-ons**：审核中。
+- **从最新 Release 下载**：在 [latest release](https://github.com/mantou132/browser-data-mcp/releases/latest) 下载 `extension-chrome.zip` 或 `extension-firefox.zip`，解压后按下文「加载未打包扩展」加载。
+
+### 加载未打包扩展
+
+- Chrome / Edge：打开 `chrome://extensions`，开启「开发者模式」，点击「加载已解压的扩展程序」，选择解压后的目录。
+- Firefox：打开 `about:debugging`，点击「临时加载附加组件」，选择解压目录中的 `manifest.json`。
+
+> **注意：** 由于扩展需要监听本地端口，所以同时安装到多个浏览器并且都激活时只有一个工作。
+
 ## 从源码构建
 
 ```bash
 # 浏览器扩展，构建产物位于 extension/dist/<browser>
 pnpm -C extension run build --browser=chrome
-# 浏览器扩展 Native Host
+# Native Host —— 构建后直接以 setup 模式运行
 cargo run
 ```
 
-将 `extension/dist/xxx` 目录作为未打包扩展加载到浏览器中：
-
-- Chrome/Edge：打开 `chrome://extensions`，开启「开发者模式」，点击「加载已解压的扩展程序」，选择 `dist/chrome` 目录
-- Firefox：打开 `about:debugging`，点击「临时加载附加组件」，选择 `dist/firefox` 目录中的 `manifest.json`
-
-> **注意：** 由于扩展需要监听本地端口，所以同时安装到多个浏览器并且都激活时只有一个工作。
+将 `extension/dist/<browser>` 按上文「加载未打包扩展」加载。

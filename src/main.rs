@@ -1,43 +1,103 @@
-mod ai_tool_setup;
+mod cli;
 mod constant;
 mod logger;
 mod mcp_server;
+mod mcp_setup;
 mod native_host;
 mod native_message_setup;
-use std::{
-    env,
-    io::{self, Read},
-};
+mod skill_setup;
+
+use std::{env, ffi::OsString};
 
 use anyhow::Result;
+use dialoguer::Select;
 
-// chrome has extension id, firefox has manifest path & extension id
-fn is_launched_by_browser() -> bool {
-    let args: Vec<String> = env::args().collect();
-    args.len() > 1 && (args[1].starts_with("chrome-extension://") || args.len() > 2)
+enum LaunchMode {
+    Cli(cli::CliArgs),
+    /// Launched by a browser as a native messaging host.
+    /// Chrome passes `chrome-extension://<id>/`; Firefox passes manifest path + extension id.
+    Browser,
+    Setup,
+}
+
+fn detect_launch_mode() -> Result<Option<LaunchMode>> {
+    let args: Vec<OsString> = env::args_os().collect();
+
+    if cli::looks_like_cli(&args) {
+        return Ok(cli::parse(args)?.map(LaunchMode::Cli));
+    }
+
+    if args.len() > 1 {
+        return Ok(Some(LaunchMode::Browser));
+    }
+
+    Ok(Some(LaunchMode::Setup))
+}
+
+#[derive(Clone, Copy)]
+enum SetupChoice {
+    InstallMcp,
+    InstallSkills,
+    Skip,
+}
+
+fn choose_setup_target() -> Result<SetupChoice> {
+    let choices = [
+        ("Install MCP settings", SetupChoice::InstallMcp),
+        ("Install Skills", SetupChoice::InstallSkills),
+        ("Skip", SetupChoice::Skip),
+    ];
+    let index = Select::new()
+        .with_prompt("What do you want to install?")
+        .items(choices.map(|(label, _)| label))
+        .default(0)
+        .interact()?;
+    Ok(choices[index].1)
+}
+
+fn run_setup() -> Result<()> {
+    native_message_setup::install_native_message_host(
+        "browser4agent",
+        "Browser for AI Agent",
+        &[
+            "kaanjpgabaklepokebpdojepkccmbpng",
+            "cddjomjjojijahpjngcfebapepdecaff",
+            "kgofhkkibnooojbchfppjblmajdcboib",
+        ],
+        &["browser4agent@xianqiao.wang"],
+    )?;
+
+    match choose_setup_target()? {
+        SetupChoice::InstallMcp => {
+            skill_setup::uninstall_skill()?;
+            if mcp_setup::setup_mcp()? {
+                println!("\nMCP settings installed.");
+            } else {
+                println!("\nNo supported AI tool was configured.");
+            }
+        }
+        SetupChoice::InstallSkills => {
+            mcp_setup::uninstall_mcp()?;
+            if skill_setup::install_skill()? {
+                println!("\nSkill installed.");
+            } else {
+                println!("\nNo supported agent was detected for skills.");
+            }
+        }
+        SetupChoice::Skip => {
+            println!("Skipped MCP settings and Skills.");
+        }
+    }
+    Ok(())
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    if is_launched_by_browser() {
-        native_host::run().await?;
-    } else {
-        native_message_setup::install_native_message_host(
-            "browser4agent",
-            "Browser for AI Agent",
-            &[
-                "kaanjpgabaklepokebpdojepkccmbpng",
-                "cddjomjjojijahpjngcfebapepdecaff",
-                "kgofhkkibnooojbchfppjblmajdcboib",
-            ],
-            &["browser4agent@xianqiao.wang"],
-        )?;
-
-        ai_tool_setup::setup_ai_tools()?;
-
-        println!("\nPress any key to exit...");
-        let _ = io::stdin().read_exact(&mut [0u8; 1]);
+    match detect_launch_mode()? {
+        None => {} // --help was printed
+        Some(LaunchMode::Cli(args)) => cli::run(args).await?,
+        Some(LaunchMode::Browser) => native_host::run().await?,
+        Some(LaunchMode::Setup) => run_setup()?,
     }
-
     Ok(())
 }

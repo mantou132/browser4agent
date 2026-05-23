@@ -19,7 +19,7 @@ fn write(level: &str, msg: &str) {
         .open(log_path())
         .expect("Couldn't open log file");
     let ts = Local::now().format("%Y-%m-%d %H:%M:%S");
-    let _ = file.write_all(format!("{} [{}] {}\n", ts, level, msg).as_bytes());
+    let _ = writeln!(file, "{ts} [{level}] {msg}");
 }
 
 /// Info level — always written (important events).
