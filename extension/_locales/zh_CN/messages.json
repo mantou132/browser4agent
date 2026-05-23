@@ -70,6 +70,15 @@
   "contextWelcomePage": {
     "message": "欢迎页面"
   },
+  "copyCommand": {
+    "message": "复制命令"
+  },
+  "copyCommandFailure": {
+    "message": "复制失败，请手动选中复制"
+  },
+  "copyCommandSuccess": {
+    "message": "命令已复制到剪贴板"
+  },
   "coveredTools": {
     "message": "覆盖工具"
   },
@@ -96,11 +105,11 @@
       }
     }
   },
-  "downloadExecutable": {
-    "message": "下载可执行文件"
+  "downloadTarGz": {
+    "message": "下载 .tar.gz"
   },
-  "downloadExe": {
-    "message": "下载 .exe"
+  "downloadZip": {
+    "message": "下载 .zip"
   },
   "editTool": {
     "message": "编辑工具"
@@ -219,6 +228,27 @@
   },
   "optionsTitle": {
     "message": "扩展设置"
+  },
+  "packageInstallBrewDesc": {
+    "message": "通过 Homebrew 自动安装最新版本，并跟随后续升级。"
+  },
+  "packageInstallBrewPlatform": {
+    "message": "适用于 macOS 与 Linux"
+  },
+  "packageInstallDesc": {
+    "message": "下面是命令安装方式，复制到终端即可一步到位。"
+  },
+  "packageInstallHint": {
+    "message": "也可用包管理器"
+  },
+  "packageInstallScoopDesc": {
+    "message": "通过 Scoop 拉取最新版本，scoop update 即可保持同步。"
+  },
+  "packageInstallScoopPlatform": {
+    "message": "适用于 Windows"
+  },
+  "packageInstallTitle": {
+    "message": "用包管理器安装"
   },
   "paramCount": {
     "message": "$COUNT$ 个参数",

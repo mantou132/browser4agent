@@ -15,16 +15,13 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            artifact: browser4agent-x86_64-linux
-            ext: ''
+            archive: tar.gz
           - os: macos-latest
             target: aarch64-apple-darwin
-            artifact: browser4agent-aarch64-macos
-            ext: ''
+            archive: tar.gz
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            artifact: browser4agent-x86_64-windows
-            ext: .exe
+            archive: zip
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -40,15 +37,32 @@ jobs:
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Rename binary
+      - name: Package archive (tar.gz)
+        if: matrix.archive == 'tar.gz'
         shell: bash
         run: |
-          cp target/${{ matrix.target }}/release/browser4agent${{ matrix.ext }} ${{ matrix.artifact }}${{ matrix.ext }}
+          name="browser4agent-${{ matrix.target }}"
+          tar -C target/${{ matrix.target }}/release -czf "${name}.tar.gz" browser4agent
+          shasum -a 256 "${name}.tar.gz" | awk '{print $1}' > "${name}.tar.gz.sha256"
+
+      - name: Package archive (zip)
+        if: matrix.archive == 'zip'
+        shell: pwsh
+        run: |
+          $name = "browser4agent-${{ matrix.target }}"
+          Compress-Archive -Path "target/${{ matrix.target }}/release/browser4agent.exe" -DestinationPath "$name.zip"
+          $hash = (Get-FileHash "$name.zip" -Algorithm SHA256).Hash.ToLower()
+          Set-Content -Path "$name.zip.sha256" -Value $hash -NoNewline
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}${{ matrix.ext }}
+          name: browser4agent-${{ matrix.target }}
+          path: |
+            browser4agent-${{ matrix.target }}.tar.gz
+            browser4agent-${{ matrix.target }}.tar.gz.sha256
+            browser4agent-${{ matrix.target }}.zip
+            browser4agent-${{ matrix.target }}.zip.sha256
+          if-no-files-found: ignore
 
   build-extension:
     runs-on: ubuntu-latest

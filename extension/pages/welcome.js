@@ -24,27 +24,28 @@ class AgentWelcomePageElement extends GemElement {
     {
       name: 'Windows',
       type: 'windows',
-      description: t('downloadExe'),
-      url: `${DOWNLOAD_URL}/browser4agent-x86_64-windows.exe`,
+      description: t('downloadZip'),
+      url: `${DOWNLOAD_URL}/browser4agent-x86_64-pc-windows-msvc.zip`,
     },
     {
       name: 'macOS',
       type: 'macos',
-      description: t('downloadExecutable'),
-      url: `${DOWNLOAD_URL}/browser4agent-aarch64-macos`,
+      description: t('downloadTarGz'),
+      url: `${DOWNLOAD_URL}/browser4agent-aarch64-apple-darwin.tar.gz`,
     },
     {
       name: 'Linux',
       type: 'linux',
-      description: t('downloadExecutable'),
-      url: `${DOWNLOAD_URL}/browser4agent-x86_64-linux`,
+      description: t('downloadTarGz'),
+      url: `${DOWNLOAD_URL}/browser4agent-x86_64-unknown-linux-gnu.tar.gz`,
     },
   ];
 
   #helpLinks = [
     { label: t('viewDocs'), url: `${REPO_URL}#readme` },
-    { label: t('faq'), url: 'https://github.com/mantou132/browser4agent/issues?q=is%3Aissue' },
-    { label: t('reportIssue'), url: 'https://github.com/mantou132/browser4agent/issues/new' },
+    { label: t('faq'), url: `${REPO_URL}/issues?q=is%3Aissue` },
+    // biome-ignore lint/style/useTemplate: build bug?
+    { label: t('reportIssue'), url: REPO_URL + '/issues/new' },
   ];
 
   #flowItems = [
@@ -175,7 +176,7 @@ class AgentWelcomePageElement extends GemElement {
   `;
 
   #renderFlowItem = (item, index) => html`
-    <div class="flex min-w-0 items-center gap-5 sm:flex-1">
+    <div class="flex min-w-0 items-start gap-5 sm:flex-1">
       <div class="flex min-w-0 flex-1 flex-col items-center text-center">
         <span class="grid size-16 place-items-center rounded-lg bg-indigo-50 text-primary shadow-inner shadow-indigo-100">
           ${this.#renderFlowIcon(item.type)}
@@ -183,11 +184,9 @@ class AgentWelcomePageElement extends GemElement {
         <strong class="mt-3 text-sm leading-5 text-highlight">${item.title}</strong>
         <span class="mt-1 text-xs leading-5 text-describe">${item.description}</span>
       </div>
-      <dy-use
-        v-if=${index < this.#flowItems.length - 1}
-        class="hidden shrink-0 text-4xl text-slate-300 sm:block"
-        .element=${icons.right}
-      ></dy-use>
+      <span v-if=${index < this.#flowItems.length - 1} class="hidden h-16 shrink-0 items-center sm:flex">
+        <dy-use class="text-4xl text-slate-300" .element=${icons.right}></dy-use>
+      </span>
     </div>
   `;
 
@@ -214,7 +213,19 @@ class AgentWelcomePageElement extends GemElement {
 
         <section class="overflow-hidden rounded-lg border border-border bg-white/90 shadow-2xl shadow-slate-200/70 backdrop-blur">
           <div class="p-7 sm:p-8">
-            ${this.#renderStepHeader('1', t('stepDownloadTitle'), t('stepDownloadDesc'))}
+            ${this.#renderStepHeader(
+              '1',
+              t('stepDownloadTitle'),
+              html`
+                ${t('stepDownloadDesc')}
+                <dy-popover
+                  position="bottomLeft"
+                  .content=${html`<welcome-native-install-popover class="py-2"></welcome-native-install-popover>`}
+                >
+                  <span class="text-primary cursor-default">${t('packageInstallHint')}</span>
+                </dy-popover>
+              `,
+            )}
             <div class="mt-6 grid gap-4 sm:grid-cols-3">${this.#platforms.map(this.#renderDownloadCard)}</div>
             <p class="mt-6 flex items-start gap-2 text-sm leading-6 text-describe">
               <dy-use class="mt-0.5 shrink-0 text-base" .element=${icons.info}></dy-use>

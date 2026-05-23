@@ -16,7 +16,7 @@
 1. 浏览器扩展在安装后打开 `extension/pages/welcome.html`
 2. 扩展后台在 `extension/background.js` 里连接本地 Native Host
 3. Rust 程序在 `src/main.rs` 里判断运行模式
-4. Setup 模式：
+4. Setup 模式（无参数）：
   1. `src/native_message_setup.rs` 负责安装 Native Messaging Host
   2. `src/mcp_setup.rs` 尝试给 Codex / Claude / VS Code / Cursor / Zed 配 MCP
   3. `src/skill_setup.rs` 为检测到的 agent 安装 SKILL
@@ -164,7 +164,7 @@ class DuoyunTestElement extends GemElement {
   get #src() {
     return this.src || 'test';
   }
-  
+
   // 一些复杂计算可以使用 `@memo`，他的参数是一个函数，参数是当前实例，返回一个依赖数组
   // 在元素每次渲染前执行，只有依赖数组有更改时才会执行函数内容
   // 基于 `@memo` 实现了 `@willMount`

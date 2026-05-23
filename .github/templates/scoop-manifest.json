@@ -1,0 +1,22 @@
+{
+  "version": "__VERSION__",
+  "description": "MCP server that reads browser tab content and controls the browser",
+  "homepage": "https://github.com/__REPO__",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/__REPO__/releases/download/__TAG__/browser4agent-x86_64-pc-windows-msvc.zip",
+      "hash": "__WIN_X86__"
+    }
+  },
+  "bin": "browser4agent.exe",
+  "notes": "Run 'browser4agent' to register the native messaging host.",
+  "checkver": "github",
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/__REPO__/releases/download/v$version/browser4agent-x86_64-pc-windows-msvc.zip"
+      }
+    }
+  }
+}

@@ -1,0 +1,104 @@
+name: Bump Packages
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  homebrew:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release SHA files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ github.event.release.tag_name }}" \
+            --repo "${{ github.repository }}" \
+            --dir dist \
+            --pattern '*.sha256'
+
+      - name: Resolve substitutions
+        id: vars
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "mac_arm=$(cat dist/browser4agent-aarch64-apple-darwin.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
+          echo "linux_x86=$(cat dist/browser4agent-x86_64-unknown-linux-gnu.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: mantou132/homebrew-tap
+          token: ${{ secrets.TAP_TOKEN }}
+          path: tap
+
+      - name: Render formula
+        run: |
+          mkdir -p tap/Formula
+          sed \
+            -e "s|__REPO__|${{ github.repository }}|g" \
+            -e "s|__TAG__|${{ steps.vars.outputs.tag }}|g" \
+            -e "s|__VERSION__|${{ steps.vars.outputs.version }}|g" \
+            -e "s|__MAC_ARM__|${{ steps.vars.outputs.mac_arm }}|g" \
+            -e "s|__LINUX_X86__|${{ steps.vars.outputs.linux_x86 }}|g" \
+            .github/templates/homebrew-formula.rb > tap/Formula/browser4agent.rb
+
+      - name: Commit & push
+        working-directory: tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/browser4agent.rb
+          git diff --staged --quiet || git commit -m "browser4agent ${{ steps.vars.outputs.version }}"
+          git push
+
+  scoop:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release SHA files
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ github.event.release.tag_name }}" \
+            --repo "${{ github.repository }}" \
+            --dir dist \
+            --pattern '*.sha256'
+
+      - name: Resolve substitutions
+        id: vars
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "win_x86=$(cat dist/browser4agent-x86_64-pc-windows-msvc.zip.sha256)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: mantou132/scoop-bucket
+          token: ${{ secrets.TAP_TOKEN }}
+          path: bucket
+
+      - name: Render manifest
+        run: |
+          mkdir -p bucket/bucket
+          sed \
+            -e "s|__REPO__|${{ github.repository }}|g" \
+            -e "s|__TAG__|${{ steps.vars.outputs.tag }}|g" \
+            -e "s|__VERSION__|${{ steps.vars.outputs.version }}|g" \
+            -e "s|__WIN_X86__|${{ steps.vars.outputs.win_x86 }}|g" \
+            .github/templates/scoop-manifest.json > bucket/bucket/browser4agent.json
+
+      - name: Commit & push
+        working-directory: bucket
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bucket/browser4agent.json
+          git diff --staged --quiet || git commit -m "browser4agent ${{ steps.vars.outputs.version }}"
+          git push

@@ -70,6 +70,15 @@
   "contextWelcomePage": {
     "message": "Welcome Page"
   },
+  "copyCommand": {
+    "message": "Copy command"
+  },
+  "copyCommandFailure": {
+    "message": "Copy failed, please select and copy manually"
+  },
+  "copyCommandSuccess": {
+    "message": "Command copied to clipboard"
+  },
   "coveredTools": {
     "message": "Covered Tools"
   },
@@ -96,11 +105,11 @@
       }
     }
   },
-  "downloadExecutable": {
-    "message": "Download executable"
+  "downloadTarGz": {
+    "message": "Download .tar.gz"
   },
-  "downloadExe": {
-    "message": "Download .exe"
+  "downloadZip": {
+    "message": "Download .zip"
   },
   "editTool": {
     "message": "Edit Tool"
@@ -219,6 +228,27 @@
   },
   "optionsTitle": {
     "message": "Extension Settings"
+  },
+  "packageInstallBrewDesc": {
+    "message": "Installs and tracks the latest release via Homebrew."
+  },
+  "packageInstallBrewPlatform": {
+    "message": "For macOS and Linux"
+  },
+  "packageInstallDesc": {
+    "message": "Copy the command into your terminal — that single line does the whole setup."
+  },
+  "packageInstallHint": {
+    "message": "or use a package manager"
+  },
+  "packageInstallScoopDesc": {
+    "message": "Pulls the latest release via Scoop; run scoop update to stay in sync."
+  },
+  "packageInstallScoopPlatform": {
+    "message": "For Windows"
+  },
+  "packageInstallTitle": {
+    "message": "Install via package manager"
   },
   "paramCount": {
     "message": "$COUNT$ parameters",
