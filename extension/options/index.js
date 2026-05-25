@@ -1,3 +1,4 @@
+import { repeat } from '@mantou/gem';
 import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
 import { theme } from 'duoyun-ui/lib/theme';
@@ -89,7 +90,8 @@ class AgentOptionsPageElement extends GemElement {
       return Toast.open('warning', t('toolsetAlreadySubscribed'));
     }
     const { meta, tools } = await loadToolset(url);
-    await addToolset({ ...meta, id, url, type: 'custom', enabled: true, tools });
+    const recommended = this.#state.recommended.find((t) => t.url === url);
+    await addToolset({ ...meta, id, url, type: recommended ? 'official' : 'custom', enabled: true, tools });
     Toast.open('success', t('addedToolset', [meta.name, tools.length]));
   };
 
@@ -140,7 +142,11 @@ class AgentOptionsPageElement extends GemElement {
           <div class="flex flex-col gap-5">
             ${
               toolsets.length
-                ? toolsets.map((t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`)
+                ? repeat(
+                    toolsets,
+                    (t) => t.id,
+                    (t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`,
+                  )
                 : html`<dy-empty class="py-20" text=${t('emptySubscribedToolsets')}></dy-empty>`
             }
           </div>
@@ -154,7 +160,12 @@ class AgentOptionsPageElement extends GemElement {
             </div>
           </header>
           <div class="flex flex-col gap-5">
-            ${this.#recommended.map((t) => html`<options-toolset-card .recommended=${true} @subscription=${() => this.#addByUrl(t.url)} .toolset=${t}></options-toolset-card>`)}
+            ${repeat(
+              this.#recommended,
+              (t) => t.url,
+              (t) =>
+                html`<options-toolset-card .recommended=${true} @subscription=${() => this.#addByUrl(t.url)} .toolset=${t}></options-toolset-card>`,
+            )}
             <div
               class="group flex cursor-pointer items-center gap-4 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/60 p-5 text-describe transition hover:-translate-y-0.5 hover:border-primary hover:bg-indigo-50 hover:text-primary hover:shadow-lg hover:shadow-indigo-500/10"
               @click=${this.#openMarket}

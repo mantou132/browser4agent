@@ -1,6 +1,6 @@
 use std::{
     ffi::OsString,
-    io::{self, IsTerminal, Read},
+    io::{self, Read},
 };
 
 use anyhow::{Context, Result, bail};
@@ -17,7 +17,9 @@ use crate::constant::{BIND_ADDRESS, MCP_PATH};
 #[command(
     name = "browser4agent",
     about = "Forward a single browser4agent tool call to the running MCP HTTP service.",
-    after_help = "Tool schemas live in the installed skill.\n\nExamples:\n  browser4agent --tool list_tabs\n  browser4agent --tool read_tab --input '{\"tab_id\": 123}'\n  echo '{\"tab_id\":123}' | browser4agent --tool read_tab"
+    after_help = "Tool schemas live in the installed skill.\n\nExamples:\n  browser4agent --tool \
+                  list_tabs\n  browser4agent --tool read_tab --input '{\"tab_id\": 123}'\n  echo \
+                  '{\"tab_id\":123}' | browser4agent --tool read_tab --stdin"
 )]
 pub(crate) struct CliArgs {
     #[arg(long)]
@@ -25,12 +27,9 @@ pub(crate) struct CliArgs {
 
     #[arg(long, value_name = "JSON")]
     input: Option<String>,
-}
 
-pub(crate) fn looks_like_cli(args: &[OsString]) -> bool {
-    args.iter()
-        .skip(1)
-        .any(|arg| arg.to_str().is_some_and(|arg| arg.starts_with('-')))
+    #[arg(long)]
+    stdin: bool,
 }
 
 pub(crate) fn parse(args: Vec<OsString>) -> Result<Option<CliArgs>> {
@@ -45,7 +44,7 @@ pub(crate) fn parse(args: Vec<OsString>) -> Result<Option<CliArgs>> {
 }
 
 pub(crate) async fn run(args: CliArgs) -> Result<()> {
-    let input = read_input(args.input.as_deref())?;
+    let input = read_input(args.input.as_deref(), args.stdin)?;
     let url = format!("http://{BIND_ADDRESS}{MCP_PATH}");
     let transport = StreamableHttpClientTransport::from_uri(url);
     let mut client = ClientInfo::default()
@@ -69,17 +68,20 @@ pub(crate) async fn run(args: CliArgs) -> Result<()> {
     Ok(())
 }
 
-fn read_input(inline: Option<&str>) -> Result<serde_json::Map<String, serde_json::Value>> {
-    let raw = match inline {
-        Some(s) => s.to_string(),
-        None if io::stdin().is_terminal() => return Ok(Default::default()),
-        None => {
-            let mut buf = String::new();
-            io::stdin()
-                .read_to_string(&mut buf)
-                .context("failed to read JSON input from stdin")?;
-            buf
-        }
+fn read_input(
+    inline: Option<&str>,
+    from_stdin: bool,
+) -> Result<serde_json::Map<String, serde_json::Value>> {
+    let raw = if from_stdin {
+        let mut buf = String::new();
+        io::stdin()
+            .read_to_string(&mut buf)
+            .context("failed to read JSON input from stdin")?;
+        buf
+    } else if let Some(s) = inline {
+        s.to_string()
+    } else {
+        return Ok(Default::default());
     };
     if raw.trim().is_empty() {
         return Ok(Default::default());
@@ -103,23 +105,4 @@ fn print_result(result: &rmcp::model::CallToolResult) -> Result<()> {
     }
     println!("{}", serde_json::to_string_pretty(result)?);
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn looks_like_cli_distinguishes_flag_from_browser_launch() {
-        let with_flag: Vec<OsString> = ["browser4agent", "--tool", "x"]
-            .iter()
-            .map(|s| (*s).into())
-            .collect();
-        let browser_launch: Vec<OsString> = ["browser4agent", "chrome-extension://abc"]
-            .iter()
-            .map(|s| (*s).into())
-            .collect();
-        assert!(looks_like_cli(&with_flag));
-        assert!(!looks_like_cli(&browser_launch));
-    }
 }

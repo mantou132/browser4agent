@@ -1,4 +1,6 @@
 import { t } from './shared/i18n.js';
+import { loadToolset } from './shared/loader.js';
+import { getToolConfig } from './shared/store.js';
 import {
   executeScript,
   executeScriptInBackground,
@@ -21,7 +23,30 @@ chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
     chrome.tabs.create({ url: WELCOME_URL });
   }
+  if (details.reason === 'update') {
+    refreshBuiltinToolsets();
+  }
 });
+
+async function refreshBuiltinToolsets() {
+  const { toolsets } = await getToolConfig();
+  const officialToolsets = toolsets.filter((t) => t.type === 'official');
+  if (!officialToolsets.length) return;
+
+  const next = toolsets.slice();
+  for (const ts of officialToolsets) {
+    try {
+      const { meta, tools } = await loadToolset(ts.url);
+      const idx = next.findIndex((t) => t.id === ts.id);
+      if (idx >= 0) {
+        next[idx] = { ...next[idx], ...meta, tools };
+      }
+    } catch {
+      // skip toolsets that fail to load
+    }
+  }
+  await chrome.storage.local.set({ toolsets: next });
+}
 
 chrome.contextMenus.create({
   id: 'open-welcome',

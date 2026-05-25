@@ -120,6 +120,12 @@
   "emptyToolsets": {
     "message": "No toolsets yet"
   },
+  "searchToolsets": {
+    "message": "Search by name, description or author…"
+  },
+  "noSearchResults": {
+    "message": "No matching toolsets found"
+  },
   "enabledToolCount": {
     "message": "$COUNT$ tools enabled",
     "placeholders": {

@@ -30,6 +30,7 @@ class AgentMarketPageElement extends GemElement {
   #state = createState({
     toolsets: [],
     loading: true,
+    searchQuery: '',
   });
 
   @mounted()
@@ -116,21 +117,30 @@ class AgentMarketPageElement extends GemElement {
     });
   };
 
+  #onSearch = (evt) => {
+    this.#state({ searchQuery: evt.detail });
+  };
+
+  get #filteredToolsets() {
+    const { toolsets, searchQuery } = this.#state;
+    if (!searchQuery) return toolsets;
+    const q = searchQuery.toLowerCase();
+    return toolsets.filter(
+      (t) =>
+        t.name?.toLowerCase().includes(q) ||
+        t.description?.toLowerCase().includes(q) ||
+        t.author?.name?.toLowerCase().includes(q),
+    );
+  }
+
   #openOptions = async () => {
     await openExtensionPage('options/index.html');
   };
 
-  #renderStat = (label, value, description) => html`
-    <div class="rounded-lg border border-border bg-white/80 p-5 shadow-sm shadow-slate-200/60 backdrop-blur">
-      <div class="text-2xl font-bold leading-8 text-highlight">${value}</div>
-      <div class="mt-1 text-sm font-semibold text-text">${label}</div>
-      <div class="mt-2 text-xs leading-5 text-describe">${description}</div>
-    </div>
-  `;
-
   @template()
   #content = () => {
     const { toolsets, loading } = this.#state;
+    const filtered = this.#filteredToolsets;
     const subscribed = new Set(toolStore.toolsets.map((t) => t.id));
     const manifest = chrome.runtime.getManifest();
     const icon = chrome.runtime.getURL(manifest.icons['128']);
@@ -161,32 +171,43 @@ class AgentMarketPageElement extends GemElement {
             </div>
           </div>
           <div class="grid gap-3 border-t border-border bg-slate-50/70 p-5 sm:grid-cols-3 sm:p-6">
-            ${this.#renderStat(t('marketToolsets'), loading ? '...' : toolsets.length, t('marketToolsetsDesc'))}
-            ${this.#renderStat(t('coveredTools'), loading ? '...' : totalTools, t('coveredToolsDesc'))}
-            ${this.#renderStat(t('totalInstalls'), loading ? '...' : totalInstalls, t('totalInstallsDesc'))}
+            <market-stat-card label=${t('marketToolsets')} .value=${toolsets.length} description=${t('marketToolsetsDesc')} ?loading=${loading}></market-stat-card>
+            <market-stat-card label=${t('coveredTools')} .value=${totalTools} description=${t('coveredToolsDesc')} ?loading=${loading}></market-stat-card>
+            <market-stat-card label=${t('totalInstalls')} .value=${totalInstalls} description=${t('totalInstallsDesc')} ?loading=${loading}></market-stat-card>
           </div>
         </header>
 
         <section class="rounded-lg border border-border bg-white/90 p-5 shadow-xl shadow-slate-200/60 backdrop-blur sm:p-6">
-          <header class="mb-5 flex items-center justify-between gap-3">
-            <div>
-              <h2 class="m-0 text-lg font-bold text-highlight">${t('communityToolsets')}</h2>
-              <p class="mb-0 mt-1 text-xs leading-5 text-describe">${t('communityToolsetsDesc')}</p>
+          <header class="mb-5 flex flex-col gap-4">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h2 class="m-0 text-lg font-bold text-highlight">${t('communityToolsets')}</h2>
+                <p class="mb-0 mt-1 text-xs leading-5 text-describe">${t('communityToolsetsDesc')}</p>
+              </div>
+              <dy-drop-area
+                accept=".js,.ts,.json,application/json,text/javascript,text/typescript"
+                @change=${this.#onDrop}
+                tip=""
+              >
+                <dy-tooltip .content=${t('publishToolsetTip')}>
+                  <dy-button .icon=${icons.add} @click=${this.#publishToolset}>${t('publishToolset')}</dy-button>
+                </dy-tooltip>
+              </dy-drop-area>
             </div>
-            <dy-drop-area
-              accept=".js,.ts,.json,application/json,text/javascript,text/typescript"
-              @change=${this.#onDrop}
-              tip=""
-            >
-              <dy-tooltip .content=${t('publishToolsetTip')}>
-                <dy-button .icon=${icons.add} @click=${this.#publishToolset}>${t('publishToolset')}</dy-button>
-              </dy-tooltip>
-            </dy-drop-area>
+            <dy-input
+              class="w-full"
+              .icon=${icons.search}
+              .value=${this.#state.searchQuery}
+              @change=${this.#onSearch}
+              placeholder=${t('searchToolsets')}
+              clearable
+              @clear=${this.#onSearch}
+            ></dy-input>
           </header>
           <dy-loading v-if=${loading} class="py-20"></dy-loading>
-          <dy-empty v-else-if=${!toolsets.length} class="py-20" text=${t('emptyToolsets')}></dy-empty>
+          <dy-empty v-else-if=${!filtered.length} class="py-20" text=${this.#state.searchQuery ? t('noSearchResults') : t('emptyToolsets')}></dy-empty>
           <div v-else class="flex flex-col gap-5">
-            ${toolsets.map(
+            ${filtered.map(
               (toolset) => html`
                 <dy-drop-area
                   accept=".js,.ts,.json,application/json,text/javascript,text/typescript"

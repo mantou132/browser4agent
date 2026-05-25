@@ -1,0 +1,67 @@
+{
+  "name": "Feishu Docs Tools",
+  "description": "在飞书文档中修改标题、替换正文、插入段落（支持 Markdown）",
+  "icon": "📄",
+  "author": {
+    "name": "Browser for AI Agent",
+    "email": ""
+  },
+  "tools": [
+    {
+      "name": "set_title",
+      "description": "修改飞书文档标题",
+      "pattern": "https://*.feishu.cn/*",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "新的文档标题（纯文本）"
+          }
+        },
+        "required": ["title"]
+      },
+      "execute": "async ({ title } = {}) => {\n  async function simulateInput(el, text) {\n    el.focus();\n    const sel = window.getSelection();\n    const range = document.createRange();\n    const leafSpans = el.querySelectorAll('span[data-leaf=\"true\"]');\n    if (leafSpans.length) {\n      const firstText = leafSpans[0].firstChild;\n      const lastText = leafSpans[leafSpans.length - 1].firstChild;\n      if (firstText && lastText) { range.setStart(firstText, 0); range.setEnd(lastText, lastText.length); }\n      else { range.selectNodeContents(el); }\n    } else { range.selectNodeContents(el); }\n    sel.removeAllRanges(); sel.addRange(range);\n    document.dispatchEvent(new Event('selectionchange'));\n    await new Promise(r => setTimeout(r, 200));\n    document.execCommand('insertText', false, text);\n  }\n  if (!title) throw new Error('title is required');\n  const titleZone = document.querySelector('h1.page-block-content .zone-container.text-editor');\n  if (!titleZone) throw new Error('未找到飞书文档标题区域');\n  const prevTitle = titleZone.textContent.replace(/\\u200B/g, '');\n  await simulateInput(titleZone, title);\n  return { title, prevTitle: prevTitle || null };\n}"
+    },
+    {
+      "name": "replace_body",
+      "description": "替换飞书文档指定段落内容（支持 Markdown：标题/链接/加粗/代码块/列表等）",
+      "pattern": "https://*.feishu.cn/*",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "paragraph_index": {
+            "type": "number",
+            "description": "段落索引（0 起始），默认 0"
+          },
+          "content": {
+            "type": "string",
+            "description": "Markdown 格式的新内容"
+          }
+        },
+        "required": ["content"]
+      },
+      "execute": "async ({ paragraph_index = 0, content } = {}) => {\n  if (content == null) throw new Error('content is required');\n  const bodyZones = [...document.querySelectorAll('.page-block-children .zone-container.text-editor')];\n  if (!bodyZones.length) throw new Error('未找到飞书文档正文区域');\n  const zone = bodyZones[paragraph_index];\n  if (!zone) throw new Error(`段落索引 ${paragraph_index} 超出范围（共 ${bodyZones.length} 段）`);\n  const prevContent = zone.textContent.replace(/\\u200B/g, '');\n  const rootEditor = document.querySelector('.page-block.root-block[contenteditable=\"true\"]');\n  const html = `<meta charset=\"utf-8\">${window.__md2html(content)}`;\n  const text = content;\n  const leafSpans = zone.querySelectorAll('span[data-leaf=\"true\"]');\n  if (leafSpans.length) {\n    zone.focus();\n    const sel = window.getSelection(); const range = document.createRange();\n    const firstText = leafSpans[0].firstChild; const lastText = leafSpans[leafSpans.length - 1].firstChild;\n    if (firstText && lastText) { range.setStart(firstText, 0); range.setEnd(lastText, lastText.length); }\n    else { range.selectNodeContents(zone); }\n    sel.removeAllRanges(); sel.addRange(range);\n  }\n  document.dispatchEvent(new Event('selectionchange'));\n  await new Promise(r => setTimeout(r, 200));\n  const event = new Event('paste', { bubbles: true, cancelable: true });\n  Object.defineProperty(event, 'clipboardData', { value: { getData: (type) => { if (type === 'text/html') return html; if (type === 'text/plain') return text; return ''; }, types: ['text/html', 'text/plain'], items: [], files: [] } });\n  rootEditor.dispatchEvent(event);\n  await new Promise(r => setTimeout(r, 300));\n  return { paragraph_index, content, prevContent };\n}"
+    },
+    {
+      "name": "insert_paragraph",
+      "description": "在指定段落前插入新内容（支持 Markdown：标题/链接/加粗/代码块/列表等）",
+      "pattern": "https://*.feishu.cn/*",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "before": {
+            "type": "string",
+            "description": "目标段落的文本（模糊匹配），新内容将插入到该段落之前"
+          },
+          "content": {
+            "type": "string",
+            "description": "Markdown 格式的内容"
+          }
+        },
+        "required": ["before", "content"]
+      },
+      "execute": "async ({ before, content } = {}) => {\n  if (!before) throw new Error('before is required');\n  if (!content) throw new Error('content is required');\n  const bodyZones = [...document.querySelectorAll('.page-block-children .zone-container.text-editor')];\n  if (!bodyZones.length) throw new Error('未找到飞书文档正文区域');\n  const targetZone = bodyZones.find(z => z.textContent.replace(/\\u200B/g, '').includes(before));\n  if (!targetZone) throw new Error(`未找到包含 \"${before}\" 的段落`);\n  const leafSpans = targetZone.querySelectorAll('span[data-leaf=\"true\"]');\n  if (!leafSpans.length) throw new Error('目标段落结构异常');\n  const firstText = leafSpans[0].firstChild;\n  targetZone.focus();\n  const sel = window.getSelection(); const range = document.createRange();\n  range.setStart(firstText, 0); range.collapse(true);\n  sel.removeAllRanges(); sel.addRange(range);\n  document.dispatchEvent(new Event('selectionchange'));\n  await new Promise(r => setTimeout(r, 200));\n  targetZone.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));\n  await new Promise(r => setTimeout(r, 300));\n  const newZones = [...document.querySelectorAll('.page-block-children .zone-container.text-editor')];\n  const targetIdx = newZones.indexOf(targetZone);\n  const newZone = newZones[targetIdx - 1];\n  if (!newZone) throw new Error('插入新段落失败');\n  const rootEditor = document.querySelector('.page-block.root-block[contenteditable=\"true\"]');\n  const html = `<meta charset=\"utf-8\">${window.__md2html(content)}`;\n  const text = content;\n  const zoneLeafs = newZone.querySelectorAll('span[data-leaf=\"true\"]');\n  if (zoneLeafs.length) {\n    newZone.focus();\n    const s = window.getSelection(); const r2 = document.createRange();\n    const ft = zoneLeafs[0].firstChild; const lt = zoneLeafs[zoneLeafs.length - 1].firstChild;\n    if (ft && lt) { r2.setStart(ft, 0); r2.setEnd(lt, lt.length); }\n    else { r2.selectNodeContents(newZone); }\n    s.removeAllRanges(); s.addRange(r2);\n  }\n  document.dispatchEvent(new Event('selectionchange'));\n  await new Promise(r => setTimeout(r, 200));\n  const event = new Event('paste', { bubbles: true, cancelable: true });\n  Object.defineProperty(event, 'clipboardData', { value: { getData: (type) => { if (type === 'text/html') return html; if (type === 'text/plain') return text; return ''; }, types: ['text/html', 'text/plain'], items: [], files: [] } });\n  rootEditor.dispatchEvent(event);\n  await new Promise(r => setTimeout(r, 300));\n  return { content, insertedBefore: before };\n}"
+    }
+  ]
+}

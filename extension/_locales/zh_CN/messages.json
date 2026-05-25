@@ -120,6 +120,12 @@
   "emptyToolsets": {
     "message": "暂无工具集"
   },
+  "searchToolsets": {
+    "message": "搜索工具集名称、描述或作者…"
+  },
+  "noSearchResults": {
+    "message": "未找到匹配的工具集"
+  },
   "enabledToolCount": {
     "message": "共 $COUNT$ 个工具已启用",
     "placeholders": {

@@ -1,5 +1,5 @@
 import { exec } from './execute-in-bg.js';
-import { getAvailableTabTools, getSubscribedTool } from './shared/toolsets.js';
+import { getAvailableTabTools, getSubscribedTool } from './shared/store.js';
 
 const err = (msg) => ({ type: 'error', error: msg });
 

@@ -74,6 +74,69 @@
     push('error', { message: `Failed to hook navigator.modelContext: ${e?.message || e}` });
   }
 
+  // Markdown → HTML converter for toolsets (feishu, etc.)
+  window.__md2html = (md) => {
+    let html = '';
+    const lines = md.split('\n');
+    let i = 0;
+    while (i < lines.length) {
+      const line = lines[i];
+      if (line.match(/^```/)) {
+        const lang = line.slice(3).trim();
+        const codeLines = [];
+        i++;
+        while (i < lines.length && !lines[i].match(/^```/)) {
+          codeLines.push(lines[i].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'));
+          i++;
+        }
+        html += `<pre><code${lang ? ` class="language-${lang}"` : ''}>${codeLines.join('\n')}</code></pre>`;
+        i++;
+        continue;
+      }
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+      if (headingMatch) {
+        const lv = headingMatch[1].length;
+        html += `<h${lv}>${inl(headingMatch[2])}</h${lv}>`;
+        i++;
+        continue;
+      }
+      if (line.match(/^[-*]\s+/)) {
+        const items = [];
+        while (i < lines.length && lines[i].match(/^[-*]\s+/)) {
+          items.push(`<li>${inl(lines[i].replace(/^[-*]\s+/, ''))}</li>`);
+          i++;
+        }
+        html += `<ul>${items.join('')}</ul>`;
+        continue;
+      }
+      if (line.match(/^\d+\.\s+/)) {
+        const items = [];
+        while (i < lines.length && lines[i].match(/^\d+\.\s+/)) {
+          items.push(`<li>${inl(lines[i].replace(/^\d+\.\s+/, ''))}</li>`);
+          i++;
+        }
+        html += `<ol>${items.join('')}</ol>`;
+        continue;
+      }
+      if (line.trim() === '') {
+        i++;
+        continue;
+      }
+      html += `<p>${inl(line)}</p>`;
+      i++;
+    }
+    return html;
+
+    function inl(t) {
+      return t
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+        .replace(/~~(.+?)~~/g, '<s>$1</s>')
+        .replace(/`(.+?)`/g, '<code>$1</code>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+    }
+  };
+
   window.__browser4agentPolicy = trustedTypes.createPolicy('browser4agent', {
     createScript: (s) => s,
     createHTML: (s) => s,

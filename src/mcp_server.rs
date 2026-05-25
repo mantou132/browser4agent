@@ -1,4 +1,3 @@
-use crate::native_host::NativeMessenger;
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -7,6 +6,8 @@ use rmcp::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
+
+use crate::native_host::NativeMessenger;
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TabIdParams {
@@ -23,13 +24,15 @@ pub struct GetCookiesParams {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExecuteScriptParams {
     #[schemars(
-        description = "A function that runs inside the tab and returns its result; supports async. It receives the elements of `args` as its parameters."
+        description = "A function that runs inside the tab and returns its result; supports \
+                       async. It receives the elements of `args` as its parameters."
     )]
     pub func_str: String,
     #[schemars(description = "Target tab ID (obtained from list_tabs).")]
     pub tab_id: i64,
     #[schemars(
-        description = "Array of arguments passed to the function. For example, args=[1,2] calls func(1, 2)."
+        description = "Array of arguments passed to the function. For example, args=[1,2] calls \
+                       func(1, 2)."
     )]
     #[serde(default)]
     pub args: Vec<Value>,
@@ -40,13 +43,15 @@ pub struct ExecuteTabToolParams {
     #[schemars(description = "Target tab ID (obtained from list_tabs).")]
     pub tab_id: i64,
     #[schemars(
-        description = "Toolset ID (from the list_tab_tools result). Toolset names may repeat, so always identify by ID."
+        description = "Toolset ID (from the list_tab_tools result). Toolset names may repeat, so \
+                       always identify by ID."
     )]
     pub toolset_id: String,
     #[schemars(description = "Tool name (from the list_tab_tools result).")]
     pub tool_name: String,
     #[schemars(
-        description = "JSON object of arguments. Must match the tool's `inputSchema` from list_tab_tools. Pass `{}` when the tool takes no parameters."
+        description = "JSON object of arguments. Must match the tool's `inputSchema` from \
+                       list_tab_tools. Pass `{}` when the tool takes no parameters."
     )]
     #[serde(default)]
     pub args: serde_json::Map<String, Value>,
@@ -55,11 +60,14 @@ pub struct ExecuteTabToolParams {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExecuteScriptInBackgroundParams {
     #[schemars(
-        description = "A function that runs in the extension's background service worker and returns its result; supports async. It receives the elements of `args` as its parameters."
+        description = "A function that runs in the extension's background service worker and \
+                       returns its result; supports async. It receives the elements of `args` as \
+                       its parameters."
     )]
     pub func_str: String,
     #[schemars(
-        description = "Array of arguments passed to the function. For example, args=[1,2] calls func(1, 2)."
+        description = "Array of arguments passed to the function. For example, args=[1,2] calls \
+                       func(1, 2)."
     )]
     #[serde(default)]
     pub args: Vec<Value>,
@@ -89,14 +97,17 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "List every open tab in the browser. Returns each tab's id, title, active flag, last-accessed time, and URL. Use this to pick a target tab before calling read_tab / get_cookies / get_local_storage etc."
+        description = "List every open tab in the browser. Returns each tab's id, title, active \
+                       flag, last-accessed time, and URL. Use this to pick a target tab before \
+                       calling read_tab / get_cookies / get_local_storage etc."
     )]
     async fn list_tabs(&self) -> Result<CallToolResult, McpError> {
         self.call(json!({ "type": "list_tabs" })).await
     }
 
     #[tool(
-        description = "Read a condensed HTML snapshot of the given tab. Use list_tabs first to obtain its ID."
+        description = "Read a condensed HTML snapshot of the given tab. Use list_tabs first to \
+                       obtain its ID."
     )]
     async fn read_tab(
         &self,
@@ -107,14 +118,18 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Read a condensed HTML snapshot of the active tab in the current window. Use this when the user asks about \"the current page\" — no list_tabs needed first."
+        description = "Read a condensed HTML snapshot of the active tab in the current window. \
+                       Use this when the user asks about \"the current page\" — no list_tabs \
+                       needed first."
     )]
     async fn read_active_tab(&self) -> Result<CallToolResult, McpError> {
         self.call(json!({ "type": "read_active_tab" })).await
     }
 
     #[tool(
-        description = "Fetch the browser's cookies for the given URL's domain. Use this to access login-protected pages that aren't currently open in the browser: grab the cookies, then issue a plain HTTP request with them."
+        description = "Fetch the browser's cookies for the given URL's domain. Use this to access \
+                       login-protected pages that aren't currently open in the browser: grab the \
+                       cookies, then issue a plain HTTP request with them."
     )]
     async fn get_cookies(
         &self,
@@ -125,7 +140,8 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Fetch page errors from the given tab: JS exceptions, unhandled promise rejections, and CSP violations. Use this for debugging."
+        description = "Fetch page errors from the given tab: JS exceptions, unhandled promise \
+                       rejections, and CSP violations. Use this for debugging."
     )]
     async fn get_errors(
         &self,
@@ -136,7 +152,9 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Run a JavaScript function inside the given tab and return its result. The function receives the elements of `args` as its arguments. Use this to extract page data or manipulate the DOM precisely."
+        description = "Run a JavaScript function inside the given tab and return its result. The \
+                       function receives the elements of `args` as its arguments. Use this to \
+                       extract page data or manipulate the DOM precisely."
     )]
     async fn execute_script(
         &self,
@@ -152,7 +170,10 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "List the page-registered tools available in the given tab. Returns toolset ID, toolset URL, tool name, description, and inputSchema. Names may repeat across toolsets — subsequent calls must identify a tool by `toolsetId` + `toolName`."
+        description = "List the page-registered tools available in the given tab. Returns toolset \
+                       ID, toolset URL, tool name, description, and inputSchema. Names may repeat \
+                       across toolsets — subsequent calls must identify a tool by `toolsetId` + \
+                       `toolName`."
     )]
     async fn list_tab_tools(
         &self,
@@ -163,7 +184,10 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Invoke a page-registered tool that is subscribed and matches the current page. Call list_tab_tools first to obtain `toolsetId` and `toolName`, then pass `args`. The tool function runs in the target tab and its result is returned."
+        description = "Invoke a page-registered tool that is subscribed and matches the current \
+                       page. Call list_tab_tools first to obtain `toolsetId` and `toolName`, then \
+                       pass `args`. The tool function runs in the target tab and its result is \
+                       returned."
     )]
     async fn execute_tab_tool(
         &self,
@@ -180,7 +204,14 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Run a JavaScript function in the extension's background service worker and return its result. The function receives the elements of `args` as its arguments. Use this to drive the browser: manage tabs/windows, intercept or modify network requests, control downloads, etc. The full `chrome.*` extension API is available — call it with async/await."
+        description = "Run a JavaScript function in the extension's background service worker and \
+                       return its result. The function receives the elements of `args` as its \
+                       arguments. Use this to drive the browser: manage tabs/windows, intercept \
+                       or modify network requests, control downloads, etc. The full `chrome.*` \
+                       extension API is available — call it with async/await. Some APIs require \
+                       optional permissions (e.g. history, bookmarks, downloads, notifications, \
+                       etc.); call `await chrome.permissions.request({ permissions: ['<name>'] \
+                       })` first to obtain them before use."
     )]
     async fn execute_script_in_background(
         &self,
@@ -195,7 +226,8 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Read the localStorage of the given tab (long values are truncated). Use this to inspect the page's locally persisted state."
+        description = "Read the localStorage of the given tab (long values are truncated). Use \
+                       this to inspect the page's locally persisted state."
     )]
     async fn get_local_storage(
         &self,
@@ -206,7 +238,9 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Screenshot the given tab and return a base64-encoded PNG. Use list_tabs first to obtain its ID. The target tab is activated automatically so the screenshot succeeds."
+        description = "Screenshot the given tab and return a base64-encoded PNG. Use list_tabs \
+                       first to obtain its ID. The target tab is activated automatically so the \
+                       screenshot succeeds."
     )]
     async fn screenshot_tab(
         &self,
@@ -230,7 +264,8 @@ impl BrowserMcpServer {
 }
 
 impl BrowserMcpServer {
-    /// Send a request to the extension and convert the response into a CallToolResult.
+    /// Send a request to the extension and convert the response into a
+    /// CallToolResult.
     async fn call(&self, msg: Value) -> Result<CallToolResult, McpError> {
         let resp = self.request_extension(msg).await?;
         Ok(error_result(&resp).unwrap_or_else(|| json_result(&resp)))
@@ -275,7 +310,19 @@ impl ServerHandler for BrowserMcpServer {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::from_build_env())
             .with_instructions(
-                "Use this tool to read web page content from the user's browser, manage tabs and windows, and run custom scripts inside a specific tab or in the extension background. Typical scenarios: 1) The page the user wants is a local service, intranet system (CRM, internal dashboards, etc.) or a login-required personal page that cannot be reached by a plain HTTP request — if the browser already has it open, read it via read_active_tab or list_tabs + read_tab; otherwise open it first with execute_script_in_background calling `chrome.tabs.create`, then read. 2) The user wants to drive the browser (create/close tabs, manage windows, intercept requests, etc.) — use execute_script_in_background; to run JS inside a specific tab, use execute_script. Note: before writing custom JS for a tab, call list_tab_tools first — pages may register purpose-built tools (e.g. `send_email` on Gmail). When one matches, prefer execute_tab_tool over execute_script.".to_string(),
+                "Use this tool to read web page content from the user's browser, manage tabs and \
+                 windows, and run custom scripts inside a specific tab or in the extension \
+                 background. Typical scenarios: 1) The page the user wants is a local service, \
+                 intranet system (CRM, internal dashboards, etc.) or a login-required personal \
+                 page that cannot be reached by a plain HTTP request — if the browser already has \
+                 it open, read it via read_active_tab or list_tabs + read_tab; otherwise open it \
+                 first with execute_script_in_background calling `chrome.tabs.create`, then read. \
+                 2) The user wants to drive the browser (create/close tabs, manage windows, \
+                 intercept requests, etc.) — use execute_script_in_background; to run JS inside a \
+                 specific tab, use execute_script. Note: before writing custom JS for a tab, call \
+                 list_tab_tools first — pages may register purpose-built tools (e.g. `send_email` \
+                 on Gmail). When one matches, prefer execute_tab_tool over execute_script."
+                    .to_string(),
             )
     }
 }

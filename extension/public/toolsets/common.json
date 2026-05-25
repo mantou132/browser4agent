@@ -10,7 +10,7 @@
     {
       "name": "fill_field_by_label",
       "description": "按 label/placeholder/aria-label 模糊匹配并填写输入框",
-      "pattern": "https://*/*",
+      "pattern": "*://*:*/*",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -33,7 +33,7 @@
     {
       "name": "click_by_text",
       "description": "按按钮或链接可见文本点击元素",
-      "pattern": "https://*/*",
+      "pattern": "*://*:*/*",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -55,7 +55,7 @@
     {
       "name": "extract_tables",
       "description": "提取页面中所有表格为结构化数据",
-      "pattern": "https://*/*",
+      "pattern": "*://*:*/*",
       "inputSchema": {
         "type": "object",
         "properties": {

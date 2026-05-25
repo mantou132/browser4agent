@@ -33,7 +33,7 @@ function setControlValue(el, value) {
 
 /**
  * 按 label/placeholder/aria-label 模糊匹配并填写输入框
- * @pattern https://*\/*
+ * @pattern *://*:*\/*
  * @param {{ label: string, value: string }} options
  * @param {string} options.label - 字段标签、placeholder 或 aria-label 中的关键词
  * @param {string} options.value - 要填入的值
@@ -58,7 +58,7 @@ export function fill_field_by_label({ label, value } = {}) {
 
 /**
  * 按按钮或链接可见文本点击元素
- * @pattern https://*\/*
+ * @pattern *://*:*\/*
  * @param {{ text: string, exact?: boolean }} options
  * @param {string} options.text - 按钮/链接上的文字
  * @param {boolean} [options.exact=false] - 是否精确匹配
@@ -79,7 +79,7 @@ export function click_by_text({ text, exact = false } = {}) {
 
 /**
  * 提取页面中所有表格为结构化数据
- * @pattern https://*\/*
+ * @pattern *://*:*\/*
  * @param {{ limit?: number }} options
  * @param {number} [options.limit=3] - 最多解析表格数量
  */

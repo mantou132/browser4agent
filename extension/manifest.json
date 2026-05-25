@@ -13,7 +13,26 @@
     }
   },
   "description": "__MSG_appDescription__",
-  "permissions": ["tabs", "nativeMessaging", "scripting", "activeTab", "cookies", "alarms", "storage", "contextMenus"],
+  "permissions": ["nativeMessaging", "storage", "contextMenus", "tabs", "activeTab", "scripting", "cookies"],
+  "optional_permissions": [
+    "notifications",
+    "tabGroups",
+    "downloads",
+    "history",
+    "bookmarks",
+    "topSites",
+    "browsingData",
+    "sessions",
+    "webNavigation",
+    "webRequest",
+    "search",
+
+    "alarms",
+    "offscreen",
+
+    "pageCapture",
+    "favicon"
+  ],
   "host_permissions": ["<all_urls>"],
   "chrome:background": { "service_worker": "background.js" },
   "firefox:background": { "scripts": ["background.js"] },

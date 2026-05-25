@@ -15,20 +15,31 @@ use dialoguer::Select;
 enum LaunchMode {
     Cli(cli::CliArgs),
     /// Launched by a browser as a native messaging host.
-    /// Chrome passes `chrome-extension://<id>/`; Firefox passes manifest path + extension id.
+    /// Chrome passes `chrome-extension://<id>/`; Firefox passes manifest path +
+    /// extension id.
     Browser,
     Setup,
+}
+
+fn looks_like_browser_launch(args: &[OsString]) -> bool {
+    args.iter().skip(1).any(|arg| {
+        arg.to_str().is_some_and(|s| {
+            s.starts_with("chrome-extension://")
+                || s.starts_with("moz-extension://")
+                || s.ends_with(".json") // Firefox passes manifest path
+        })
+    })
 }
 
 fn detect_launch_mode() -> Result<Option<LaunchMode>> {
     let args: Vec<OsString> = env::args_os().collect();
 
-    if cli::looks_like_cli(&args) {
-        return Ok(cli::parse(args)?.map(LaunchMode::Cli));
+    if looks_like_browser_launch(&args) {
+        return Ok(Some(LaunchMode::Browser));
     }
 
     if args.len() > 1 {
-        return Ok(Some(LaunchMode::Browser));
+        return Ok(cli::parse(args)?.map(LaunchMode::Cli));
     }
 
     Ok(Some(LaunchMode::Setup))

@@ -118,16 +118,20 @@ pub async fn run() -> Result<()> {
             .build()
             .expect("Failed to build MCP runtime");
         rt.block_on(async {
-            let listener = tokio::net::TcpListener::bind(BIND_ADDRESS)
-                .await
-                .expect("Failed to bind MCP port");
+            let listener = match tokio::net::TcpListener::bind(BIND_ADDRESS).await {
+                Ok(l) => l,
+                Err(e) => {
+                    logger::info(&format!("Failed to bind {BIND_ADDRESS}: {e}, exiting"));
+                    std::process::exit(1);
+                }
+            };
             logger::info(&format!(
                 "MCP server listening on http://{}{}",
                 BIND_ADDRESS, MCP_PATH
             ));
-            axum::serve(listener, router)
-                .await
-                .expect("MCP server error");
+            if let Err(e) = axum::serve(listener, router).await {
+                logger::info(&format!("MCP server error: {e}"));
+            }
         });
     });
 

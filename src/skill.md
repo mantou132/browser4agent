@@ -8,15 +8,23 @@ description: Drive the user's running browser from the command line via the `bro
 This skill exposes the user's running browser through the local `browser4agent` CLI. Two main use cases:
 
 - **Read web page content** — especially pages that need the user's browser session (local services, intranet, login-required), since the browser carries the cookies and access. Works whether the page is already open or not; if it isn't, open it first via `execute_script_in_background` (`chrome.tabs.create`) then read it.
-- **Drive the browser itself** — list/create/close tabs and windows, intercept network requests, run arbitrary JS inside a specific tab, or run scripts in the extension background to manage browser-wide state.
+- **Drive the browser itself** — list/create/close tabs and windows, intercept network requests, run arbitrary JS inside a specific tab, or run scripts in the extension background to manage browser-wide state. Some `chrome.*` APIs require optional permissions (e.g. `history`, `bookmarks`, `downloads`, `notifications`); call `chrome.permissions.request({ permissions: ['<name>'] })` inside `execute_script_in_background` to obtain them at runtime before use.
 
 If a tool listed below matches the user's intent, prefer it over scraping or guessing.
 
 ## Calling a tool
 
 ```bash
+# Inline JSON
 {{BIN}} --tool <name> --input '<json-object>'
+
+# Complex/multiline JSON via heredoc (no escaping needed)
+cat <<'EOF' | {{BIN}} --tool <name> --stdin
+<json-object>
+EOF
 ```
+
+Use `--stdin` with heredoc when the JSON contains nested quotes, multiline strings, or embedded code that would be difficult to escape inline.
 
 ## Typical flow
 
