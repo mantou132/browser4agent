@@ -1,12 +1,12 @@
 {
   "name": "browser4agent-extension",
   "version": "1.0.0",
+  "private": true,
   "scripts": {
     "postinstall": "toolset-parser public/toolsets",
     "dev": "extension dev",
     "build": "extension build"
   },
-  "license": "ISC",
   "dependencies": {
     "@mantou/gem": "^2.2.2",
     "@swc/helpers": "^0.5.21",

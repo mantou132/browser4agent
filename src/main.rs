@@ -54,8 +54,8 @@ enum SetupChoice {
 
 fn choose_setup_target() -> Result<SetupChoice> {
     let choices = [
+        ("Install Skills (Recommend)", SetupChoice::InstallSkills),
         ("Install MCP settings", SetupChoice::InstallMcp),
-        ("Install Skills", SetupChoice::InstallSkills),
         ("Skip", SetupChoice::Skip),
     ];
     let index = Select::new()
