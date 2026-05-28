@@ -3,27 +3,36 @@ use std::{
     io::{self, Read},
 };
 
-use anyhow::{Context, Result, bail};
-use clap::Parser;
+use anyhow::{Context, Result, anyhow, bail};
+use clap::{CommandFactory, Parser};
 use rmcp::{
     ServiceExt,
-    model::{CallToolRequestParams, ClientInfo, RawContent},
+    model::{CallToolRequestParams, ClientInfo, RawContent, Tool},
     transport::StreamableHttpClientTransport,
 };
 
-use crate::constant::{BIND_ADDRESS, MCP_PATH};
+use crate::{
+    constant::{BIND_ADDRESS, MCP_PATH},
+    mcp_server::BrowserMcpServer,
+};
 
 #[derive(Debug, Parser)]
 #[command(
     name = "browser4agent",
     about = "Forward a single browser4agent tool call to the running MCP HTTP service.",
-    after_help = "Tool schemas live in the installed skill.\n\nExamples:\n  browser4agent --tool \
-                  list_tabs\n  browser4agent --tool read_tab --input '{\"tab_id\": 123}'\n  echo \
-                  '{\"tab_id\":123}' | browser4agent --tool read_tab --stdin"
+    after_help = "Pass --help with --tool to print that tool's input schema.\n\nExamples:\n  \
+                  browser4agent --tool list_tabs\n  browser4agent --tool read_tab --input \
+                  '{\"tab_id\": 123}'\n  echo '{\"tab_id\":123}' | browser4agent --tool read_tab \
+                  --stdin\n  browser4agent --tool read_tab --help",
+    disable_help_flag = true
 )]
 pub(crate) struct CliArgs {
+    /// Print help. Combine with --tool to print that tool's input schema.
+    #[arg(long, short = 'h')]
+    help: bool,
+
     #[arg(long)]
-    tool: String,
+    tool: Option<String>,
 
     #[arg(long, value_name = "JSON")]
     input: Option<String>,
@@ -33,18 +42,28 @@ pub(crate) struct CliArgs {
 }
 
 pub(crate) fn parse(args: Vec<OsString>) -> Result<Option<CliArgs>> {
-    match CliArgs::try_parse_from(args) {
-        Ok(parsed) => Ok(Some(parsed)),
-        Err(err) if err.kind() == clap::error::ErrorKind::DisplayHelp => {
-            err.print()?;
-            Ok(None)
-        }
-        Err(err) => Err(err.into()),
-    }
+    Ok(Some(CliArgs::try_parse_from(args)?))
 }
 
 pub(crate) async fn run(args: CliArgs) -> Result<()> {
-    let input = read_input(args.input.as_deref(), args.stdin)?;
+    match (args.help, args.tool.as_deref()) {
+        (true, None) => {
+            CliArgs::command().print_help()?;
+            println!();
+            Ok(())
+        }
+        (true, Some(tool)) => print_tool_help(tool),
+        (false, Some(tool)) => call_tool(tool, args.input.as_deref(), args.stdin).await,
+        (false, None) => {
+            CliArgs::command().print_help()?;
+            println!();
+            bail!("--tool is required");
+        }
+    }
+}
+
+async fn call_tool(name: &str, inline: Option<&str>, from_stdin: bool) -> Result<()> {
+    let input = read_input(inline, from_stdin)?;
     let url = format!("http://{BIND_ADDRESS}{MCP_PATH}");
     let transport = StreamableHttpClientTransport::from_uri(url);
     let mut client = ClientInfo::default()
@@ -55,9 +74,8 @@ pub(crate) async fn run(args: CliArgs) -> Result<()> {
                 "failed to connect to running MCP HTTP service at http://{BIND_ADDRESS}{MCP_PATH}"
             )
         })?;
-
     let result = client
-        .call_tool(CallToolRequestParams::new(args.tool).with_arguments(input))
+        .call_tool(CallToolRequestParams::new(name.to_owned()).with_arguments(input))
         .await
         .context("tool call failed")?;
     print_result(&result)?;
@@ -65,6 +83,34 @@ pub(crate) async fn run(args: CliArgs) -> Result<()> {
         .close()
         .await
         .context("failed to close MCP client session")?;
+    Ok(())
+}
+
+fn print_tool_help(name: &str) -> Result<()> {
+    let tools = BrowserMcpServer::tool_specs();
+    let tool = tools.iter().find(|t| t.name == name).ok_or_else(|| {
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
+        anyhow!(
+            "tool '{name}' not found. Available tools:\n  {}",
+            names.join("\n  ")
+        )
+    })?;
+    print_tool(tool)
+}
+
+fn print_tool(tool: &Tool) -> Result<()> {
+    println!("{}\n", tool.name);
+    if let Some(desc) = &tool.description {
+        println!("{}\n", desc.trim());
+    }
+    println!("Input schema:");
+    println!("{}", serde_json::to_string_pretty(&*tool.input_schema)?);
+    println!("\nUsage:");
+    println!("  browser4agent --tool {} --input '<json>'", tool.name);
+    println!(
+        "  echo '<json>' | browser4agent --tool {} --stdin",
+        tool.name
+    );
     Ok(())
 }
 
