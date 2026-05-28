@@ -37,12 +37,12 @@
   "chrome:background": { "service_worker": "background.js" },
   "firefox:background": { "scripts": ["background.js"] },
   "action": {
-    "default_popup": "popup/popup.html",
+    "default_popup": "popup/index.html",
     "default_icon": "icon128.png",
     "default_title": "__MSG_actionTitle__"
   },
   "options_ui": {
-    "page": "options/options.html",
+    "page": "options/index.html",
     "open_in_tab": true
   },
   "content_scripts": [

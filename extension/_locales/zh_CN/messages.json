@@ -56,7 +56,7 @@
     "message": "拖拽新文件到已有卡片可更新对应工具集。"
   },
   "configureMcp": {
-    "message": "自动为你的 AI Agent 配置 MCP 连接"
+    "message": "自动为你的 AI Agent 配置 MCP 或者技能"
   },
   "configureNativeHost": {
     "message": "配置 Native Messaging Host"

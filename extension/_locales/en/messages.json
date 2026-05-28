@@ -56,7 +56,7 @@
     "message": "Drop a new file onto an existing card to update that toolset."
   },
   "configureMcp": {
-    "message": "Configure the MCP connection for your AI Agent automatically"
+    "message": "Configure the MCP/Skills connection for your AI Agent automatically"
   },
   "configureNativeHost": {
     "message": "Configure Native Messaging Host"

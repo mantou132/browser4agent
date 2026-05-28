@@ -1,6 +1,3 @@
-// Global state for tab tool UI, backed by chrome.storage.sync.
-// Components consume it via @connectStore(toolStore).
-
 import { createStore } from '@mantou/gem/lib/store';
 import { marketApi } from './market-api.js';
 import { isToolEnabled as isToolEnabledFromState, isToolsetLiked, toolKey } from './toolsets.js';
@@ -11,19 +8,24 @@ export const toolStore = createStore({
   likedToolsets: {},
 });
 
+let storageListenerBound = false;
+
 export async function initStore() {
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'sync') return;
-    const patch = {};
-    if (changes.toolsets) patch.toolsets = changes.toolsets.newValue ?? [];
-    if (changes.toolStates) patch.toolStates = changes.toolStates.newValue ?? {};
-    if (changes.likedToolsets) patch.likedToolsets = changes.likedToolsets.newValue ?? {};
-    if (Object.keys(patch).length) toolStore(patch);
-  });
+  if (!storageListenerBound) {
+    storageListenerBound = true;
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      const patch = {};
+      if (changes.toolsets) patch.toolsets = changes.toolsets.newValue ?? [];
+      if (changes.toolStates) patch.toolStates = changes.toolStates.newValue ?? {};
+      if (changes.likedToolsets) patch.likedToolsets = changes.likedToolsets.newValue ?? {};
+      if (Object.keys(patch).length) toolStore(patch);
+    });
+  }
   toolStore(await getToolConfig());
 }
 
-async function persist(patch) {
+export async function persist(patch) {
   toolStore(patch);
   await chrome.storage.local.set(patch);
 }

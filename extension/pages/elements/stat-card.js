@@ -1,4 +1,7 @@
+import { contentsContainer } from 'duoyun-ui/lib/styles';
+
 @customElement('market-stat-card')
+@adoptedStyle(contentsContainer)
 class MarketStatCardElement extends GemElement {
   @attribute label;
   @attribute description;

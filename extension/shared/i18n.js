@@ -11,6 +11,9 @@ export function getLocale() {
   return language.toLowerCase().startsWith('en') ? 'en' : DEFAULT_LOCALE;
 }
 
+/**
+ * @param {keyof typeof import('../_locales/en/messages.json')} key
+ */
 export function t(key, substitutions) {
   return chrome.i18n.getMessage(key, normalizeSubstitutions(substitutions)) || key;
 }

@@ -99,6 +99,26 @@ jobs:
           name: extension-firefox-zip
           path: extension/dist/firefox/*.zip
 
+  deploy-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: cf
+          packageManager: pnpm
+
   release:
     needs: [build-rust, build-extension]
     runs-on: ubuntu-latest

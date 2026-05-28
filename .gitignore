@@ -6,3 +6,4 @@ dist
 key.pem
 .DS_Store
 node_modules
+extension/public/toolsets/*.json

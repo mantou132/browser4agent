@@ -2,9 +2,8 @@ import { Modal } from 'duoyun-ui/elements/modal';
 import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
 import { createForm } from 'duoyun-ui/patterns/form';
-import { visible } from '@/shared/decorators.js';
 import { setPageI18n, t } from '../shared/i18n.js';
-import { loadToolset } from '../shared/loader.js';
+import { installToolset, loadToolset } from '../shared/loader.js';
 import { MARKET_API, marketApi } from '../shared/market-api.js';
 import { addToolset, initStore, toolStore } from '../shared/store.js';
 import { openExtensionPage } from '../shared/tabs.js';
@@ -34,7 +33,6 @@ class AgentMarketPageElement extends GemElement {
   });
 
   @mounted()
-  @visible()
   #boot = async () => {
     initStore();
     this.#fetchToolsets();
@@ -62,7 +60,7 @@ class AgentMarketPageElement extends GemElement {
       body: html`<market-tool-editor .initialTools=${preview.tools}></market-tool-editor>`,
       okText: t(isUpdate ? 'update' : 'subscribe'),
     });
-    const { meta, tools } = await loadToolset(`${toolsetUrl}/install`);
+    const { meta, tools } = await installToolset(toolsetUrl);
     await addToolset({ ...meta, id, url: toolsetUrl, type: 'community', enabled: true, tools });
     Toast.open('success', t(isUpdate ? 'toolsetUpdated' : 'addedToolset', [meta.name, tools.length]));
   };
@@ -170,7 +168,7 @@ class AgentMarketPageElement extends GemElement {
               <dy-button @click=${this.#openOptions}>${t('backToSettings')}</dy-button>
             </div>
           </div>
-          <div class="grid gap-3 border-t border-border bg-slate-50/70 p-5 sm:grid-cols-3 sm:p-6">
+          <div class="grid items-stretch gap-3 border-t border-border bg-slate-50/70 p-5 sm:grid-cols-3 sm:p-6">
             <market-stat-card label=${t('marketToolsets')} .value=${toolsets.length} description=${t('marketToolsetsDesc')} ?loading=${loading}></market-stat-card>
             <market-stat-card label=${t('coveredTools')} .value=${totalTools} description=${t('coveredToolsDesc')} ?loading=${loading}></market-stat-card>
             <market-stat-card label=${t('totalInstalls')} .value=${totalInstalls} description=${t('totalInstallsDesc')} ?loading=${loading}></market-stat-card>
@@ -209,31 +207,14 @@ class AgentMarketPageElement extends GemElement {
           <div v-else class="flex flex-col gap-5">
             ${filtered.map(
               (toolset) => html`
-                <dy-drop-area
-                  accept=".js,.ts,.json,application/json,text/javascript,text/typescript"
+                <market-toolset-card
+                  .toolset=${toolset}
+                  url=${this.#getUrl(toolset.name)}
+                  ?subscribed=${subscribed.has(getToolsetId(this.#getUrl(toolset.name)))}
+                  @subscribe=${() => this.#confirmAndInstall(toolset, { isUpdate: false })}
+                  @refresh=${() => this.#confirmAndInstall(toolset, { isUpdate: true })}
                   @change=${(evt) => this.#onDropUpdate(evt, toolset)}
-                  class="group flex items-center gap-4 rounded-lg border border-border bg-white/90 p-5 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-primary hover:shadow-lg hover:shadow-indigo-500/10"
-                >
-                  <span class="grid size-14 shrink-0 place-items-center rounded-lg bg-indigo-50 text-2xl shadow-inner shadow-indigo-100">
-                    ${toolset.icon || '📦'}
-                  </span>
-                  <div class="flex-1 min-w-0">
-                    <div class="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-                      <span class="font-bold text-sm text-highlight">${toolset.name}</span>
-                      <dy-tag small>${t('toolCount', toolset.toolsCount ?? '?')}</dy-tag>
-                      <span class="text-xs text-describe">${t('installCount', toolset.installCount ?? 0)}</span>
-                    </div>
-                    <div class="mb-2 text-sm leading-6 text-describe">${toolset.description || t('noDescription')}</div>
-                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral">
-                      <span v-if=${!!(toolset.author?.name || toolset.author?.email)}>${t('authorPrefix')}${toolset.author?.name || toolset.author?.email}</span>
-                      <span>${this.#getUrl(toolset.name)}</span>
-                    </div>
-                  </div>
-                  <div class="shrink-0">
-                    <dy-button type="reverse" v-if=${!subscribed.has(getToolsetId(this.#getUrl(toolset.name)))} @click=${() => this.#confirmAndInstall(toolset, { isUpdate: false })}>${t('subscribe')}</dy-button>
-                    <dy-button v-else type="reverse" .icon=${icons.refresh} @click=${() => this.#confirmAndInstall(toolset, { isUpdate: true })}>${t('update')}</dy-button>
-                  </div>
-                </dy-drop-area>
+                ></market-toolset-card>
               `,
             )}
           </div>

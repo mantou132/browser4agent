@@ -43,6 +43,12 @@ async function parseToolsetContent(content) {
   return marketApi.post('/api/toolsets/parse', { content, filename: 'toolset.ts' });
 }
 
+function parseToolsetData(data, fallbackUrl) {
+  if (!Array.isArray(data.tools) || !data.tools.length) throw new Error(t('toolsetNoTools'));
+  if (!data.name) data.name = new URL(fallbackUrl).hostname;
+  return { meta: serializeToolset(data), tools: data.tools.map(serializeTool) };
+}
+
 export async function loadToolset(url) {
   const res = await fetch(url, { credentials: 'omit' });
   if (!res.ok) throw new Error(t('toolsetLoadFailed', res.status));
@@ -51,7 +57,11 @@ export async function loadToolset(url) {
   const useParser = isJsTsUrl(url) || isJsTsContentType(contentType);
   const data = useParser ? await parseToolsetContent(await res.text()) : await res.json();
 
-  if (!Array.isArray(data.tools) || !data.tools.length) throw new Error(t('toolsetNoTools'));
-  if (!data.name) data.name = new URL(url).hostname;
-  return { meta: serializeToolset(data), tools: data.tools.map(serializeTool) };
+  return parseToolsetData(data, url);
+}
+
+export async function installToolset(url) {
+  const res = await fetch(`${url.replace(/\/$/, '')}/install`, { method: 'POST', credentials: 'omit' });
+  if (!res.ok) throw new Error(t('toolsetLoadFailed', res.status));
+  return parseToolsetData(await res.json(), url);
 }

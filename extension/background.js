@@ -1,6 +1,6 @@
 import { t } from './shared/i18n.js';
 import { loadToolset } from './shared/loader.js';
-import { getToolConfig } from './shared/store.js';
+import { getToolConfig, persist } from './shared/store.js';
 import {
   executeScript,
   executeScriptInBackground,
@@ -45,7 +45,7 @@ async function refreshBuiltinToolsets() {
       // skip toolsets that fail to load
     }
   }
-  await chrome.storage.local.set({ toolsets: next });
+  await persist({ toolsets: next });
 }
 
 chrome.contextMenus.create({

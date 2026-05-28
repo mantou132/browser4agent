@@ -80,7 +80,7 @@ const router = [
     return Response.json(toolset);
   }),
 
-  route('GET', '/api/toolsets/:encodeName/install', async (_req, env, params) => {
+  route('POST', '/api/toolsets/:encodeName/install', async (_req, env, params) => {
     const name = decodeURIComponent(params.encodeName);
     const toolset = normalizeToolset(await env.MARKET_KV.get(name, 'json'));
     if (!toolset) return Response.json({ error: 'not found' }, { status: 404 });
