@@ -1,3 +1,94 @@
+diff --git a/helper/request.d.ts b/helper/request.d.ts
+index 8acea3b24e57e181d2c6e7d98e2997008cc9c47d..a509a0eb62b03418ff409b9f03a0da81b1045760 100644
+--- a/helper/request.d.ts
++++ b/helper/request.d.ts
+@@ -3,9 +3,9 @@ type ReqParams = Record<string, string | number>;
+ type Options = {
+     origin?: string;
+     base?: string;
+-    appendHeaders?: (input?: any) => HeadersInit;
+-    transformInput?: (input?: any) => any;
+-    transformOutput?: (output: any, req: Request) => any;
++    appendHeaders?: (input?: any) => HeadersInit | Promise<HeadersInit>;
++    transformInput?: (input?: any) => any | Promise<any>;
++    transformOutput?: (output: any, req: Request) => any | Promise<any>;
+ } & RequestInit;
+ declare function initRequest(options?: Options): {
+     request: <T>(uri: string, reqOptions?: RequestInit) => Promise<T>;
+@@ -15,5 +15,5 @@ declare function initRequest(options?: Options): {
+     post<T>(path: string, body?: ReqBody): Promise<T>;
+ };
+ declare const request: <T>(uri: string, reqOptions?: RequestInit) => Promise<T>, del: <T>(path: string, params?: ReqParams) => Promise<T>, get: <T>(path: string, params?: ReqParams) => Promise<T>, post: <T>(path: string, body?: ReqBody) => Promise<T>, put: <T>(path: string, body?: ReqBody) => Promise<T>;
+-export { initRequest, request, del, get, post, put };
++export { del, get, initRequest, post, put, request };
+ //# sourceMappingURL=request.d.ts.map
+\ No newline at end of file
+diff --git a/helper/request.js b/helper/request.js
+index 90a4fa1cf81b6fec671c8d6d5bb5ec9a4b65bc74..6f3a6dc9d5a08f0fdbaa1bae523cf76999504037 100644
+--- a/helper/request.js
++++ b/helper/request.js
+@@ -62,7 +62,7 @@ function initRequest(options = {}) {
+             }
+             if (isClientError)
+                 throw new Error(res.statusText, { cause: data });
+-            return transformOutput(data, req);
++            return await transformOutput(data, req);
+         }
+         catch {
+             throw new Error('Parse error');
+@@ -70,38 +70,38 @@ function initRequest(options = {}) {
+     };
+     return {
+         request,
+-        get(path, params) {
+-            const i = transformInput(params);
++        async get(path, params) {
++            const i = await transformInput(params);
+             return request(serializationUrl(path, i), {
+                 method: 'GET',
+-                headers: appendHeaders(i),
++                headers: await appendHeaders(i),
+             });
+         },
+-        del(path, params) {
+-            const i = transformInput(params);
++        async del(path, params) {
++            const i = await transformInput(params);
+             return request(serializationUrl(path, i), {
+                 method: 'DELETE',
+-                headers: appendHeaders(i),
++                headers: await appendHeaders(i),
+             });
+         },
+-        put(path, body) {
+-            const i = transformInput(body);
++        async put(path, body) {
++            const i = await transformInput(body);
+             return request(serializationUrl(path), {
+                 method: 'PUT',
+-                headers: appendHeaders(i),
++                headers: await appendHeaders(i),
+                 body: serializationBody(i),
+             });
+         },
+-        post(path, body) {
+-            const i = transformInput(body);
++        async post(path, body) {
++            const i = await transformInput(body);
+             return request(serializationUrl(path), {
+                 method: 'POST',
+-                headers: appendHeaders(i),
++                headers: await appendHeaders(i),
+                 body: serializationBody(i),
+             });
+         },
+     };
+ }
+ const { request, del, get, post, put } = initRequest();
+-export { initRequest, request, del, get, post, put };
++export { del, get, initRequest, post, put, request };
+ //# sourceMappingURL=request.js.map
+\ No newline at end of file
 diff --git a/lib/reactive.js b/lib/reactive.js
 index cf7a74178edab385cae246b247b1be5ca524172d..ed64131156e5cb871906808754a177dc37200ed6 100644
 --- a/lib/reactive.js

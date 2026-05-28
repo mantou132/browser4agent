@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   '@mantou/gem':
-    hash: b2bf794ab08905de75297f1495753c231586def7a0436ab8ce94fa45cf74dce8
+    hash: afad537fa9331497997cf55fdae23813a77dbb5cc449f17274ebf56acf2159d4
     path: patches/@mantou__gem.patch
   duoyun-ui:
     hash: 3961d9601a2a0da3890cd91e724efe20d91f3e18be9c0d3af2ec79b8a9058a59
@@ -43,13 +43,13 @@ importers:
     dependencies:
       '@mantou/gem':
         specifier: ^2.2.2
-        version: 2.2.2(patch_hash=b2bf794ab08905de75297f1495753c231586def7a0436ab8ce94fa45cf74dce8)
+        version: 2.2.2(patch_hash=afad537fa9331497997cf55fdae23813a77dbb5cc449f17274ebf56acf2159d4)
       '@swc/helpers':
         specifier: ^0.5.21
         version: 0.5.21
       duoyun-ui:
         specifier: ^2.2.2
-        version: 2.2.2(patch_hash=3961d9601a2a0da3890cd91e724efe20d91f3e18be9c0d3af2ec79b8a9058a59)(@mantou/gem@2.2.2(patch_hash=b2bf794ab08905de75297f1495753c231586def7a0436ab8ce94fa45cf74dce8))
+        version: 2.2.2(patch_hash=3961d9601a2a0da3890cd91e724efe20d91f3e18be9c0d3af2ec79b8a9058a59)(@mantou/gem@2.2.2(patch_hash=afad537fa9331497997cf55fdae23813a77dbb5cc449f17274ebf56acf2159d4))
       quickjs-emscripten:
         specifier: ^0.32.0
         version: 0.32.0
@@ -3433,7 +3433,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@mantou/gem@2.2.2(patch_hash=b2bf794ab08905de75297f1495753c231586def7a0436ab8ce94fa45cf74dce8)': {}
+  '@mantou/gem@2.2.2(patch_hash=afad537fa9331497997cf55fdae23813a77dbb5cc449f17274ebf56acf2159d4)': {}
 
   '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
@@ -4079,9 +4079,9 @@ snapshots:
       es-errors: 1.3.0
       gopd: 1.2.0
 
-  duoyun-ui@2.2.2(patch_hash=3961d9601a2a0da3890cd91e724efe20d91f3e18be9c0d3af2ec79b8a9058a59)(@mantou/gem@2.2.2(patch_hash=b2bf794ab08905de75297f1495753c231586def7a0436ab8ce94fa45cf74dce8)):
+  duoyun-ui@2.2.2(patch_hash=3961d9601a2a0da3890cd91e724efe20d91f3e18be9c0d3af2ec79b8a9058a59)(@mantou/gem@2.2.2(patch_hash=afad537fa9331497997cf55fdae23813a77dbb5cc449f17274ebf56acf2159d4)):
     dependencies:
-      '@mantou/gem': 2.2.2(patch_hash=b2bf794ab08905de75297f1495753c231586def7a0436ab8ce94fa45cf74dce8)
+      '@mantou/gem': 2.2.2(patch_hash=afad537fa9331497997cf55fdae23813a77dbb5cc449f17274ebf56acf2159d4)
       d3-geo: 3.1.1
       deep-query-selector: 1.0.2
       elkjs: 0.7.1

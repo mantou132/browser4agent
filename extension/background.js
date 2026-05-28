@@ -1,5 +1,6 @@
 import { t } from './shared/i18n.js';
 import { loadToolset } from './shared/loader.js';
+import { ensureAuthToken } from './shared/market-api.js';
 import { getToolConfig, persist } from './shared/store.js';
 import {
   executeScript,
@@ -20,6 +21,7 @@ const WELCOME_URL = chrome.runtime.getURL('pages/welcome.html');
 const MARKET_URL = chrome.runtime.getURL('pages/market.html');
 
 chrome.runtime.onInstalled.addListener((details) => {
+  ensureAuthToken();
   if (details.reason === 'install') {
     chrome.tabs.create({ url: WELCOME_URL });
   }
