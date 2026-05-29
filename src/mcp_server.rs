@@ -43,11 +43,13 @@ pub struct ExecuteTabToolParams {
     #[schemars(description = "Target tab ID (obtained from list_tabs).")]
     pub tab_id: i64,
     #[schemars(
-        description = "Toolset ID (from the list_tab_tools result). Toolset names may repeat, so \
-                       always identify by ID."
+        description = "Toolset ID from list_tab_tools. Required — never guess; names may repeat \
+                       across toolsets."
     )]
     pub toolset_id: String,
-    #[schemars(description = "Tool name (from the list_tab_tools result).")]
+    #[schemars(
+        description = "Tool name from list_tab_tools. Required — never guess; discover at runtime."
+    )]
     pub tool_name: String,
     #[schemars(
         description = "JSON object of arguments. Must match the tool's `inputSchema` from \
@@ -98,8 +100,8 @@ impl BrowserMcpServer {
 
     #[tool(
         description = "List every open tab in the browser. Returns each tab's id, title, active \
-                       flag, last-accessed time, and URL. Use this to pick a target tab before \
-                       calling read_tab / get_cookies / get_local_storage etc."
+                       flag, last-accessed time, and URL. Use this to obtain tab_id before \
+                       list_tab_tools, read_tab, execute_tab_tool, get_local_storage, etc."
     )]
     async fn list_tabs(&self) -> Result<CallToolResult, McpError> {
         self.call(json!({ "type": "list_tabs" })).await
@@ -152,9 +154,9 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Run a JavaScript function inside the given tab and return its result. The \
-                       function receives the elements of `args` as its arguments. Use this to \
-                       extract page data or manipulate the DOM precisely."
+        description = "Run custom JavaScript inside the given tab. Use ONLY after list_tab_tools \
+                       shows no matching page tool. For site-specific actions, prefer \
+                       list_tab_tools + execute_tab_tool instead."
     )]
     async fn execute_script(
         &self,
@@ -170,10 +172,11 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "List the page-registered tools available in the given tab. Returns toolset \
-                       ID, toolset URL, tool name, description, and inputSchema. Names may repeat \
-                       across toolsets — subsequent calls must identify a tool by `toolsetId` + \
-                       `toolName`."
+        description = "List page tools available on the given tab. ALWAYS call this before \
+                       execute_tab_tool or execute_script when the user wants to act on a web \
+                       app. Returns toolset_id, tool_name, description, and inputSchema for each \
+                       tool on that page (from subscribed toolsets or WebMCP — dynamic, varies by \
+                       tab). Workflow: list_tabs → list_tab_tools → execute_tab_tool."
     )]
     async fn list_tab_tools(
         &self,
@@ -184,10 +187,11 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Invoke a page-registered tool that is subscribed and matches the current \
-                       page. Call list_tab_tools first to obtain `toolsetId` and `toolName`, then \
-                       pass `args`. The tool function runs in the target tab and its result is \
-                       returned."
+        description = "Invoke a page tool on the given tab. REQUIRED workflow: list_tabs to get \
+                       tab_id → list_tab_tools to get toolset_id, tool_name, and inputSchema → \
+                       call this with args matching inputSchema exactly. Do not guess tool_name \
+                       or args — pick them from list_tab_tools. Prefer this over execute_script \
+                       whenever list_tab_tools returns a matching tool."
     )]
     async fn execute_tab_tool(
         &self,
@@ -205,13 +209,12 @@ impl BrowserMcpServer {
 
     #[tool(
         description = "Run a JavaScript function in the extension's background service worker and \
-                       return its result. The function receives the elements of `args` as its \
-                       arguments. Use this to drive the browser: manage tabs/windows, intercept \
-                       or modify network requests, control downloads, etc. The full `chrome.*` \
-                       extension API is available — call it with async/await. Some APIs require \
-                       optional permissions (e.g. history, bookmarks, downloads, notifications, \
-                       etc.); call `await chrome.permissions.request({ permissions: ['<name>'] \
-                       })` first to obtain them before use."
+                       return its result. Use this to open/close tabs and windows \
+                       (chrome.tabs.create/remove, chrome.windows.create/remove), intercept \
+                       network requests, control downloads, etc. Cannot quit the browser process \
+                       itself. The full chrome.* API is available — async/await. Some APIs need \
+                       optional permissions; call await chrome.permissions.request({ permissions: \
+                       ['<name>'] }) first."
     )]
     async fn execute_script_in_background(
         &self,
@@ -310,18 +313,22 @@ impl ServerHandler for BrowserMcpServer {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::from_build_env())
             .with_instructions(
-                "Use this tool to read web page content from the user's browser, manage tabs and \
-                 windows, and run custom scripts inside a specific tab or in the extension \
-                 background. Typical scenarios: 1) The page the user wants is a local service, \
-                 intranet system (CRM, internal dashboards, etc.) or a login-required personal \
-                 page that cannot be reached by a plain HTTP request — if the browser already has \
-                 it open, read it via read_active_tab or list_tabs + read_tab; otherwise open it \
-                 first with execute_script_in_background calling `chrome.tabs.create`, then read. \
-                 2) The user wants to drive the browser (create/close tabs, manage windows, \
-                 intercept requests, etc.) — use execute_script_in_background; to run JS inside a \
-                 specific tab, use execute_script. Note: before writing custom JS for a tab, call \
-                 list_tab_tools first — pages may register purpose-built tools (e.g. `send_email` \
-                 on Gmail). When one matches, prefer execute_tab_tool over execute_script."
+                "Access and control the user's real browser with their active session. Use this \
+                 when built-in fetch/HTTP cannot access content (login walls, SSO, intranet), or \
+                 when you need browser-specific data (cookies, localStorage, errors, screenshots) \
+                 or web app interactions (forms, clicks, actions).\n\n**Workflow for web app \
+                 interactions:**\n1. Ensure target page is open (ask user, or chrome.tabs.create \
+                 via execute_script_in_background)\n2. list_tabs → tab_id\n3. list_tab_tools → \
+                 discover user-subscribed toolsets for that page\n4. If matching tool exists: \
+                 execute_tab_tool (preferred)\n5. If no tool: execute_script for custom JS\nALWAYS \
+                 check list_tab_tools first — never skip or guess tool names.\n\n**Reading \
+                 content:** read_active_tab for current tab; list_tabs + read_tab for specific \
+                 tabs. Open URLs first via execute_script_in_background if needed.\n\n**Browser \
+                 automation:** execute_script_in_background runs in extension service worker with \
+                 full chrome.* API: tabs/windows management (create/remove/update), notifications \
+                 (chrome.notifications.create for long-running ops), downloads, network, \
+                 permissions, etc.\n\n**Cleanup:** Close temporary tabs after use with \
+                 chrome.tabs.remove via execute_script_in_background."
                     .to_string(),
             )
     }

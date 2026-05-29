@@ -11,7 +11,8 @@ const BIN_PLACEHOLDER: &str = "{{BIN}}";
 
 /// Each agent's base directory where `skills/<SKILL_NAME>/SKILL.md` lives.
 /// Detection is just "the agent's home dir exists" — that's what every CLI in
-/// our list creates on first launch and matches vercel-labs/skills's convention.
+/// our list creates on first launch and matches vercel-labs/skills's
+/// convention.
 fn agents() -> Vec<(&'static str, PathBuf)> {
     let Some(home) = dirs::home_dir() else {
         return Vec::new();
@@ -68,7 +69,11 @@ pub fn uninstall_skill() -> Result<()> {
 
 fn current_bin() -> String {
     let exe = env::current_exe().unwrap_or_else(|_| PathBuf::from(SKILL_NAME));
-    let path = exe.display().to_string();
+    // Windows accepts `/` in paths; Git Bash treats unquoted `\` as escapes (`\U`,
+    // `\t` in `\target`, etc.). Forward slashes work in both Git Bash and
+    // PowerShell, so install one path that is safe everywhere instead of native
+    // `\` (PowerShell-only style).
+    let path = exe.display().to_string().replace('\\', "/");
     if path.contains(char::is_whitespace) {
         format!("\"{path}\"")
     } else {
@@ -106,8 +111,8 @@ fn render_tools() -> String {
 mod tests {
     use super::*;
 
-    /// Helper: `cargo test -- --nocapture dump_rendered_skill` to print the full SKILL.md
-    /// that would be written. Not a real assertion.
+    /// Helper: `cargo test -- --nocapture dump_rendered_skill` to print the
+    /// full SKILL.md that would be written. Not a real assertion.
     #[test]
     #[ignore = "diagnostic only"]
     fn dump_rendered_skill() {

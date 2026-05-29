@@ -1,6 +1,6 @@
 /**
  * @module Feishu Docs Tools
- * @description 在飞书文档中修改标题、插入/删除段落（支持 Markdown）
+ * @description 在飞书文档中修改标题、在段落前/后插入或删除段落（支持 Markdown）
  * @icon 📄
  * @author Browser for AI Agent
  */
@@ -123,31 +123,69 @@ export async function delete_paragraph({ paragraph_index, text } = {}) {
   return { deletedContent };
 }
 
+function zoneText(zone) {
+  return zone.textContent.replace(/\u200B/g, '').trim();
+}
+
 /**
- * 在指定段落前插入新内容（支持 Markdown 格式）
+ * 在指定段落前/后插入新内容（支持 Markdown 格式）
  * @pattern https://*.feishu.cn/*
- * @param {{ before: string, content: string }} options
- * @param {string} options.before - 目标段落的文本（模糊匹配），新内容将插入到该段落之前
+ * @param {{ before?: string, after?: string, content: string }} options
+ * @param {string} [options.before] - 目标段落的文本（模糊匹配），新内容将插入到该段落之前
+ * @param {string} [options.after] - 目标段落的文本（模糊匹配），新内容将插入到该段落之后；与 before 二选一
  * @param {string} options.content - Markdown 格式的内容（支持标题/链接/加粗/代码块等）
  */
-export async function insert_paragraph({ before, content } = {}) {
-  if (!before) throw new Error('before is required');
+export async function insert_paragraph({ before, after, content } = {}) {
   if (!content) throw new Error('content is required');
+  const hasBefore = before != null && before !== '';
+  const hasAfter = after != null && after !== '';
+  if (hasBefore && hasAfter) throw new Error('before 与 after 不能同时指定');
 
   const bodyZones = [...document.querySelectorAll('.page-block-children .zone-container.text-editor')];
   if (!bodyZones.length) throw new Error('未找到飞书文档正文区域');
 
-  const targetZone = bodyZones.find((z) => z.textContent.replace(/\u200B/g, '').includes(before));
-  if (!targetZone) throw new Error(`未找到包含 "${before}" 的段落`);
+  const insertAfter = hasAfter;
+  const anchorText = insertAfter ? after : before;
+
+  let targetZone;
+  if (hasBefore || hasAfter) {
+    targetZone = bodyZones.find((z) => z.textContent.replace(/\u200B/g, '').includes(anchorText));
+    if (!targetZone) throw new Error(`未找到包含 "${anchorText}" 的段落`);
+  } else {
+    targetZone = bodyZones.find((z) => !zoneText(z)) ?? bodyZones[0];
+  }
+
+  if (!zoneText(targetZone)) {
+    await pasteHTML(targetZone, content);
+    return {
+      content,
+      insertedBefore: hasBefore ? before : null,
+      insertedAfter: hasAfter ? after : null,
+      mode: 'direct',
+    };
+  }
 
   const leafSpans = targetZone.querySelectorAll('span[data-leaf="true"]');
   if (!leafSpans.length) throw new Error('目标段落结构异常');
 
   const firstText = leafSpans[0].firstChild;
+  const lastText = leafSpans[leafSpans.length - 1].firstChild;
   targetZone.focus();
   const sel = window.getSelection();
   const range = document.createRange();
-  range.setStart(firstText, 0);
+  if (insertAfter) {
+    if (lastText) {
+      range.setStart(lastText, lastText.length);
+    } else {
+      range.selectNodeContents(targetZone);
+      range.collapse(false);
+    }
+  } else if (firstText) {
+    range.setStart(firstText, 0);
+  } else {
+    range.selectNodeContents(targetZone);
+    range.collapse(true);
+  }
   range.collapse(true);
   sel.removeAllRanges();
   sel.addRange(range);
@@ -170,10 +208,15 @@ export async function insert_paragraph({ before, content } = {}) {
 
   const newZones = [...document.querySelectorAll('.page-block-children .zone-container.text-editor')];
   const targetIdx = newZones.indexOf(targetZone);
-  const newZone = newZones[targetIdx - 1];
+  const newZone = insertAfter ? newZones[targetIdx + 1] : newZones[targetIdx - 1];
   if (!newZone) throw new Error('插入新段落失败');
 
   await pasteHTML(newZone, content);
 
-  return { content, insertedBefore: before };
+  return {
+    content,
+    insertedBefore: hasBefore ? before : null,
+    insertedAfter: hasAfter ? after : null,
+    mode: insertAfter ? 'after' : 'before',
+  };
 }

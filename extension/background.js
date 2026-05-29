@@ -93,6 +93,83 @@ function handleMessageFromHost(msg) {
     case 'connected':
       console.log('Connected to native host:', NATIVE_HOST_NAME);
       break;
+    case 'get_notifications':
+      chrome.notifications.getAll().then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'query_tab_groups':
+      chrome.tabGroups.query(rest.query || {}).then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'search_downloads':
+      chrome.downloads.search(rest.query || {}).then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'search_history':
+      chrome.history.search(rest.query || { text: '' }).then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'search_bookmarks':
+      chrome.bookmarks.search(rest.query || '').then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'get_top_sites':
+      chrome.topSites.get().then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'get_browsing_data_settings':
+      chrome.browsingData.settings().then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'get_recently_closed_sessions':
+      chrome.sessions.getRecentlyClosed(rest.filter || {}).then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'get_web_navigation_frames':
+      chrome.webNavigation.getAllFrames({ tabId: rest.tabId }).then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'flush_web_request_cache':
+      chrome.webRequest.handlerBehaviorChanged().then(() => {
+        sendToHost({ result: true, request_id });
+      });
+      break;
+    case 'search_web':
+      chrome.search.query(rest.query || { text: 'browser4agent', disposition: 'NEW_TAB' }).then(() => {
+        sendToHost({ result: true, request_id });
+      });
+      break;
+    case 'get_alarm':
+      chrome.alarms.get(rest.name || 'browser4agent').then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'has_offscreen_document':
+      chrome.offscreen.hasDocument().then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'save_page_as_mhtml':
+      chrome.pageCapture.saveAsMHTML({ tabId: rest.tabId }).then((result) => {
+        sendToHost({ result, request_id });
+      });
+      break;
+    case 'get_favicon_url':
+      sendToHost({
+        result: chrome.runtime.getURL(`/_favicon/?pageUrl=${encodeURIComponent(rest.pageUrl)}&size=${rest.size}`),
+        request_id,
+      });
+      break;
+    // below is MCP tools
     case 'list_tabs':
       getAllTabs().then((result) => {
         sendToHost({ ...result, request_id });

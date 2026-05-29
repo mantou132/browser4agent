@@ -1,16 +1,24 @@
 ---
 name: browser4agent
-description: Drive the user's running browser from the command line via the `browser4agent` CLI — read web page content, manage browser tabs and windows, intercept network requests, and run custom scripts either inside a tab or in the extension background.
+description: >-
+  Access and control the user's real browser with their active session via {{BIN}}
+  CLI. Use this when built-in fetch/HTTP cannot access content (login walls, SSO,
+  intranet), or when you need browser-specific data (cookies, localStorage, errors,
+  screenshots) or web app interactions (forms, clicks, actions).\n\n**Workflow for
+  web app interactions:**\n1. Ensure target page is open (ask user, or
+  chrome.tabs.create via execute_script_in_background)\n2. list_tabs → tab_id\n3.
+  list_tab_tools → discover user-subscribed toolsets for that page\n4. If matching
+  tool exists: execute_tab_tool (preferred)\n5. If no tool: execute_script for
+  custom JS\nALWAYS check list_tab_tools first — never skip or guess tool
+  names.\n\n**Reading content:** read_active_tab for current tab; list_tabs +
+  read_tab for specific tabs. Open URLs first via execute_script_in_background if
+  needed.\n\n**Browser automation:** execute_script_in_background runs in extension
+  service worker with full chrome.* API: tabs/windows management
+  (create/remove/update), notifications (chrome.notifications.create for
+  long-running ops), downloads, network, permissions, etc.\n\n**Cleanup:** Close
+  temporary tabs after use with chrome.tabs.remove via
+  execute_script_in_background.
 ---
-
-# browser4agent
-
-This skill exposes the user's running browser through the local `browser4agent` CLI. Two main use cases:
-
-- **Read web page content** — especially pages that need the user's browser session (local services, intranet, login-required), since the browser carries the cookies and access. Works whether the page is already open or not; if it isn't, open it first via `execute_script_in_background` (`chrome.tabs.create`) then read it.
-- **Drive the browser itself** — list/create/close tabs and windows, intercept network requests, run arbitrary JS inside a specific tab, or run scripts in the extension background to manage browser-wide state. Some `chrome.*` APIs require optional permissions (e.g. `history`, `bookmarks`, `downloads`, `notifications`); call `chrome.permissions.request({ permissions: ['<name>'] })` inside `execute_script_in_background` to obtain them at runtime before use.
-
-If a tool listed below matches the user's intent, prefer it over scraping or guessing.
 
 ## Calling a tool
 
@@ -24,13 +32,7 @@ cat <<'EOF' | {{BIN}} --tool <name> --stdin
 EOF
 ```
 
-Use `--stdin` with heredoc when the JSON contains nested quotes, multiline strings, or embedded code that would be difficult to escape inline.
-
-## Typical flow
-
-1. If you need a `tab_id`, run `{{BIN}} --tool list_tabs` (or `--tool read_active_tab` when the user means "the current page").
-2. Before writing custom JS for a tab, call `list_tab_tools` first — pages can register purpose-built tools (e.g. `send_email` on Gmail). If a match exists, prefer `execute_tab_tool` over `execute_script`.
-3. Call the target tool with `--tool` + `--input`.
+Use `--stdin` with heredoc when the JSON contains nested quotes, multiline strings, or embedded code that would be difficult to escape inline (use corresponding methods in different operating environments).
 
 ## Available tools
 
