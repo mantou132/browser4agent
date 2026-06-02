@@ -87,22 +87,10 @@ fn render_tools() -> String {
         out.push_str(&format!("### `{}`\n\n", tool.name));
         if let Some(desc) = &tool.description {
             out.push_str(desc);
-            out.push_str("\n\n");
-        }
-        let has_props = tool
-            .input_schema
-            .get("properties")
-            .and_then(|v| v.as_object())
-            .is_some_and(|m| !m.is_empty());
-        if has_props {
-            let schema = serde_json::to_string_pretty(&*tool.input_schema)
-                .unwrap_or_else(|_| "{}".to_string());
-            out.push_str("**Input schema:**\n\n```json\n");
-            out.push_str(&schema);
-            out.push_str("\n```\n\n");
         } else {
-            out.push_str("_No parameters._\n\n");
+            out.push_str("No description.");
         }
+        out.push_str("\n\n");
     }
     out.trim_end().to_string()
 }
