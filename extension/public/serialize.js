@@ -1,5 +1,5 @@
 async function getSimpleHTML() {
-  const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'HEAD', 'NOSCRIPT', 'TEMPLATE', 'IMG', 'IFRAME', 'SVG']);
+  const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'HEAD', 'NOSCRIPT', 'TEMPLATE', 'IMG', 'SVG']);
   const VOID_TAGS = new Set([
     'AREA',
     'BASE',
@@ -44,6 +44,7 @@ async function getSimpleHTML() {
 
     const tag = node.tagName;
     if (SKIP_TAGS.has(tag)) return '';
+    if (tag === 'IFRAME' && !node.src) return '';
 
     if (tag === 'SLOT') {
       const assigned = node.assignedNodes({ flatten: true });
