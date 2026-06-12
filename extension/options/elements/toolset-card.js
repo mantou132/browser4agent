@@ -1,5 +1,3 @@
-// SWC bug: https://github.com/swc-project/swc/issues/11846
-
 import { ContextMenu } from 'duoyun-ui/elements/contextmenu';
 import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
@@ -77,8 +75,7 @@ class OptionsToolsetCardElement extends GemElement {
   };
 
   #subscribe = () => {
-    // this.subscription(null)
-    this.dispatchEvent(new CustomEvent('subscription'));
+    this.subscription(null);
   };
 
   @template()

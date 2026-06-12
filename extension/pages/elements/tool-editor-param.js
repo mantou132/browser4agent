@@ -43,8 +43,7 @@ class MarketToolEditorParamElement extends GemElement {
   @emitter change;
 
   #emit = (patch) => {
-    // this.change({ ...this.#value, ...patch });
-    this.dispatchEvent(new CustomEvent('change', { detail: { ...this.value, ...patch } }));
+    this.change({ ...this.value, ...patch });
   };
 
   render = () => {

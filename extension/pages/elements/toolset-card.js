@@ -1,5 +1,3 @@
-// SWC bug: https://github.com/swc-project/swc/issues/11846
-
 import { icons } from 'duoyun-ui/lib/icons';
 import { t } from '../../shared/i18n.js';
 
@@ -13,13 +11,11 @@ class MarketToolsetCardElement extends GemElement {
   @emitter refresh;
 
   #subscribe = () => {
-    // this.#subscribe(null)
-    this.dispatchEvent(new CustomEvent('subscribe'));
+    this.subscribe(null);
   };
 
   #refresh = () => {
-    // this.refresh(null)
-    this.dispatchEvent(new CustomEvent('refresh'));
+    this.refresh(null);
   };
 
   @template()

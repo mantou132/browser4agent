@@ -29,10 +29,10 @@ export default {
             jsc: {
               target: 'es2024',
               parser: { syntax: 'typescript', decorators: true, explicitResourceManagement: true },
-              transform: { decoratorVersion: '2022-03' },
+              transform: { decoratorVersion: '2023-11' },
               externalHelpers: true,
               experimental: {
-                runPluginFirst: true,
+                // runPluginFirst: true,
                 plugins: [
                   [
                     'swc-plugin-gem',

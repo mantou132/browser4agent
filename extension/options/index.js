@@ -39,7 +39,7 @@ class AgentOptionsPageElement extends GemElement {
   });
 
   @memo(() => [toolStore.toolsets])
-  get #recommended() {
+  get _recommended() {
     const subscribed = new Set(toolStore.toolsets.map((t) => t.id));
     return this.#state.recommended.filter((t) => !subscribed.has(getToolsetId(t.url)));
   }
@@ -159,7 +159,7 @@ class AgentOptionsPageElement extends GemElement {
           </header>
           <div class="flex flex-col gap-5">
             ${repeat(
-              this.#recommended,
+              this._recommended,
               (t) => t.url,
               (t) =>
                 html`<options-toolset-card .recommended=${true} @subscription=${() => this.#addByUrl(t.url)} .toolset=${t}></options-toolset-card>`,
