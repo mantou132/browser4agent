@@ -21,6 +21,7 @@
     "activeTab",
     "scripting",
     "cookies",
+    "alarms",
 
     "notifications",
     "tabGroups",
@@ -34,7 +35,6 @@
     "webRequest",
     "search",
 
-    "alarms",
     "offscreen",
 
     "pageCapture",
@@ -42,7 +42,7 @@
   ],
   "host_permissions": ["<all_urls>"],
   "chrome:background": { "service_worker": "background.js" },
-  "firefox:background": { "scripts": ["background.js"], "persistent": true },
+  "firefox:background": { "scripts": ["background.js"] },
   "action": {
     "default_popup": "popup/index.html",
     "default_icon": "icon128.png",

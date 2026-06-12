@@ -148,11 +148,6 @@ function handleMessageFromHost(msg) {
         sendToHost({ result: true, request_id });
       });
       break;
-    case 'get_alarm':
-      chrome.alarms.get(rest.name || 'browser4agent').then((result) => {
-        sendToHost({ result, request_id });
-      });
-      break;
     case 'has_offscreen_document':
       chrome.offscreen.hasDocument().then((result) => {
         sendToHost({ result, request_id });
@@ -242,13 +237,21 @@ function connectNativeHost() {
       const error = chrome.runtime.lastError;
       console.error('Native host disconnected:', error?.message || 'unknown error');
       port = null;
-      setTimeout(connectNativeHost, 1000);
     });
   } catch (e) {
     console.error('Failed to connect to native host:', e);
     port = null;
-    setTimeout(connectNativeHost, 1000);
   }
 }
 
 connectNativeHost();
+
+chrome.alarms.create({ periodInMinutes: 0.1 });
+chrome.alarms.onAlarm.addListener(async () => {
+  if (!port) connectNativeHost();
+});
+
+// https://bugzilla.mozilla.org/show_bug.cgi?id=1995451#c3
+chrome.runtime.onStartup.addListener(() => {
+  chrome.alarms.create({ periodInMinutes: 0.1 });
+});
