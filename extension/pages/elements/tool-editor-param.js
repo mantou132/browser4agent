@@ -40,9 +40,10 @@ const style = css`
 @adoptedStyle(style)
 class MarketToolEditorParamElement extends GemElement {
   @property value;
-  @emitter change;
+  @globalemitter change;
 
-  #emit = (patch) => {
+  #emit = (evt, patch) => {
+    evt.stopPropagation();
     this.change({ ...this.value, ...patch });
   };
 
@@ -52,17 +53,17 @@ class MarketToolEditorParamElement extends GemElement {
       <dy-input
         placeholder=${t('paramNamePlaceholder')}
         .value=${v.name}
-        @change=${(e) => this.#emit({ name: e.detail })}
+        @change=${(e) => this.#emit(e, { name: e.detail })}
       ></dy-input>
       <dy-select
         .value=${v.type}
         .options=${TYPE_OPTIONS}
-        @change=${(e) => this.#emit({ type: e.detail })}
+        @change=${(e) => this.#emit(e, { type: e.detail })}
       ></dy-select>
       <label class="required">
         <dy-switch
           .checked=${!!v.required}
-          @change=${(e) => this.#emit({ required: e.detail })}
+          @change=${(e) => this.#emit(e, { required: e.detail })}
         ></dy-switch>
         ${t('required')}
       </label>
@@ -70,7 +71,7 @@ class MarketToolEditorParamElement extends GemElement {
         class="desc"
         placeholder=${t('paramDescriptionPlaceholder')}
         .value=${v.description}
-        @change=${(e) => this.#emit({ description: e.detail })}
+        @change=${(e) => this.#emit(e, { description: e.detail })}
       ></dy-input>
     `;
   };

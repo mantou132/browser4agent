@@ -74,3 +74,15 @@ index 90792db8a566e4f5d380950a7d857f4bb3bbbb3a..90984805057bc5fc175ca35b238ddb72
          query.delete(options.query[0]);
          history.replace({ query });
          const newQuery = new QueryString(query);
+diff --git a/elements/sort-box.js b/elements/sort-box.js
+--- a/elements/sort-box.js
++++ b/elements/sort-box.js
+@@ -130,7 +130,7 @@
+     let _classDescriptor;
+     let _classExtraInitializers = [];
+     let _classThis;
+-    let _classSuper = DuoyunGestureElement;
++    let _classSuper = GemElement;
+     let _handle_decorators;
+     let _handle_initializers = [];
+     let _handle_extraInitializers = [];

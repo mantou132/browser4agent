@@ -15,6 +15,7 @@ const style = css`
     display: grid;
     grid-template-columns: 16rem minmax(0, 1fr);
     gap: 1rem;
+    width: 46rem;
     height: 60vh;
     padding: 0.25rem;
   }
@@ -169,6 +170,7 @@ const style = css`
   }
   @media (max-width: 760px) {
     :scope {
+      width: auto;
       grid-template-columns: 1fr;
     }
     .list {
@@ -230,12 +232,14 @@ class MarketToolEditorElement extends GemElement {
     },
   ];
 
-  #onChange = (evt) => {
+  #onChange = () => {
     const { tools, selectedIndex } = this.#state;
-    this.#state({ tools: tools.map((e, i) => (i === selectedIndex ? evt.detail : e)) });
+    const { value: formEle } = this.#formRef;
+    this.#state({ tools: tools.map((e, i) => (i === selectedIndex ? formEle.state.data : e)) });
   };
 
-  mounted = () => {
+  @mounted()
+  #init = () => {
     if (this.initialTools?.length) {
       this.#state({
         tools: this.initialTools.map((t) => {

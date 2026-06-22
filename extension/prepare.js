@@ -193,7 +193,9 @@
     let l = '';
     for (let c = 0; c < n.length; c++) {
       const i = o(0 === c ? e : e.flatMap((t) => [...t.querySelectorAll(l)]));
-      0 !== c && r.push(...u(n.slice(c).join(' '), i)), r.push(...u(t, i)), (l = `${l} ${n[c]}`);
+      if (0 !== c) r.push(...u(n.slice(c).join(' '), i));
+      r.push(...u(t, i));
+      l = `${l} ${n[c]}`;
     }
     return r;
   }
