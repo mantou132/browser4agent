@@ -87,9 +87,78 @@ function sendToHost(msg) {
   }
 }
 
+let nextAgentRequestId = 0;
+const pendingAgentRequests = new Map();
+
+function rejectPendingAgentRequests(error) {
+  for (const pending of pendingAgentRequests.values()) {
+    clearTimeout(pending.timer);
+    pending.reject(error);
+  }
+  pendingAgentRequests.clear();
+}
+
+function sendAgentRequest(message, { timeoutSeconds = 600, onEvent } = {}) {
+  const request_id = `agent_${++nextAgentRequestId}`;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(
+      () => {
+        pendingAgentRequests.delete(request_id);
+        reject(new Error('Timeout waiting for native host agent response'));
+      },
+      (timeoutSeconds + 5) * 1000,
+    );
+    pendingAgentRequests.set(request_id, { resolve, reject, timer, onEvent });
+    sendToHost({ timeoutSeconds, stream: Boolean(onEvent), ...message, request_id });
+  });
+}
+
+export async function createAgentSession(options = {}) {
+  const msg = { type: 'agent_session_create', cwd: options.cwd };
+  const result = await sendAgentRequest(msg, options);
+  return result.sessionId;
+}
+
+export async function askAgent(prompt, options = {}) {
+  if (typeof prompt !== 'string' || !prompt.trim()) {
+    return Promise.reject(new Error('askAgent requires a non-empty prompt'));
+  }
+  const msg = { type: 'agent_prompt', prompt, cwd: options.cwd, sessionId: options.sessionId };
+  const result = await sendAgentRequest(msg, options);
+  return result.answer || '';
+}
+
+export async function closeAgentSession(sessionId, options = {}) {
+  if (typeof sessionId !== 'string' || !sessionId) {
+    return Promise.reject(new Error('closeAgentSession requires a sessionId'));
+  }
+  const msg = { type: 'agent_session_close', sessionId };
+  const result = await sendAgentRequest(msg, options);
+  return result.closed;
+}
+
+globalThis.createAgentSession = createAgentSession;
+globalThis.askAgent = askAgent;
+globalThis.closeAgentSession = closeAgentSession;
+
 function handleMessageFromHost(msg) {
   const { request_id, ...rest } = msg;
   switch (msg.type) {
+    case 'agent_event': {
+      pendingAgentRequests.get(request_id)?.onEvent?.(rest.data);
+      break;
+    }
+    case 'agent_session_created':
+    case 'agent_response':
+    case 'agent_error':
+    case 'agent_session_closed': {
+      const pending = pendingAgentRequests.get(request_id);
+      pendingAgentRequests.delete(request_id);
+      clearTimeout(pending?.timer);
+      msg.type === 'agent_error' ? pending?.reject(new Error(rest.error)) : pending?.resolve(rest);
+      break;
+    }
+
     case 'connected':
       console.log('Connected to native host:', NATIVE_HOST_NAME);
       break;
@@ -236,6 +305,7 @@ function connectNativeHost() {
     port.onDisconnect.addListener(() => {
       const error = chrome.runtime.lastError;
       console.error('Native host disconnected:', error?.message || 'unknown error');
+      rejectPendingAgentRequests(new Error(error?.message || 'Native host disconnected'));
       port = null;
     });
   } catch (e) {

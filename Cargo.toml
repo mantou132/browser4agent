@@ -20,6 +20,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-util = "0.7"
 axum = "0.8"
 jsonc-parser = { version = "0.32", features = ["serde"] }
+agent-client-protocol = "1.0.0"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

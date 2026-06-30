@@ -7,7 +7,7 @@ use rmcp::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::native_host::NativeMessenger;
+use crate::extension_rpc::ExtensionRpcClient;
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TabIdParams {
@@ -77,14 +77,14 @@ pub struct ExecuteScriptInBackgroundParams {
 
 #[derive(Clone)]
 pub struct BrowserMcpServer {
-    messenger: NativeMessenger,
+    messenger: ExtensionRpcClient,
     #[allow(dead_code)]
     tool_router: ToolRouter<BrowserMcpServer>,
 }
 
 #[tool_router]
 impl BrowserMcpServer {
-    pub fn new(messenger: NativeMessenger) -> Self {
+    pub fn new(messenger: ExtensionRpcClient) -> Self {
         Self {
             messenger,
             tool_router: Self::tool_router(),

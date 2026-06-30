@@ -1,10 +1,14 @@
+mod acp_agent;
+mod browser_agent;
 mod cli;
 mod constant;
+mod extension_rpc;
 mod logger;
 mod mcp_server;
 mod mcp_setup;
 mod native_host;
 mod native_message_setup;
+mod native_messaging;
 mod skill_setup;
 
 use std::{env, ffi::OsString};

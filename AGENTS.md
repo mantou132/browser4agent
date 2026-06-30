@@ -24,7 +24,13 @@
 5. MCP 模式：
   1. `src/native_host.rs` 负责本地消息循环和 MCP HTTP 服务
   2. `src/mcp_server.rs` MCP 服务端
-6. CLI 模式：
+6. 浏览器端调用 Agent：
+ 1. `extension/background.js` 暴露 `createAgentSession` / `askAgent` / `closeAgentSession`
+ 2. `src/native_messaging.rs` 负责 Native Messaging 基础读写
+ 3. `src/extension_rpc.rs` 负责 native host 主动请求浏览器时的请求响应映射
+ 4. `src/browser_agent.rs` 负责浏览器 agent 协议消息、流式事件转发
+ 5. `src/acp_agent.rs` 负责 ACP 会话管理和 `claude-agent-acp` 子进程
+7. CLI 模式：
   1. `src/cli.rs` 解析 `--tool` / `--input`（或 stdin JSON）
   2. 转发单次工具调用到后台 MCP HTTP 服务 `127.0.0.1:39271/mcp`，打印结果后退出
 
@@ -47,6 +53,10 @@
 - `extension/tailwind.css`：扩展全局 Tailwind 主题和基础样式
 - `extension/shared/i18n.js`：扩展侧 `t()` 翻译帮助函数和页面语言/标题同步
 - `extension/tools.js`：MCP 工具实现
+- `src/native_messaging.rs`：Native Messaging 基础消息读写
+- `src/extension_rpc.rs`：native host 主动请求浏览器时的 `request_id` 映射
+- `src/browser_agent.rs`：浏览器侧 agent 请求协议、会话创建、流式事件转发
+- `src/acp_agent.rs`：ACP client、持续会话 actor、agent 事件转换
 - `src/cli.rs`：命令行单次工具调用入口
 - `src/skill.md`：Skill 模板内容，内容应该和 MCP server 的描述语义上同步
 
