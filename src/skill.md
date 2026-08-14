@@ -3,7 +3,7 @@ name: browser4agent
 description: |-
   Control the user's active browser via `{{BIN}}` CLI. Use this when built-in fetch/HTTP cannot access content (login walls, SSO, intranet), or when you need browser-specific data (cookies, localStorage, errors, screenshots) or web app interactions (forms, clicks, actions).
 
-  **Workflow:** Use whichever tool fits. If you need to run JavaScript in a page (`execute_script`), call `list_tab_tools` first — if a tab tool can do the job, use `execute_tab_tool` instead (use toolset_id, tool_name, and inputSchema from `list_tab_tools`; never guess).
+  **Workflow:** Use whichever tool fits. If you need to run JavaScript in a page (`execute_script`), read the tab first (`read_tab` / `read_active_tab`) — if one of the page tools returned can do the job, use `execute_tab_tool` instead (use toolset_id, tool_name, and inputSchema from the read result; never guess).
 ---
 
 ## Calling a tool

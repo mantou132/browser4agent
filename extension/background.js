@@ -10,7 +10,6 @@ import {
   getCookies,
   getErrors,
   getLocalStorage,
-  listTabTools,
   readActiveTab,
   readTab,
   screenshotTab,
@@ -236,7 +235,6 @@ peer.handle('read_active_tab', () => readActiveTab());
 peer.handle('get_cookies', (p) => getCookies(p.url));
 peer.handle('get_errors', (p) => getErrors(p.tabId));
 peer.handle('execute_script', (p) => executeScript(p.tabId, p.funcStr, p.args));
-peer.handle('list_tab_tools', (p) => listTabTools(p.tabId));
 peer.handle('execute_tab_tool', (p) => executeTabTool(p.tabId, p.toolsetId, p.toolName, p.args));
 peer.handle('execute_script_in_background', (p) => executeScriptInBackground(p.funcStr, p.args));
 peer.handle('get_local_storage', (p) => getLocalStorage(p.tabId));

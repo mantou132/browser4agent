@@ -64,7 +64,8 @@ export async function readTab(tabId) {
       world: 'MAIN',
     });
     const content = scriptResult(results) || '';
-    return { tabId, content };
+    const tools = await getTabTools(tabId);
+    return { tabId, content, tools };
   } catch (e) {
     throw new Error(`Failed to read tab ${tabId}: ${e.message}`);
   }
@@ -84,7 +85,8 @@ export async function readActiveTab() {
       world: 'MAIN',
     });
     const content = scriptResult(results) || '';
-    return { tabId: tab.id, title: tab.title, url: tab.url, content };
+    const tools = await getTabTools(tab.id);
+    return { tabId: tab.id, title: tab.title, url: tab.url, content, tools };
   } catch (e) {
     throw new Error(`Failed to read active tab: ${e.message}`);
   }
@@ -197,27 +199,17 @@ async function getPageWebmcpTools(tabId) {
   return scriptResult(results) || [];
 }
 
-export async function listTabTools(tabId) {
-  if (tabId == null) throw new Error('tabId is required');
-  try {
-    const tab = await ensureTabLoaded(tabId);
-    const subscribed = await getAvailableTabTools(tabId);
-    const pageTools = await getPageWebmcpTools(tabId);
-    const tools = [
-      ...subscribed.tools,
-      ...pageTools.map((t) => ({
-        toolsetId: PAGE_TOOLSET_ID,
-        toolsetName: PAGE_TOOLSET_NAME,
-        toolsetUrl: tab.url,
-        name: t.name,
-        description: t.description,
-        inputSchema: t.inputSchema,
-      })),
-    ];
-    return { ...subscribed, tools };
-  } catch (e) {
-    throw new Error(`Failed to list tab tools: ${e.message}`);
-  }
+async function getTabTools(tabId) {
+  const [subscribed, pageTools] = await Promise.all([getAvailableTabTools(tabId), getPageWebmcpTools(tabId)]);
+  return [
+    ...subscribed.tools,
+    ...pageTools.map((t) => ({
+      toolsetId: PAGE_TOOLSET_ID,
+      toolsetName: PAGE_TOOLSET_NAME,
+      toolsetUrl: subscribed.url,
+      ...t,
+    })),
+  ];
 }
 
 export async function executeTabTool(tabId, toolsetId, toolName, args) {

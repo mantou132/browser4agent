@@ -43,17 +43,18 @@ pub struct ExecuteTabToolParams {
     #[schemars(description = "Target tab ID (obtained from list_tabs).")]
     pub tab_id: i64,
     #[schemars(
-        description = "Toolset ID from list_tab_tools. Required — never guess; names may repeat \
-                       across toolsets."
+        description = "Toolset ID from the read_tab result. Required — never guess; names may \
+                       repeat across toolsets."
     )]
     pub toolset_id: String,
     #[schemars(
-        description = "Tool name from list_tab_tools. Required — never guess; discover at runtime."
+        description = "Tool name from the read_tab result. Required — never guess; discover at \
+                       runtime."
     )]
     pub tool_name: String,
     #[schemars(
-        description = "JSON object of arguments. Must match the tool's `inputSchema` from \
-                       list_tab_tools. Pass `{}` when the tool takes no parameters."
+        description = "JSON object of arguments. Must match the tool's `inputSchema` from the \
+                       read_tab result. Pass `{}` when the tool takes no parameters."
     )]
     #[serde(default)]
     pub args: serde_json::Map<String, Value>,
@@ -101,15 +102,17 @@ impl BrowserMcpServer {
     #[tool(
         description = "List every open tab in the browser. Returns each tab's id, title, active \
                        flag, last-accessed time, and URL. Use this to obtain tab_id before \
-                       list_tab_tools, read_tab, execute_tab_tool, get_local_storage, etc."
+                       read_tab, execute_tab_tool, get_local_storage, etc."
     )]
     async fn list_tabs(&self) -> Result<CallToolResult, McpError> {
         self.call("list_tabs", json!({})).await
     }
 
     #[tool(
-        description = "Read a condensed HTML snapshot of the given tab. Use list_tabs first to \
-                       obtain its ID."
+        description = "Read a condensed HTML snapshot of the given tab. Also returns the page \
+                       tools available on this tab (toolset_id, tool_name, description, \
+                       inputSchema) for use with execute_tab_tool. Use list_tabs first to obtain \
+                       the tab ID."
     )]
     async fn read_tab(
         &self,
@@ -120,8 +123,9 @@ impl BrowserMcpServer {
 
     #[tool(
         description = "Read a condensed HTML snapshot of the active tab in the current window. \
-                       Use this when the user asks about \"the current page\" — no list_tabs \
-                       needed first."
+                       Also returns the page tools available on this tab (toolset_id, tool_name, \
+                       description, inputSchema) for use with execute_tab_tool. Use this when the \
+                       user asks about \"the current page\" — no list_tabs needed first."
     )]
     async fn read_active_tab(&self) -> Result<CallToolResult, McpError> {
         self.call("read_active_tab", json!({})).await
@@ -152,9 +156,9 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Run custom JavaScript inside the given tab. Use ONLY after list_tab_tools \
-                       shows no matching page tool. For site-specific actions, prefer \
-                       list_tab_tools + execute_tab_tool instead."
+        description = "Run custom JavaScript inside the given tab. Use ONLY after read_tab shows \
+                       no matching page tool. For site-specific actions, prefer execute_tab_tool \
+                       instead."
     )]
     async fn execute_script(
         &self,
@@ -172,26 +176,11 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "List page tools available on the given tab. ALWAYS call this before \
-                       execute_tab_tool or execute_script when the user wants to act on a web \
-                       app. Returns toolset_id, tool_name, description, and inputSchema for each \
-                       tool on that page (from subscribed toolsets or WebMCP — dynamic, varies by \
-                       tab). Workflow: list_tabs → list_tab_tools → execute_tab_tool."
-    )]
-    async fn list_tab_tools(
-        &self,
-        Parameters(p): Parameters<TabIdParams>,
-    ) -> Result<CallToolResult, McpError> {
-        self.call("list_tab_tools", json!({ "tabId": p.tab_id }))
-            .await
-    }
-
-    #[tool(
         description = "Invoke a page tool on the given tab. REQUIRED workflow: list_tabs to get \
-                       tab_id → list_tab_tools to get toolset_id, tool_name, and inputSchema → \
-                       call this with args matching inputSchema exactly. Do not guess tool_name \
-                       or args — pick them from list_tab_tools. Prefer this over execute_script \
-                       whenever list_tab_tools returns a matching tool."
+                       tab_id → read_tab to get toolset_id, tool_name, and inputSchema → call \
+                       this with args matching inputSchema exactly. Do not guess tool_name or \
+                       args — pick them from the read_tab result. Prefer this over execute_script \
+                       whenever the tab has a matching tool."
     )]
     async fn execute_tab_tool(
         &self,
@@ -316,9 +305,10 @@ impl ServerHandler for BrowserMcpServer {
                  fetch/HTTP cannot access content (login walls, SSO, intranet), or when you need \
                  browser-specific data (cookies, localStorage, errors, screenshots) or web app \
                  interactions (forms, clicks, actions).\n\n**Workflow:** Use whichever tool fits. \
-                 If you need to run JavaScript in a page (execute_script), call list_tab_tools \
-                 first — if a tab tool can do the job, use execute_tab_tool instead (use \
-                 toolset_id, tool_name, and inputSchema from list_tab_tools; never guess)."
+                 If you need to run JavaScript in a page (execute_script), read the tab first \
+                 (read_tab / read_active_tab) — if one of the page tools returned can do the job, \
+                 use execute_tab_tool instead (use toolset_id, tool_name, and inputSchema from \
+                 the read result; never guess)."
                     .to_string(),
             )
     }
