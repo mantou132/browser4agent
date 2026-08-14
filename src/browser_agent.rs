@@ -6,8 +6,40 @@ use tokio::sync::mpsc;
 use crate::{
     acp_agent::{self, AgentEvent, AgentSessionManager},
     logger,
-    peer::Peer,
+    peer::{CallCtx, Peer},
 };
+
+/// Stream agent events as `{ id, event }` frames while a request runs.
+fn event_forwarder(
+    ctx: &CallCtx,
+) -> (
+    mpsc::UnboundedSender<AgentEvent>,
+    tokio::task::JoinHandle<()>,
+) {
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel::<AgentEvent>();
+    let ctx = ctx.clone();
+    let done = tokio::spawn(async move {
+        while let Some(event) = event_rx.recv().await {
+            let event = serde_json::to_value(&event).unwrap_or(Value::Null);
+            ctx.emit(event);
+        }
+    });
+    (event_tx, done)
+}
+
+/// Drop the event sender and wait for the forwarder to drain so streamed
+/// events never overtake the final result.
+async fn settle_forwarder(
+    forwarder: Option<(mpsc::UnboundedSender<AgentEvent>, tokio::task::JoinHandle<()>)>,
+    ok: bool,
+) {
+    if let Some((tx, done)) = forwarder {
+        drop(tx);
+        if ok {
+            let _ = done.await;
+        }
+    }
+}
 
 /// Register the browser-facing agent handlers on the peer.
 pub fn register(peer: &Peer) {
@@ -73,7 +105,7 @@ pub fn register(peer: &Peer) {
     });
 
     let load_sessions = sessions.clone();
-    peer.handle("agent_session_load", move |params, _ctx| {
+    peer.handle("agent_session_load", move |params, ctx| {
         let sessions = load_sessions.clone();
         async move {
             let acp_session_id = params
@@ -83,9 +115,21 @@ pub fn register(peer: &Peer) {
                 .ok_or_else(|| "agent_session_load requires a string sessionId".to_string())?;
             let cwd = message_cwd(&params);
             let timeout_secs = message_timeout_secs(&params);
-            match tokio::time::timeout(
+
+            // The actor drains the load-time history replay into this channel
+            // while the load runs; afterwards the buffered frames are emitted
+            // (receiver closed, so the actor's live sender can't keep it open)
+            // before the final result, so history precedes the response.
+            let (replay_tx, mut event_rx) = if message_stream(&params) {
+                let (tx, rx) = mpsc::unbounded_channel::<AgentEvent>();
+                (Some(tx), Some(rx))
+            } else {
+                (None, None)
+            };
+
+            let result = match tokio::time::timeout(
                 Duration::from_secs(timeout_secs),
-                sessions.load_session(acp_session_id, cwd),
+                sessions.load_session(acp_session_id, cwd, replay_tx),
             )
             .await
             {
@@ -96,7 +140,16 @@ pub fn register(peer: &Peer) {
                 })),
                 Ok(Err(err)) => Err(err.to_string()),
                 Err(_) => Err("Timeout loading ACP agent session".to_string()),
+            };
+
+            if let Some(rx) = event_rx.as_mut() {
+                rx.close();
+                while let Some(event) = rx.recv().await {
+                    let event = serde_json::to_value(&event).unwrap_or(Value::Null);
+                    ctx.emit(event);
+                }
             }
+            result
         }
     });
 
@@ -192,17 +245,7 @@ pub fn register(peer: &Peer) {
             // Stream agent events as `{ id, event }` frames while the prompt
             // runs; the forwarder is drained before the final result so no
             // event overtakes the response.
-            let forwarder = message_stream(&params).then(|| {
-                let (event_tx, mut event_rx) = mpsc::unbounded_channel::<AgentEvent>();
-                let ctx = ctx.clone();
-                let done = tokio::spawn(async move {
-                    while let Some(event) = event_rx.recv().await {
-                        let event = serde_json::to_value(&event).unwrap_or(Value::Null);
-                        ctx.emit(event);
-                    }
-                });
-                (event_tx, done)
-            });
+            let forwarder = message_stream(&params).then(|| event_forwarder(&ctx));
             let event_tx = forwarder.as_ref().map(|(tx, _)| tx.clone());
 
             let result = if let Some(session_id) = &session_id {
@@ -221,12 +264,7 @@ pub fn register(peer: &Peer) {
                 }
             };
 
-            if let Some((tx, done)) = forwarder {
-                drop(tx);
-                if result.is_ok() {
-                    let _ = done.await;
-                }
-            }
+            settle_forwarder(forwarder, result.is_ok()).await;
 
             result
                 .map(|answer| json!({ "answer": answer, "sessionId": session_id }))

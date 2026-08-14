@@ -87,12 +87,19 @@ export function createAgentApi() {
     },
 
     /** Resume an agent-persisted session by its ACP session id. Returns the
-     * same shape as `createSession`; use `sessionId` for `ask`. */
+     * same shape as `createSession`; use `sessionId` for `ask`. With
+     * `options.onEvent`, the agent's replayed history is streamed as
+     * `session_update` events before the promise resolves. */
     loadSession(sessionId, options = {}) {
       if (typeof sessionId !== 'string' || !sessionId) {
         return Promise.reject(new Error('loadSession requires a sessionId'));
       }
-      const params = { sessionId, cwd: options.cwd, timeoutSeconds: options.timeoutSeconds };
+      const params = {
+        sessionId,
+        cwd: options.cwd,
+        timeoutSeconds: options.timeoutSeconds,
+        stream: Boolean(options.onEvent),
+      };
       return rpc().call('agent_session_load', params, options);
     },
 

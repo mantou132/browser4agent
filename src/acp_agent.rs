@@ -357,24 +357,32 @@ impl AgentSessionManager {
     }
 
     pub async fn create_session(&self, cwd: Option<PathBuf>) -> Result<CreatedSession> {
-        self.start_session(cwd, None).await
+        self.start_session(cwd, None, None).await
     }
 
     /// Resume a persisted session by its ACP session id (requires the agent to
-    /// support `session/load`). Returns a fresh live handle to it.
+    /// support `session/load`). Returns a fresh live handle to it. With
+    /// `replay_tx`, the history updates the agent replays on load are streamed
+    /// there before the session reports ready.
     pub async fn load_session(
         &self,
         acp_session_id: &str,
         cwd: Option<PathBuf>,
+        replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     ) -> Result<CreatedSession> {
-        self.start_session(cwd, Some(SessionId::from(acp_session_id.to_string())))
-            .await
+        self.start_session(
+            cwd,
+            Some(SessionId::from(acp_session_id.to_string())),
+            replay_tx,
+        )
+        .await
     }
 
     async fn start_session(
         &self,
         cwd: Option<PathBuf>,
         load: Option<SessionId>,
+        replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     ) -> Result<CreatedSession> {
         let cwd = resolve_cwd(cwd)?;
         let (tx, rx) = mpsc::channel(8);
@@ -383,7 +391,7 @@ impl AgentSessionManager {
         let resolver = self.resolver.clone();
         tokio::spawn(async move {
             // ended_tx drops when the actor exits, triggering cleanup.
-            run_session_actor(cwd, load, resolver, rx, ready_tx, ended_tx).await;
+            run_session_actor(cwd, load, resolver, replay_tx, rx, ready_tx, ended_tx).await;
         });
 
         // Readiness is bounded by the caller's timeout, not here. The
@@ -456,8 +464,10 @@ impl AgentSessionManager {
             Ok(Ok(Err(err))) => anyhow::bail!(err),
             Ok(Err(_)) => anyhow::bail!("ACP agent session closed before responding"),
             Err(_) => {
-                // The turn is still running; cancel it so the session
-                // becomes usable again instead of finishing unobserved.
+                // Callers must keep at most one prompt in flight per session
+                // (the panel enforces this), so a timeout means the caller
+                // abandoned its turn: cancel it so the session becomes usable
+                // again instead of finishing unobserved.
                 let _ = session.tx.send(SessionCommand::Cancel).await;
                 anyhow::bail!("Timeout waiting for ACP agent")
             }
@@ -543,11 +553,12 @@ async fn run_session_actor(
     cwd: PathBuf,
     load: Option<SessionId>,
     resolver: Option<PermissionResolver>,
+    replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     rx: mpsc::Receiver<SessionCommand>,
     ready_tx: oneshot::Sender<Result<SessionInit, String>>,
     _ended_tx: oneshot::Sender<()>,
 ) {
-    if let Err(err) = run_session_actor_inner(cwd, load, resolver, rx, ready_tx).await {
+    if let Err(err) = run_session_actor_inner(cwd, load, resolver, replay_tx, rx, ready_tx).await {
         logger::info(&format!("ACP session actor stopped: {err}"));
     }
 }
@@ -556,6 +567,7 @@ async fn run_session_actor_inner(
     cwd: PathBuf,
     load: Option<SessionId>,
     resolver: Option<PermissionResolver>,
+    replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     mut rx: mpsc::Receiver<SessionCommand>,
     ready_tx: oneshot::Sender<Result<SessionInit, String>>,
 ) -> Result<()> {
@@ -567,6 +579,12 @@ async fn run_session_actor_inner(
         load,
         resolver,
         async move |mut session, init, cancel_flag| {
+            // The load-time history replay is queued before attach; forward it
+            // before reporting ready so the client sees the events before the
+            // load call resolves.
+            if let Some(replay_tx) = &replay_tx {
+                drain_replay(&mut session, replay_tx).await?;
+            }
             if let Some(ready_tx) = ready_tx_for_session.lock().ok().and_then(|mut tx| tx.take()) {
                 let _ = ready_tx.send(Ok(init));
             }
@@ -683,6 +701,39 @@ async fn close_session_gracefully(session: &ActiveSession<'_, Agent>) {
     {
         logger::info(&format!("Failed to close ACP session gracefully: {err}"));
     }
+}
+
+/// Forward the session updates queued before the session attached (the
+/// `session/load` history replay) to `event_tx`. The replay is complete by the
+/// time the load response arrives, so once the queue is quiet for a moment the
+/// drain is done; dropping the pending `read_update` on timeout loses nothing.
+async fn drain_replay(
+    session: &mut ActiveSession<'_, Agent>,
+    event_tx: &mpsc::UnboundedSender<AgentEvent>,
+) -> Result<(), agent_client_protocol::Error> {
+    const REPLAY_IDLE: std::time::Duration = std::time::Duration::from_millis(200);
+    loop {
+        match tokio::time::timeout(REPLAY_IDLE, session.read_update()).await {
+            Ok(Ok(SessionMessage::SessionMessage(dispatch))) => {
+                MatchDispatch::new(dispatch)
+                    .if_notification(async |notif: SessionNotification| {
+                        send_agent_event(
+                            Some(event_tx),
+                            AgentEvent::SessionUpdate {
+                                update: to_json(notif.update),
+                            },
+                        );
+                        Ok(())
+                    })
+                    .await
+                    .otherwise_ignore()?;
+            }
+            Ok(Ok(_)) => {}
+            Ok(Err(err)) => return Err(err),
+            Err(_) => break,
+        }
+    }
+    Ok(())
 }
 
 /// Run one prompt turn. While the turn runs, keeps draining `incoming` (when

@@ -52,11 +52,18 @@ class AgentPanelPageElement extends GemElement {
   #onEvent = (event) => {
     if (event.event !== 'session_update') return;
     const { update } = event;
-    if (update.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text') {
+    // Text chunks: live turns stream agent chunks; load replays both roles
+    const role =
+      update.sessionUpdate === 'agent_message_chunk'
+        ? 'agent'
+        : update.sessionUpdate === 'user_message_chunk'
+          ? 'user'
+          : null;
+    if (role && update.content?.type === 'text') {
       const messages = this.#s.messages.slice();
       const last = messages.at(-1);
-      if (last?.role === 'agent') last.text += update.content.text;
-      else messages.push({ role: 'agent', text: update.content.text });
+      if (last?.role === role) last.text += update.content.text;
+      else messages.push({ role, text: update.content.text });
       this.#s({ messages });
     } else {
       // Surface other ACP session updates (tool calls, plans, …) for inspection
@@ -113,12 +120,15 @@ class AgentPanelPageElement extends GemElement {
   #openSession = async (sessionId) => {
     if (this.#s.pending || this.#s.loading || sessionId === this.#s.sessionId) return;
     const previous = this.#s.sessionId;
-    this.#s({ loading: true, loadingId: sessionId, error: '' });
+    // Clear before load: the replayed history rebuilds the list via #onEvent
+    this.#s({ loading: true, loadingId: sessionId, error: '', messages: [] });
     try {
       // The live session we are leaving is closed; best-effort cleanup
       if (previous) await agentApi.closeSession(previous).catch(() => {});
-      const { sessionId: liveId } = await agentApi.loadSession(sessionId);
-      this.#s({ sessionId: liveId, draft: false, messages: [] });
+      const { sessionId: liveId } = await agentApi.loadSession(sessionId, {
+        onEvent: this.#onEvent,
+      });
+      this.#s({ sessionId: liveId, draft: false });
     } catch (e) {
       this.#s({ error: e.message });
     } finally {
