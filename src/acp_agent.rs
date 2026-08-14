@@ -300,11 +300,9 @@ pub type SessionEndCallback = Arc<dyn Fn(&str) + Send + Sync>;
 
 /// Handle returned when a session starts.
 pub struct CreatedSession {
-    /// Internal handle id used to address this live session.
-    pub session_id: String,
-    /// Agent-side ACP session id; persist it to resume later via
+    /// The ACP session id; addresses the live session and persists for
     /// [`AgentSessionManager::load_session`].
-    pub acp_session_id: String,
+    pub session_id: String,
     /// Modes the agent reported for this session, if any.
     pub modes: Option<serde_json::Value>,
     /// Config options the agent reported for this session, if any.
@@ -314,7 +312,6 @@ pub struct CreatedSession {
 #[derive(Clone)]
 pub struct AgentSessionManager {
     sessions: Arc<Mutex<HashMap<String, AgentSession>>>,
-    next_id: Arc<Mutex<u64>>,
     /// Invoked with the session id whenever a session actor exits, whether
     /// closed on purpose, cancelled, or died with the subprocess.
     on_end: Option<SessionEndCallback>,
@@ -354,7 +351,6 @@ impl AgentSessionManager {
     ) -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            next_id: Arc::new(Mutex::new(0)),
             on_end,
             resolver,
         }
@@ -380,38 +376,44 @@ impl AgentSessionManager {
         cwd: Option<PathBuf>,
         load: Option<SessionId>,
     ) -> Result<CreatedSession> {
-        let mut next_id = self.next_id.lock().await;
-        *next_id += 1;
-        let session_id = format!("agent-session-{}", *next_id);
-        drop(next_id);
-
         let cwd = resolve_cwd(cwd)?;
         let (tx, rx) = mpsc::channel(8);
         let (ready_tx, ready_rx) = oneshot::channel();
-        let sessions = self.sessions.clone();
-        let on_end = self.on_end.clone();
+        let (ended_tx, ended_rx) = oneshot::channel::<()>();
         let resolver = self.resolver.clone();
-        let actor_session_id = session_id.clone();
         tokio::spawn(async move {
-            run_session_actor(actor_session_id.clone(), cwd, load, resolver, rx, ready_tx).await;
-            // The actor exited (closed, or the subprocess died): drop the
-            // handle so later calls fail fast, and report the session gone.
-            sessions.lock().await.remove(&actor_session_id);
-            if let Some(on_end) = on_end {
-                on_end(&actor_session_id);
-            }
+            // ended_tx drops when the actor exits, triggering cleanup.
+            run_session_actor(cwd, load, resolver, rx, ready_tx, ended_tx).await;
         });
 
-        // Readiness is bounded by the caller's timeout, not here.
+        // Readiness is bounded by the caller's timeout, not here. The
+        // session id is assigned by the agent.
         match ready_rx.await {
             Ok(Ok(init)) => {
-                self.sessions
-                    .lock()
-                    .await
-                    .insert(session_id.clone(), AgentSession { tx });
+                let session_id = init.acp_session_id;
+                {
+                    let mut sessions = self.sessions.lock().await;
+                    if sessions.contains_key(&session_id) {
+                        // Dropping tx ends the duplicate actor.
+                        anyhow::bail!("ACP agent session is already active: {session_id}");
+                    }
+                    sessions.insert(session_id.clone(), AgentSession { tx });
+                }
+                let sessions = self.sessions.clone();
+                let on_end = self.on_end.clone();
+                let ended_session_id = session_id.clone();
+                tokio::spawn(async move {
+                    let _ = ended_rx.await;
+                    // Only report sessions that were actually registered
+                    // (actors that died before readiness never were).
+                    if sessions.lock().await.remove(&ended_session_id).is_some() {
+                        if let Some(on_end) = on_end {
+                            on_end(&ended_session_id);
+                        }
+                    }
+                });
                 Ok(CreatedSession {
                     session_id,
-                    acp_session_id: init.acp_session_id,
                     modes: init.modes,
                     config_options: init.config_options,
                 })
@@ -538,15 +540,15 @@ impl AgentSessionManager {
 }
 
 async fn run_session_actor(
-    session_id: String,
     cwd: PathBuf,
     load: Option<SessionId>,
     resolver: Option<PermissionResolver>,
     rx: mpsc::Receiver<SessionCommand>,
     ready_tx: oneshot::Sender<Result<SessionInit, String>>,
+    _ended_tx: oneshot::Sender<()>,
 ) {
     if let Err(err) = run_session_actor_inner(cwd, load, resolver, rx, ready_tx).await {
-        logger::info(&format!("ACP session {session_id} stopped: {err}"));
+        logger::info(&format!("ACP session actor stopped: {err}"));
     }
 }
 

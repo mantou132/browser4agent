@@ -262,10 +262,9 @@ peer.handle('agent_permission_request', async (params) => {
   throw new Error('No permission UI available');
 });
 
-/** Create a persistent agent session. Returns `{ sessionId, acpSessionId,
- * modes, configOptions }`: `sessionId` is the live handle for `askAgent`,
- * `acpSessionId` identifies the agent-persisted session (for
- * list/load/delete). */
+/** Create a persistent agent session. Returns `{ sessionId, modes,
+ * configOptions }`: `sessionId` is the agent-side ACP session id — use it
+ * for `askAgent` now, and persist it for `loadAgentSession` later. */
 export async function createAgentSession(options = {}) {
   const params = { cwd: options.cwd, timeoutSeconds: options.timeoutSeconds };
   return await peer.call('agent_session_create', params, options);

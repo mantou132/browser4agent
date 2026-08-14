@@ -63,7 +63,6 @@ pub fn register(peer: &Peer) {
             {
                 Ok(Ok(created)) => Ok(json!({
                     "sessionId": created.session_id,
-                    "acpSessionId": created.acp_session_id,
                     "modes": created.modes,
                     "configOptions": created.config_options,
                 })),
@@ -92,7 +91,6 @@ pub fn register(peer: &Peer) {
             {
                 Ok(Ok(created)) => Ok(json!({
                     "sessionId": created.session_id,
-                    "acpSessionId": created.acp_session_id,
                     "modes": created.modes,
                     "configOptions": created.config_options,
                 })),
