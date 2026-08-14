@@ -247,10 +247,28 @@ peer.onNotify('agent_session_ended', (params) => {
   console.log('Agent session ended:', params?.sessionId);
 });
 
+// ACP permission requests forwarded by the native host:
+// `{ sessionId, toolCall, options }`, where each option has `optionId`,
+// `name` and a `kind` like allow/allow_always/reject. Assign a handler to
+// build the approval UI later; it must return the chosen optionId:
+//   globalThis.onAgentPermissionRequest = async (request) => '<optionId>';
+// Until then requests are declined and the agent cancels the tool call.
+peer.handle('agent_permission_request', async (params) => {
+  if (typeof globalThis.onAgentPermissionRequest === 'function') {
+    const optionId = await globalThis.onAgentPermissionRequest(params);
+    if (typeof optionId === 'string' && optionId) return { optionId };
+    throw new Error('Permission request was not answered with an optionId');
+  }
+  throw new Error('No permission UI available');
+});
+
+/** Create a persistent agent session. Returns `{ sessionId, acpSessionId,
+ * modes, configOptions }`: `sessionId` is the live handle for `askAgent`,
+ * `acpSessionId` identifies the agent-persisted session (for
+ * list/load/delete). */
 export async function createAgentSession(options = {}) {
   const params = { cwd: options.cwd, timeoutSeconds: options.timeoutSeconds };
-  const result = await peer.call('agent_session_create', params, options);
-  return result.sessionId;
+  return await peer.call('agent_session_create', params, options);
 }
 
 export async function askAgent(prompt, options = {}) {
@@ -263,6 +281,9 @@ export async function askAgent(prompt, options = {}) {
     sessionId: options.sessionId,
     timeoutSeconds: options.timeoutSeconds,
     stream: Boolean(options.onEvent),
+    // Wire format, passed through as-is:
+    // [{ type: 'image', data: '<base64>', mimeType }, { type: 'resource', uri, name, mimeType? }]
+    attachments: options.attachments,
   };
   const result = await peer.call('agent_prompt', params, options);
   return result.answer || '';
@@ -293,6 +314,7 @@ export function askAgentStream(prompt, options = {}) {
     sessionId: options.sessionId,
     timeoutSeconds: options.timeoutSeconds,
     stream: true,
+    attachments: options.attachments,
   };
   peer
     .call('agent_prompt', params, {
@@ -345,11 +367,44 @@ export async function closeAgentSession(sessionId, options = {}) {
   return result.closed;
 }
 
+// Sessions persisted by the agent are addressed by their ACP session id (the
+// `acpSessionId` from `createAgentSession`), not the live handle id.
+
+/** List agent-persisted sessions: `{ sessions, nextCursor? }`. Pass the
+ * previous `nextCursor` as `options.cursor` to fetch the next page. */
+export async function listAgentSessions(options = {}) {
+  const params = { cwd: options.cwd, cursor: options.cursor, timeoutSeconds: options.timeoutSeconds };
+  return await peer.call('agent_session_list', params, options);
+}
+
+/** Resume an agent-persisted session by its ACP session id. Returns the
+ * same shape as `createAgentSession`; use `sessionId` for `askAgent`. */
+export async function loadAgentSession(sessionId, options = {}) {
+  if (typeof sessionId !== 'string' || !sessionId) {
+    return Promise.reject(new Error('loadAgentSession requires a sessionId'));
+  }
+  const params = { sessionId, cwd: options.cwd, timeoutSeconds: options.timeoutSeconds };
+  return await peer.call('agent_session_load', params, options);
+}
+
+/** Delete an agent-persisted session by its ACP session id. */
+export async function deleteAgentSession(sessionId, options = {}) {
+  if (typeof sessionId !== 'string' || !sessionId) {
+    return Promise.reject(new Error('deleteAgentSession requires a sessionId'));
+  }
+  const params = { sessionId, timeoutSeconds: options.timeoutSeconds };
+  const result = await peer.call('agent_session_delete', params, options);
+  return result.deleted;
+}
+
 globalThis.createAgentSession = createAgentSession;
 globalThis.askAgent = askAgent;
 globalThis.askAgentStream = askAgentStream;
 globalThis.cancelAgentPrompt = cancelAgentPrompt;
 globalThis.closeAgentSession = closeAgentSession;
+globalThis.listAgentSessions = listAgentSessions;
+globalThis.loadAgentSession = loadAgentSession;
+globalThis.deleteAgentSession = deleteAgentSession;
 
 function connectNativeHost() {
   try {
