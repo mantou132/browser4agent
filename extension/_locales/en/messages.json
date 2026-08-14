@@ -97,6 +97,39 @@
   "description": {
     "message": "Description"
   },
+  "devtoolsPanelCancel": {
+    "message": "Cancel"
+  },
+  "devtoolsPanelDelete": {
+    "message": "Delete session"
+  },
+  "devtoolsPanelEmpty": {
+    "message": "Click “New” or pick a session on the left to start chatting"
+  },
+  "devtoolsPanelLoading": {
+    "message": "Loading session…"
+  },
+  "devtoolsPanelNew": {
+    "message": "New"
+  },
+  "devtoolsPanelNewSession": {
+    "message": "New session"
+  },
+  "devtoolsPanelNoSessions": {
+    "message": "No sessions"
+  },
+  "devtoolsPanelPlaceholder": {
+    "message": "Message the agent — Enter to send, Shift+Enter for a new line"
+  },
+  "devtoolsPanelRefresh": {
+    "message": "Refresh"
+  },
+  "devtoolsPanelSend": {
+    "message": "Send"
+  },
+  "devtoolsPanelSessions": {
+    "message": "Sessions"
+  },
   "downloadAria": {
     "message": "Download $NAME$ version",
     "placeholders": {

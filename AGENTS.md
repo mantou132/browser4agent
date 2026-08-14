@@ -25,18 +25,20 @@
   1. `src/native_host.rs` 负责本地消息循环和 MCP HTTP 服务
   2. `src/mcp_server.rs` MCP 服务端
 6. 浏览器端调用 Agent：
- 1. `extension/background.js` 暴露 `createAgentSession` / `askAgent` / `askAgentStream` / `cancelAgentPrompt` / `closeAgentSession`
- 2. `src/native_messaging.rs` 负责 Native Messaging 基础读写
- 3. `src/peer.rs` 负责与扩展的双工 RPC 协议（请求/响应、流事件、通知），两端 API 对称
- 4. `src/browser_agent.rs` 负责浏览器 agent 协议消息、流式事件转发
- 5. `src/acp_agent.rs` 负责 ACP 会话管理和 `claude-agent-acp` 子进程
+ 1. `extension/devtools/` 的 DevTools 面板通过 `extension/shared/agent-api.js` 调用 agent 会话 API
+ 2. `extension/background.js` 里的 `agent-rpc` 端口桥把面板的 `agent_*` 请求透传给 Native Host，并原样转发流事件和最终响应
+ 3. `src/native_messaging.rs` 负责 Native Messaging 基础读写
+ 4. `src/peer.rs` 负责与扩展的双工 RPC 协议（请求/响应、流事件、通知），两端 API 对称
+ 5. `src/browser_agent.rs` 负责浏览器 agent 协议消息、流式事件转发
+ 6. `src/acp_agent.rs` 负责 ACP 会话管理和 `claude-agent-acp` 子进程
 7. CLI 模式：
   1. `src/cli.rs` 解析 `--tool` / `--input`（或 stdin JSON）
   2. 转发单次工具调用到后台 MCP HTTP 服务 `127.0.0.1:39271/mcp`，打印结果后退出
 
 ## 目录职责
 
-- `extension/pages/`：欢迎页、市场页等独立页面
+- `extension/pages/`：欢迎页、市场页、Agent 面板等独立页面
+- `extension/devtools/`：DevTools 页面入口，注册 Agent 会话测试面板（面板 UI 在 `pages/agent-panel.*`）
 - `extension/options/`：扩展设置页
 - `extension/popup/`：工具弹窗
 - `extension/shared/`：扩展侧公共状态、工具集加载、市场 API、帮助函数
@@ -52,6 +54,8 @@
 - `extension/theme.js`：duoyun-ui 全局主题
 - `extension/tailwind.css`：扩展全局 Tailwind 主题和基础样式
 - `extension/shared/i18n.js`：扩展侧 `t()` 翻译帮助函数和页面语言/标题同步
+- `extension/shared/rpc.js`：对称双工 RPC 对端（`call` / `handle` / `notify`），同时用于 Native Host 链路和面板链路
+- `extension/shared/agent-api.js`：面板侧 agent 会话 async API 客户端（经 background 的 `agent-rpc` 端口转发）
 - `extension/tools.js`：MCP 工具实现
 - `src/native_messaging.rs`：Native Messaging 基础消息读写
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API

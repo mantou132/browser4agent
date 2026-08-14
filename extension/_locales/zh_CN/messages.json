@@ -97,6 +97,39 @@
   "description": {
     "message": "描述"
   },
+  "devtoolsPanelCancel": {
+    "message": "取消"
+  },
+  "devtoolsPanelDelete": {
+    "message": "删除会话"
+  },
+  "devtoolsPanelEmpty": {
+    "message": "点击「新建」或从左侧选择一个会话开始对话"
+  },
+  "devtoolsPanelLoading": {
+    "message": "加载会话中…"
+  },
+  "devtoolsPanelNew": {
+    "message": "新建"
+  },
+  "devtoolsPanelNewSession": {
+    "message": "新会话"
+  },
+  "devtoolsPanelNoSessions": {
+    "message": "暂无会话"
+  },
+  "devtoolsPanelPlaceholder": {
+    "message": "向 Agent 发送消息，Enter 发送，Shift+Enter 换行"
+  },
+  "devtoolsPanelRefresh": {
+    "message": "刷新"
+  },
+  "devtoolsPanelSend": {
+    "message": "发送"
+  },
+  "devtoolsPanelSessions": {
+    "message": "会话"
+  },
   "downloadAria": {
     "message": "下载 $NAME$ 版本",
     "placeholders": {

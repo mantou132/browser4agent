@@ -1,6 +1,7 @@
 import { t } from './shared/i18n.js';
 import { loadToolset } from './shared/loader.js';
 import { ensureAuthToken } from './shared/market-api.js';
+import { RpcPeer } from './shared/rpc.js';
 import { getToolConfig, persist } from './shared/store.js';
 import {
   executeScript,
@@ -75,134 +76,11 @@ chrome.contextMenus.onClicked.addListener((info) => {
 let port = null;
 
 function sendToHost(msg) {
-  if (port) {
-    try {
-      port.postMessage(msg);
-    } catch (e) {
-      console.error('Failed to send message to native host:', e);
-    }
-  } else {
-    console.warn('Native host not connected, cannot send message');
-  }
+  if (!port) throw new Error('Native host not connected, cannot send message');
+  port.postMessage(msg);
 }
 
-/**
- * Symmetric duplex RPC peer shared with the native host.
- *
- * Every message is a plain object, classified by shape:
- * - request:      `{ id, method, params? }`
- * - response:     `{ id, result }` or `{ id, error }`
- * - stream event: `{ id, event }` — intermediate frame tied to a request
- * - notification: `{ method, params? }` — no id, fire and forget
- *
- * Both sides use the same API: `call` / `notify` to initiate,
- * `handle` / `onNotify` to serve.
- */
-class HostPeer {
-  #nextId = 0;
-  #pending = new Map();
-  #handlers = new Map();
-  #notifyHandlers = new Map();
-
-  /** Call the native host and await its final result. */
-  call(method, params = {}, { onEvent, timeoutSeconds = 600 } = {}) {
-    if (!port) {
-      return Promise.reject(new Error(`Native host not connected, cannot call: ${method}`));
-    }
-    const id = `e${++this.#nextId}`;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () => {
-          this.#pending.delete(id);
-          reject(new Error(`Timeout waiting for native host response: ${method}`));
-        },
-        (timeoutSeconds + 5) * 1000,
-      );
-      this.#pending.set(id, { resolve, reject, timer, onEvent });
-      sendToHost({ id, method, params });
-    });
-  }
-
-  /** Send a fire-and-forget notification to the native host. */
-  notify(method, params = {}) {
-    sendToHost({ method, params });
-  }
-
-  /**
-   * Register an async handler for requests from the native host. Its return
-   * value becomes the response; a thrown error is reported back as `{ error }`.
-   * `ctx.emit(event)` streams intermediate frames before the final result.
-   */
-  handle(method, handler) {
-    this.#handlers.set(method, handler);
-  }
-
-  /** Register a handler for notifications from the native host. */
-  onNotify(method, handler) {
-    this.#notifyHandlers.set(method, handler);
-  }
-
-  /** Route one incoming message from the native host. */
-  async dispatch(msg) {
-    const { id, method } = msg;
-    if (id !== undefined && method !== undefined) {
-      this.#dispatchRequest(id, method, msg.params);
-    } else if (id !== undefined) {
-      this.#dispatchReply(id, msg);
-    } else if (method !== undefined) {
-      const handler = this.#notifyHandlers.get(method);
-      if (handler) {
-        handler(msg.params);
-      } else {
-        console.warn('Unhandled notification:', method);
-      }
-    } else {
-      console.warn('Message without id or method:', msg);
-    }
-  }
-
-  /** Reject all in-flight requests (native host disconnected). */
-  rejectAll(error) {
-    for (const pending of this.#pending.values()) {
-      clearTimeout(pending.timer);
-      pending.reject(error);
-    }
-    this.#pending.clear();
-  }
-
-  async #dispatchRequest(id, method, params) {
-    const handler = this.#handlers.get(method);
-    if (!handler) {
-      sendToHost({ id, error: `Unknown method: ${method}` });
-      return;
-    }
-    try {
-      const result = await handler(params ?? {}, { emit: (event) => sendToHost({ id, event }) });
-      sendToHost({ id, result: result ?? null });
-    } catch (e) {
-      sendToHost({ id, error: e?.message || String(e) });
-    }
-  }
-
-  #dispatchReply(id, msg) {
-    // Stream event frame: keep the pending request alive.
-    if ('event' in msg) {
-      this.#pending.get(id)?.onEvent?.(msg.event);
-      return;
-    }
-    const pending = this.#pending.get(id);
-    this.#pending.delete(id);
-    if (!pending) return;
-    clearTimeout(pending.timer);
-    if ('error' in msg) {
-      pending.reject(new Error(msg.error));
-    } else {
-      pending.resolve(msg.result);
-    }
-  }
-}
-
-const peer = new HostPeer();
+const peer = new RpcPeer(sendToHost, 'e');
 
 // chrome.* API handlers served to the native host
 peer.handle('get_notifications', () => chrome.notifications.getAll());
@@ -260,148 +138,33 @@ peer.handle('agent_permission_request', async (params) => {
   throw new Error('No permission UI available');
 });
 
-/** Create a persistent agent session. Returns `{ sessionId, modes,
- * configOptions }`: `sessionId` is the agent-side ACP session id — use it
- * for `askAgent` now, and persist it for `loadAgentSession` later. */
-export async function createAgentSession(options = {}) {
-  const params = { cwd: options.cwd, timeoutSeconds: options.timeoutSeconds };
-  return await peer.call('agent_session_create', params, options);
-}
-
-export async function askAgent(prompt, options = {}) {
-  if (typeof prompt !== 'string' || !prompt.trim()) {
-    return Promise.reject(new Error('askAgent requires a non-empty prompt'));
-  }
-  const params = {
-    prompt,
-    cwd: options.cwd,
-    sessionId: options.sessionId,
-    timeoutSeconds: options.timeoutSeconds,
-    stream: Boolean(options.onEvent),
-    // Wire format, passed through as-is:
-    // [{ type: 'image', data: '<base64>', mimeType }, { type: 'resource', uri, name, mimeType? }]
-    attachments: options.attachments,
-  };
-  const result = await peer.call('agent_prompt', params, options);
-  return result.answer || '';
-}
-
 /**
- * Ask the agent and stream events like a fetch() response body.
- * Returns `{ body, result }`:
- * - `body` is a ReadableStream of agent events (text deltas, session
- *   updates, stop reason), consumable via `getReader()` or `for await`.
- * - `result` resolves to `{ answer, sessionId }`, or rejects if the prompt
- *   failed — the stream is errored in that case too.
+ * DevTools panel bridge: the panel (`shared/agent-api.js`) speaks the same
+ * RPC protocol over a runtime port named `agent-rpc`. Forward its `agent_*`
+ * requests to the native host peer and relay the `{ id, event }` stream
+ * frames and final responses back unchanged.
  */
-export function askAgentStream(prompt, options = {}) {
-  if (typeof prompt !== 'string' || !prompt.trim()) {
-    throw new Error('askAgentStream requires a non-empty prompt');
-  }
-  const { promise: result, resolve, reject } = Promise.withResolvers();
-  let controller;
-  const body = new ReadableStream({
-    start(c) {
-      controller = c;
-    },
-  });
-  const params = {
-    prompt,
-    cwd: options.cwd,
-    sessionId: options.sessionId,
-    timeoutSeconds: options.timeoutSeconds,
-    stream: true,
-    attachments: options.attachments,
-  };
-  peer
-    .call('agent_prompt', params, {
-      timeoutSeconds: options.timeoutSeconds,
-      // The reader may cancel the stream early; don't let enqueue throw
-      // back into message dispatch.
-      onEvent: (event) => {
-        try {
-          controller.enqueue(event);
-        } catch {
-          // stream already cancelled or errored
-        }
-      },
-    })
-    .then(
-      (r) => {
-        controller.close();
-        resolve(r);
-      },
-      (e) => {
-        controller.error(e);
-        reject(e);
-      },
+const AGENT_METHODS = [
+  'agent_session_create',
+  'agent_session_load',
+  'agent_session_list',
+  'agent_session_delete',
+  'agent_session_close',
+  'agent_prompt',
+  'agent_prompt_cancel',
+];
+
+chrome.runtime.onConnect.addListener((panelPort) => {
+  if (panelPort.name !== 'agent-rpc') return;
+  const panel = new RpcPeer((msg) => panelPort.postMessage(msg), 'p');
+  panelPort.onMessage.addListener((msg) => panel.dispatch(msg));
+  panelPort.onDisconnect.addListener(() => panel.rejectAll(new Error('Agent panel disconnected')));
+  for (const method of AGENT_METHODS) {
+    panel.handle(method, (params, { emit }) =>
+      peer.call(method, params, { onEvent: emit, timeoutSeconds: params.timeoutSeconds }),
     );
-  // Avoid unhandled-rejection when callers only consume `body`.
-  result.catch(() => {});
-  return { body, result };
-}
-
-/**
- * Cancel the in-flight prompt of a session. The pending `askAgent` /
- * `askAgentStream` call settles with the partial answer, and the stream
- * ends with a `stop` event carrying the cancel reason. Returns false when
- * the session is unknown.
- */
-export async function cancelAgentPrompt(sessionId, options = {}) {
-  if (typeof sessionId !== 'string' || !sessionId) {
-    return Promise.reject(new Error('cancelAgentPrompt requires a sessionId'));
   }
-  const result = await peer.call('agent_prompt_cancel', { sessionId }, options);
-  return result.cancelled;
-}
-
-export async function closeAgentSession(sessionId, options = {}) {
-  if (typeof sessionId !== 'string' || !sessionId) {
-    return Promise.reject(new Error('closeAgentSession requires a sessionId'));
-  }
-  const params = { sessionId, timeoutSeconds: options.timeoutSeconds };
-  const result = await peer.call('agent_session_close', params, options);
-  return result.closed;
-}
-
-// Sessions persisted by the agent are addressed by their ACP session id (the
-// `acpSessionId` from `createAgentSession`), not the live handle id.
-
-/** List agent-persisted sessions: `{ sessions, nextCursor? }`. Pass the
- * previous `nextCursor` as `options.cursor` to fetch the next page. */
-export async function listAgentSessions(options = {}) {
-  const params = { cwd: options.cwd, cursor: options.cursor, timeoutSeconds: options.timeoutSeconds };
-  return await peer.call('agent_session_list', params, options);
-}
-
-/** Resume an agent-persisted session by its ACP session id. Returns the
- * same shape as `createAgentSession`; use `sessionId` for `askAgent`. */
-export async function loadAgentSession(sessionId, options = {}) {
-  if (typeof sessionId !== 'string' || !sessionId) {
-    return Promise.reject(new Error('loadAgentSession requires a sessionId'));
-  }
-  const params = { sessionId, cwd: options.cwd, timeoutSeconds: options.timeoutSeconds };
-  return await peer.call('agent_session_load', params, options);
-}
-
-/** Delete an agent-persisted session by its ACP session id. */
-export async function deleteAgentSession(sessionId, options = {}) {
-  if (typeof sessionId !== 'string' || !sessionId) {
-    return Promise.reject(new Error('deleteAgentSession requires a sessionId'));
-  }
-  const params = { sessionId, timeoutSeconds: options.timeoutSeconds };
-  const result = await peer.call('agent_session_delete', params, options);
-  return result.deleted;
-}
-
-globalThis.createAgentSession = createAgentSession;
-globalThis.askAgent = askAgent;
-globalThis.askAgentStream = askAgentStream;
-globalThis.cancelAgentPrompt = cancelAgentPrompt;
-globalThis.closeAgentSession = closeAgentSession;
-globalThis.listAgentSessions = listAgentSessions;
-globalThis.loadAgentSession = loadAgentSession;
-globalThis.deleteAgentSession = deleteAgentSession;
+});
 
 function connectNativeHost() {
   try {

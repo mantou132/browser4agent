@@ -52,6 +52,7 @@
     "page": "options/index.html",
     "open_in_tab": true
   },
+  "devtools_page": "devtools/devtools.html",
   "content_scripts": [
     {
       "matches": ["*://*.feishu.cn/*"],
