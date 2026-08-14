@@ -4,35 +4,24 @@ use rmcp::transport::streamable_http_server::{
 };
 
 use crate::{
-    browser_agent::BrowserAgentBridge,
+    browser_agent,
     constant::{BIND_ADDRESS, MCP_PATH},
-    extension_rpc::ExtensionRpcClient,
     logger,
     mcp_server::BrowserMcpServer,
-    native_messaging::{read_native_message, write_native_message},
+    native_messaging::read_native_message,
+    peer::Peer,
 };
 
 /// Run the native messaging loop on the current thread.
 /// Returns when stdin is closed (browser disconnected).
-async fn native_message_loop(extension_rpc: ExtensionRpcClient, agent_bridge: BrowserAgentBridge) {
-    write_native_message(&serde_json::json!({"type": "connected"}));
+async fn native_message_loop(peer: Peer) {
+    peer.notify("connected", serde_json::json!({}));
     logger::info("Connected to browser extension");
 
     loop {
         if let Some(msg) = read_native_message() {
             logger::log(&format!("Received from extension: {:?}", msg));
-
-            if agent_bridge.handle_message(msg.clone()) {
-                continue;
-            }
-
-            if let Some(req_id) = msg.get("request_id").and_then(|v| v.as_u64()) {
-                if !extension_rpc.deliver_response(req_id, msg.clone()).await {
-                    logger::log(&format!("No pending request for response: {:?}", msg));
-                }
-            } else {
-                logger::log(&format!("Message without request_id: {:?}", msg));
-            }
+            peer.dispatch(msg).await;
         } else {
             logger::info("Stdin closed, browser disconnected");
             break;
@@ -41,9 +30,9 @@ async fn native_message_loop(extension_rpc: ExtensionRpcClient, agent_bridge: Br
 }
 
 pub async fn run() -> Result<()> {
-    let extension_rpc = ExtensionRpcClient::new();
-    let agent_bridge = BrowserAgentBridge::new();
-    let server = BrowserMcpServer::new(extension_rpc.clone());
+    let peer = Peer::default();
+    browser_agent::register(&peer);
+    let server = BrowserMcpServer::new(peer.clone());
 
     let service = StreamableHttpService::new(
         move || Ok(server.clone()),
@@ -77,7 +66,7 @@ pub async fn run() -> Result<()> {
     });
 
     // Main thread: native messaging loop. Exits when browser closes stdin.
-    native_message_loop(extension_rpc, agent_bridge).await;
+    native_message_loop(peer).await;
 
     Ok(())
 }

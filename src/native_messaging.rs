@@ -1,7 +1,5 @@
 use std::io::{self, Read, Write};
 
-use crate::logger;
-
 static STDOUT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// Read one native message from stdin (4-byte LE length prefix + JSON).
@@ -29,19 +27,5 @@ pub fn write_native_message(msg: &serde_json::Value) {
     let _ = stdout.write_all(&len_buf);
     let _ = stdout.write_all(&buf);
     let _ = stdout.flush();
-}
-
-pub fn write_with_request_id(
-    request_id: Option<serde_json::Value>,
-    mut msg: serde_json::Value,
-) -> Option<serde_json::Value> {
-    if let Some(request_id) = request_id {
-        msg["request_id"] = request_id;
-        write_native_message(&msg);
-        Some(msg)
-    } else {
-        logger::log(&format!("Cannot respond without request_id: {:?}", msg));
-        None
-    }
 }
 

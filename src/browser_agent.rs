@@ -1,141 +1,110 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
-use tokio::sync::{mpsc, oneshot};
+use serde_json::{Value, json};
+use tokio::sync::mpsc;
 
 use crate::{
-    acp_agent::{self, AgentSessionManager},
-    native_messaging::write_with_request_id,
+    acp_agent::{self, AgentEvent, AgentSessionManager},
+    peer::Peer,
 };
 
-#[derive(Clone)]
-pub struct BrowserAgentBridge {
-    sessions: AgentSessionManager,
-}
+/// Register the browser-facing agent handlers on the peer.
+pub fn register(peer: &Peer) {
+    let notify_peer = peer.clone();
+    let sessions = AgentSessionManager::new(Some(Arc::new(move |session_id| {
+        notify_peer.notify(
+            "agent_session_ended",
+            json!({ "sessionId": session_id }),
+        );
+    })));
 
-impl BrowserAgentBridge {
-    pub fn new() -> Self {
-        Self {
-            sessions: AgentSessionManager::new(),
-        }
-    }
-
-    pub fn handle_message(&self, msg: serde_json::Value) -> bool {
-        match msg.get("type").and_then(|v| v.as_str()) {
-            Some("agent_session_create") => {
-                self.handle_session_create(msg);
-                true
-            }
-            Some("agent_session_close") => {
-                self.handle_session_close(msg);
-                true
-            }
-            Some("agent_prompt") => {
-                self.handle_prompt(msg);
-                true
-            }
-            _ => false,
-        }
-    }
-
-    fn handle_session_create(&self, msg: serde_json::Value) {
-        let request_id = request_id(&msg);
-        let cwd = message_cwd(&msg);
-        let timeout_secs = message_timeout_secs(&msg);
-        let sessions = self.sessions.clone();
-
-        tokio::spawn(async move {
-            let result = tokio::time::timeout(
-                std::time::Duration::from_secs(timeout_secs),
+    let create_sessions = sessions.clone();
+    peer.handle("agent_session_create", move |params, _ctx| {
+        let sessions = create_sessions.clone();
+        async move {
+            let cwd = message_cwd(&params);
+            let timeout_secs = message_timeout_secs(&params);
+            match tokio::time::timeout(
+                Duration::from_secs(timeout_secs),
                 sessions.create_session(cwd),
             )
-            .await;
-
-            match result {
-                Ok(Ok(session_id)) => {
-                    write_with_request_id(
-                        request_id,
-                        serde_json::json!({
-                            "type": "agent_session_created",
-                            "sessionId": session_id
-                        }),
-                    );
-                }
-                Ok(Err(err)) => send_error(request_id, err.to_string(), None),
-                Err(_) => send_error(
-                    request_id,
-                    "Timeout creating ACP agent session".to_string(),
-                    None,
-                ),
+            .await
+            {
+                Ok(Ok(session_id)) => Ok(json!({ "sessionId": session_id })),
+                Ok(Err(err)) => Err(err.to_string()),
+                Err(_) => Err("Timeout creating ACP agent session".to_string()),
             }
-        });
-    }
+        }
+    });
 
-    fn handle_session_close(&self, msg: serde_json::Value) {
-        let request_id = request_id(&msg);
-        let Some(session_id) = msg
-            .get("sessionId")
-            .and_then(|v| v.as_str())
-            .map(str::to_string)
-        else {
-            send_error(
-                request_id,
-                "agent_session_close requires a string sessionId".to_string(),
-                None,
-            );
-            return;
-        };
-        let sessions = self.sessions.clone();
+    let close_sessions = sessions.clone();
+    peer.handle("agent_session_close", move |params, _ctx| {
+        let sessions = close_sessions.clone();
+        async move {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| "agent_session_close requires a string sessionId".to_string())?;
+            let closed = sessions.close_session(session_id).await;
+            Ok(json!({ "sessionId": session_id, "closed": closed }))
+        }
+    });
 
-        tokio::spawn(async move {
-            let closed = sessions.close_session(&session_id).await;
-            write_with_request_id(
-                request_id,
-                serde_json::json!({
-                    "type": "agent_session_closed",
-                    "sessionId": session_id,
-                    "closed": closed
-                }),
-            );
-        });
-    }
+    let cancel_sessions = sessions.clone();
+    peer.handle("agent_prompt_cancel", move |params, _ctx| {
+        let sessions = cancel_sessions.clone();
+        async move {
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| "agent_prompt_cancel requires a string sessionId".to_string())?;
+            let cancelled = sessions.cancel(session_id).await;
+            Ok(json!({ "sessionId": session_id, "cancelled": cancelled }))
+        }
+    });
 
-    fn handle_prompt(&self, msg: serde_json::Value) {
-        let request_id = request_id(&msg);
-        let Some(prompt) = msg
-            .get("prompt")
-            .and_then(|v| v.as_str())
-            .map(str::to_string)
-        else {
-            send_error(
-                request_id,
-                "agent_prompt requires a string prompt".to_string(),
-                None,
-            );
-            return;
-        };
-        let cwd = message_cwd(&msg);
-        let timeout_secs = message_timeout_secs(&msg);
-        let stream = message_stream(&msg);
-        let session_id = msg
-            .get("sessionId")
-            .and_then(|v| v.as_str())
-            .filter(|v| !v.is_empty())
-            .map(str::to_string);
-        let event_forwarder =
-            stream.then(|| forward_agent_events(request_id.clone(), session_id.clone()));
-        let event_tx = event_forwarder
-            .as_ref()
-            .map(|forwarder| forwarder.tx.clone());
-        let sessions = self.sessions.clone();
+    peer.handle("agent_prompt", move |params, ctx| {
+        let sessions = sessions.clone();
+        async move {
+            let prompt = params
+                .get("prompt")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .filter(|v| !v.is_empty())
+                .ok_or_else(|| "agent_prompt requires a string prompt".to_string())?;
+            let cwd = message_cwd(&params);
+            let timeout_secs = message_timeout_secs(&params);
+            let session_id = params
+                .get("sessionId")
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+                .map(str::to_string);
 
-        tokio::spawn(async move {
+            // Stream agent events as `{ id, event }` frames while the prompt
+            // runs; the forwarder is drained before the final result so no
+            // event overtakes the response.
+            let forwarder = message_stream(&params).then(|| {
+                let (event_tx, mut event_rx) = mpsc::unbounded_channel::<AgentEvent>();
+                let ctx = ctx.clone();
+                let done = tokio::spawn(async move {
+                    while let Some(event) = event_rx.recv().await {
+                        let event = serde_json::to_value(&event).unwrap_or(Value::Null);
+                        ctx.emit(event);
+                    }
+                });
+                (event_tx, done)
+            });
+            let event_tx = forwarder.as_ref().map(|(tx, _)| tx.clone());
+
             let result = if let Some(session_id) = &session_id {
                 sessions
                     .prompt(session_id, prompt, timeout_secs, event_tx)
                     .await
             } else {
                 match tokio::time::timeout(
-                    std::time::Duration::from_secs(timeout_secs),
+                    Duration::from_secs(timeout_secs),
                     acp_agent::ask_stream(prompt, cwd, event_tx),
                 )
                 .await
@@ -145,98 +114,39 @@ impl BrowserAgentBridge {
                 }
             };
 
-            drain_forwarder_after_result(&result, event_forwarder).await;
-
-            match result {
-                Ok(answer) => {
-                    write_with_request_id(
-                        request_id,
-                        serde_json::json!({
-                            "type": "agent_response",
-                            "answer": answer,
-                            "sessionId": session_id
-                        }),
-                    );
+            if let Some((tx, done)) = forwarder {
+                drop(tx);
+                if result.is_ok() {
+                    let _ = done.await;
                 }
-                Err(err) => send_error(request_id, err.to_string(), session_id),
             }
-        });
-    }
-}
 
-struct AgentEventForwarder {
-    tx: mpsc::UnboundedSender<acp_agent::AgentEvent>,
-    done: oneshot::Receiver<()>,
-}
-
-fn forward_agent_events(
-    request_id: Option<serde_json::Value>,
-    session_id: Option<String>,
-) -> AgentEventForwarder {
-    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-    let (done_tx, done_rx) = oneshot::channel();
-    tokio::spawn(async move {
-        while let Some(event) = event_rx.recv().await {
-            write_with_request_id(
-                request_id.clone(),
-                serde_json::json!({
-                    "type": "agent_event",
-                    "sessionId": session_id.clone(),
-                    "data": event
-                }),
-            );
+            result
+                .map(|answer| json!({ "answer": answer, "sessionId": session_id }))
+                .map_err(|err| err.to_string())
         }
-        let _ = done_tx.send(());
     });
-    AgentEventForwarder {
-        tx: event_tx,
-        done: done_rx,
-    }
 }
 
-async fn drain_forwarder_after_result(
-    result: &anyhow::Result<String>,
-    forwarder: Option<AgentEventForwarder>,
-) {
-    let Some(forwarder) = forwarder else {
-        return;
-    };
-    drop(forwarder.tx);
-
-    if result.is_ok() {
-        let _ = forwarder.done.await;
-    }
-}
-
-fn send_error(request_id: Option<serde_json::Value>, error: String, session_id: Option<String>) {
-    write_with_request_id(
-        request_id,
-        serde_json::json!({
-            "type": "agent_error",
-            "error": error,
-            "sessionId": session_id
-        }),
-    );
-}
-
-fn request_id(msg: &serde_json::Value) -> Option<serde_json::Value> {
-    msg.get("request_id").cloned()
-}
-
-fn message_cwd(msg: &serde_json::Value) -> Option<PathBuf> {
-    msg.get("cwd")
+fn message_cwd(params: &Value) -> Option<PathBuf> {
+    params
+        .get("cwd")
         .and_then(|v| v.as_str())
         .filter(|v| !v.is_empty())
         .map(PathBuf::from)
 }
 
-fn message_timeout_secs(msg: &serde_json::Value) -> u64 {
-    msg.get("timeoutSeconds")
+fn message_timeout_secs(params: &Value) -> u64 {
+    params
+        .get("timeoutSeconds")
         .and_then(|v| v.as_u64())
         .unwrap_or(600)
         .clamp(1, 3600)
 }
 
-fn message_stream(msg: &serde_json::Value) -> bool {
-    msg.get("stream").and_then(|v| v.as_bool()).unwrap_or(false)
+fn message_stream(params: &Value) -> bool {
+    params
+        .get("stream")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }

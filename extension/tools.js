@@ -1,8 +1,6 @@
 import { exec } from './execute-in-bg.js';
 import { getAvailableTabTools, getSubscribedTool } from './shared/store.js';
 
-const err = (msg) => ({ type: 'error', error: msg });
-
 // Pseudo toolset id used for tools that the page itself registered via
 // `navigator.modelContext.registerTool` (WebMCP). They are not stored in
 // chrome.storage; metadata is fetched live from the tab and `execute` is
@@ -10,9 +8,11 @@ const err = (msg) => ({ type: 'error', error: msg });
 const PAGE_TOOLSET_ID = 'webmcp';
 const PAGE_TOOLSET_NAME = 'Page WebMCP Tools';
 
+// All tool functions throw on failure; the peer turns the thrown message
+// into an `{ id, error }` response frame.
 function scriptResult(results) {
   const { result, error } = results[0] || {};
-  if (error) return err(error.message || String(error));
+  if (error) throw new Error(error.message || String(error));
   return result;
 }
 
@@ -50,12 +50,12 @@ export async function getAllTabs() {
     }));
     return { tabs };
   } catch (e) {
-    return err(`Failed to get tabs: ${e.message}`);
+    throw new Error(`Failed to get tabs: ${e.message}`);
   }
 }
 
 export async function readTab(tabId) {
-  if (tabId == null) return err('tabId is required');
+  if (tabId == null) throw new Error('tabId is required');
   try {
     await ensureTabLoaded(tabId);
     const results = await chrome.scripting.executeScript({
@@ -66,7 +66,7 @@ export async function readTab(tabId) {
     const content = scriptResult(results) || '';
     return { tabId, content };
   } catch (e) {
-    return err(`Failed to read tab ${tabId}: ${e.message}`);
+    throw new Error(`Failed to read tab ${tabId}: ${e.message}`);
   }
 }
 
@@ -76,7 +76,7 @@ export async function readActiveTab() {
       active: true,
       currentWindow: true,
     });
-    if (!tab) return err('No active tab');
+    if (!tab) throw new Error('No active tab');
     await ensureTabLoaded(tab.id);
     const results = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
@@ -86,7 +86,7 @@ export async function readActiveTab() {
     const content = scriptResult(results) || '';
     return { tabId: tab.id, title: tab.title, url: tab.url, content };
   } catch (e) {
-    return err(`Failed to read active tab: ${e.message}`);
+    throw new Error(`Failed to read active tab: ${e.message}`);
   }
 }
 
@@ -100,12 +100,12 @@ export async function getCookies(url) {
     }));
     return { cookies };
   } catch (e) {
-    return err(`Failed to get cookies: ${e.message}`);
+    throw new Error(`Failed to get cookies: ${e.message}`);
   }
 }
 
 export async function getErrors(tabId) {
-  if (tabId == null) return err('tabId is required');
+  if (tabId == null) throw new Error('tabId is required');
   try {
     await ensureTabLoaded(tabId);
     const results = await chrome.scripting.executeScript({
@@ -115,13 +115,13 @@ export async function getErrors(tabId) {
     });
     return { messages: scriptResult(results) || [] };
   } catch (e) {
-    return err(`Failed to get errors: ${e.message}`);
+    throw new Error(`Failed to get errors: ${e.message}`);
   }
 }
 
 export async function executeScript(tabId, funcStr, args) {
-  if (tabId == null) return err('tabId is required');
-  if (!funcStr) return err('funcStr is required');
+  if (tabId == null) throw new Error('tabId is required');
+  if (!funcStr) throw new Error('funcStr is required');
   const argsJson = JSON.stringify(args || []);
   try {
     await ensureTabLoaded(tabId);
@@ -176,7 +176,7 @@ export async function executeScript(tabId, funcStr, args) {
     });
     return { result: scriptResult(results) };
   } catch (e) {
-    return err(`Failed to execute script: ${e.message}`);
+    throw new Error(`Failed to execute script: ${e.message}`);
   }
 }
 
@@ -198,7 +198,7 @@ async function getPageWebmcpTools(tabId) {
 }
 
 export async function listTabTools(tabId) {
-  if (tabId == null) return err('tabId is required');
+  if (tabId == null) throw new Error('tabId is required');
   try {
     const tab = await ensureTabLoaded(tabId);
     const subscribed = await getAvailableTabTools(tabId);
@@ -216,14 +216,14 @@ export async function listTabTools(tabId) {
     ];
     return { ...subscribed, tools };
   } catch (e) {
-    return err(`Failed to list tab tools: ${e.message}`);
+    throw new Error(`Failed to list tab tools: ${e.message}`);
   }
 }
 
 export async function executeTabTool(tabId, toolsetId, toolName, args) {
-  if (tabId == null) return err('tabId is required');
-  if (!toolsetId) return err('toolsetId is required');
-  if (!toolName) return err('toolName is required');
+  if (tabId == null) throw new Error('tabId is required');
+  if (!toolsetId) throw new Error('toolsetId is required');
+  if (!toolName) throw new Error('toolName is required');
   try {
     const tab = await ensureTabLoaded(tabId);
     if (toolsetId === PAGE_TOOLSET_ID) {
@@ -236,7 +236,6 @@ export async function executeTabTool(tabId, toolsetId, toolName, args) {
         }`,
         [toolName, args || {}],
       );
-      if (result.type === 'error') return result;
       return {
         tabId,
         toolsetId,
@@ -247,10 +246,9 @@ export async function executeTabTool(tabId, toolsetId, toolName, args) {
     }
     const { toolset, tool } = await getSubscribedTool(toolsetId, toolName);
     if (!tool.pattern || !new URLPattern(tool.pattern).test(tab.url)) {
-      return err(`Tool ${toolName} does not match tab URL`);
+      throw new Error(`Tool ${toolName} does not match tab URL`);
     }
     const result = await executeScript(tabId, tool.execute, [args || {}]);
-    if (result.type === 'error') return result;
     return {
       tabId,
       toolsetId,
@@ -259,22 +257,22 @@ export async function executeTabTool(tabId, toolsetId, toolName, args) {
       result: result.result,
     };
   } catch (e) {
-    return err(`Failed to execute tab tool: ${e.message}`);
+    throw new Error(`Failed to execute tab tool: ${e.message}`);
   }
 }
 
 export async function executeScriptInBackground(funcStr, args) {
-  if (!funcStr) return err('funcStr is required');
+  if (!funcStr) throw new Error('funcStr is required');
   try {
     const result = await exec(funcStr, args);
     return { result };
   } catch (e) {
-    return err(`Failed to execute script: ${e.message}`);
+    throw new Error(`Failed to execute script: ${e.message}`);
   }
 }
 
 export async function getLocalStorage(tabId) {
-  if (tabId == null) return err('tabId is required');
+  if (tabId == null) throw new Error('tabId is required');
   try {
     await ensureTabLoaded(tabId);
     const results = await chrome.scripting.executeScript({
@@ -287,12 +285,12 @@ export async function getLocalStorage(tabId) {
     });
     return { data: scriptResult(results) || {} };
   } catch (e) {
-    return err(`Failed to get localStorage: ${e.message}`);
+    throw new Error(`Failed to get localStorage: ${e.message}`);
   }
 }
 
 export async function screenshotTab(tabId) {
-  if (tabId == null) return err('tabId is required');
+  if (tabId == null) throw new Error('tabId is required');
   try {
     const tab = await ensureTabLoaded(tabId);
     if (!tab.active) {
@@ -304,6 +302,6 @@ export async function screenshotTab(tabId) {
     const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
     return { tabId, image: base64Data, format };
   } catch (e) {
-    return err(`Failed to screenshot tab ${tabId}: ${e.message}`);
+    throw new Error(`Failed to screenshot tab ${tabId}: ${e.message}`);
   }
 }

@@ -1,13 +1,13 @@
 use rmcp::{
     ErrorData as McpError, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{ErrorCode, *},
+    model::*,
     schemars, tool, tool_handler, tool_router,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::extension_rpc::ExtensionRpcClient;
+use crate::peer::Peer;
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TabIdParams {
@@ -77,16 +77,16 @@ pub struct ExecuteScriptInBackgroundParams {
 
 #[derive(Clone)]
 pub struct BrowserMcpServer {
-    messenger: ExtensionRpcClient,
+    peer: Peer,
     #[allow(dead_code)]
     tool_router: ToolRouter<BrowserMcpServer>,
 }
 
 #[tool_router]
 impl BrowserMcpServer {
-    pub fn new(messenger: ExtensionRpcClient) -> Self {
+    pub fn new(peer: Peer) -> Self {
         Self {
-            messenger,
+            peer,
             tool_router: Self::tool_router(),
         }
     }
@@ -104,7 +104,7 @@ impl BrowserMcpServer {
                        list_tab_tools, read_tab, execute_tab_tool, get_local_storage, etc."
     )]
     async fn list_tabs(&self) -> Result<CallToolResult, McpError> {
-        self.call(json!({ "type": "list_tabs" })).await
+        self.call("list_tabs", json!({})).await
     }
 
     #[tool(
@@ -115,8 +115,7 @@ impl BrowserMcpServer {
         &self,
         Parameters(p): Parameters<TabIdParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.call(json!({ "type": "read_tab", "tabId": p.tab_id }))
-            .await
+        self.call("read_tab", json!({ "tabId": p.tab_id })).await
     }
 
     #[tool(
@@ -125,7 +124,7 @@ impl BrowserMcpServer {
                        needed first."
     )]
     async fn read_active_tab(&self) -> Result<CallToolResult, McpError> {
-        self.call(json!({ "type": "read_active_tab" })).await
+        self.call("read_active_tab", json!({})).await
     }
 
     #[tool(
@@ -137,8 +136,7 @@ impl BrowserMcpServer {
         &self,
         Parameters(p): Parameters<GetCookiesParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.call(json!({ "type": "get_cookies", "url": p.url }))
-            .await
+        self.call("get_cookies", json!({ "url": p.url })).await
     }
 
     #[tool(
@@ -149,7 +147,7 @@ impl BrowserMcpServer {
         &self,
         Parameters(p): Parameters<TabIdParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.call(json!({ "type": "get_errors", "tabId": p.tab_id }))
+        self.call("get_errors", json!({ "tabId": p.tab_id }))
             .await
     }
 
@@ -162,12 +160,14 @@ impl BrowserMcpServer {
         &self,
         Parameters(p): Parameters<ExecuteScriptParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.call(json!({
-            "type": "execute_script",
-            "tabId": p.tab_id,
-            "funcStr": p.func_str,
-            "args": p.args,
-        }))
+        self.call(
+            "execute_script",
+            json!({
+                "tabId": p.tab_id,
+                "funcStr": p.func_str,
+                "args": p.args,
+            }),
+        )
         .await
     }
 
@@ -182,7 +182,7 @@ impl BrowserMcpServer {
         &self,
         Parameters(p): Parameters<TabIdParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.call(json!({ "type": "list_tab_tools", "tabId": p.tab_id }))
+        self.call("list_tab_tools", json!({ "tabId": p.tab_id }))
             .await
     }
 
@@ -197,13 +197,15 @@ impl BrowserMcpServer {
         &self,
         Parameters(p): Parameters<ExecuteTabToolParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.call(json!({
-            "type": "execute_tab_tool",
-            "tabId": p.tab_id,
-            "toolsetId": p.toolset_id,
-            "toolName": p.tool_name,
-            "args": p.args,
-        }))
+        self.call(
+            "execute_tab_tool",
+            json!({
+                "tabId": p.tab_id,
+                "toolsetId": p.toolset_id,
+                "toolName": p.tool_name,
+                "args": p.args,
+            }),
+        )
         .await
     }
 
@@ -220,11 +222,13 @@ impl BrowserMcpServer {
         &self,
         Parameters(p): Parameters<ExecuteScriptInBackgroundParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.call(json!({
-            "type": "execute_script_in_background",
-            "funcStr": p.func_str,
-            "args": p.args,
-        }))
+        self.call(
+            "execute_script_in_background",
+            json!({
+                "funcStr": p.func_str,
+                "args": p.args,
+            }),
+        )
         .await
     }
 
@@ -236,7 +240,7 @@ impl BrowserMcpServer {
         &self,
         Parameters(p): Parameters<TabIdParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.call(json!({ "type": "get_local_storage", "tabId": p.tab_id }))
+        self.call("get_local_storage", json!({ "tabId": p.tab_id }))
             .await
     }
 
@@ -249,12 +253,13 @@ impl BrowserMcpServer {
         &self,
         Parameters(p): Parameters<TabIdParams>,
     ) -> Result<CallToolResult, McpError> {
-        let resp = self
-            .request_extension(json!({ "type": "screenshot_tab", "tabId": p.tab_id }))
-            .await?;
-        if let Some(r) = error_result(&resp) {
-            return Ok(r);
-        }
+        let resp = match self
+            .request_extension("screenshot_tab", json!({ "tabId": p.tab_id }))
+            .await
+        {
+            Ok(resp) => resp,
+            Err(msg) => return Ok(error_text_result(&msg)),
+        };
         if let Some(image) = resp.get("image").and_then(|i| i.as_str()) {
             let format = resp.get("format").and_then(|f| f.as_str()).unwrap_or("png");
             return Ok(CallToolResult::success(vec![Content::image(
@@ -268,38 +273,32 @@ impl BrowserMcpServer {
 
 impl BrowserMcpServer {
     /// Send a request to the extension and convert the response into a
-    /// CallToolResult.
-    async fn call(&self, msg: Value) -> Result<CallToolResult, McpError> {
-        let resp = self.request_extension(msg).await?;
-        Ok(error_result(&resp).unwrap_or_else(|| json_result(&resp)))
+    /// CallToolResult. Failures (extension handler threw, timeout, peer
+    /// disconnected) are returned as readable tool text so the LLM sees them.
+    async fn call(&self, method: &str, params: Value) -> Result<CallToolResult, McpError> {
+        match self.request_extension(method, params).await {
+            Ok(resp) => Ok(json_result(&resp)),
+            Err(msg) => Ok(error_text_result(&msg)),
+        }
     }
 
     /// Send a request to the extension and wait for the response (30s timeout).
-    async fn request_extension(&self, msg: Value) -> Result<Value, McpError> {
-        let rx = self.messenger.request(&msg).await;
-        match tokio::time::timeout(std::time::Duration::from_secs(30), rx).await {
+    async fn request_extension(&self, method: &str, params: Value) -> Result<Value, String> {
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            self.peer.call(method, params),
+        )
+        .await
+        {
             Ok(Ok(resp)) => Ok(resp),
-            Ok(Err(_)) => Err(internal("Browser extension disconnected")),
-            Err(_) => Err(internal("Timeout waiting for browser extension")),
+            Ok(Err(err)) => Err(err.to_string()),
+            Err(_) => Err("Timeout waiting for browser extension".to_string()),
         }
     }
 }
 
-fn internal(msg: &'static str) -> McpError {
-    McpError::new(ErrorCode(-32603), msg, None)
-}
-
-fn error_result(resp: &Value) -> Option<CallToolResult> {
-    if resp.get("type").and_then(|t| t.as_str()) != Some("error") {
-        return None;
-    }
-    let err = resp
-        .get("error")
-        .and_then(|e| e.as_str())
-        .unwrap_or("unknown");
-    Some(CallToolResult::success(vec![Content::text(format!(
-        "Error: {err}"
-    ))]))
+fn error_text_result(msg: &str) -> CallToolResult {
+    CallToolResult::success(vec![Content::text(format!("Error: {msg}"))])
 }
 
 fn json_result(value: &Value) -> CallToolResult {

@@ -25,9 +25,9 @@
   1. `src/native_host.rs` 负责本地消息循环和 MCP HTTP 服务
   2. `src/mcp_server.rs` MCP 服务端
 6. 浏览器端调用 Agent：
- 1. `extension/background.js` 暴露 `createAgentSession` / `askAgent` / `closeAgentSession`
+ 1. `extension/background.js` 暴露 `createAgentSession` / `askAgent` / `askAgentStream` / `cancelAgentPrompt` / `closeAgentSession`
  2. `src/native_messaging.rs` 负责 Native Messaging 基础读写
- 3. `src/extension_rpc.rs` 负责 native host 主动请求浏览器时的请求响应映射
+ 3. `src/peer.rs` 负责与扩展的双工 RPC 协议（请求/响应、流事件、通知），两端 API 对称
  4. `src/browser_agent.rs` 负责浏览器 agent 协议消息、流式事件转发
  5. `src/acp_agent.rs` 负责 ACP 会话管理和 `claude-agent-acp` 子进程
 7. CLI 模式：
@@ -54,7 +54,7 @@
 - `extension/shared/i18n.js`：扩展侧 `t()` 翻译帮助函数和页面语言/标题同步
 - `extension/tools.js`：MCP 工具实现
 - `src/native_messaging.rs`：Native Messaging 基础消息读写
-- `src/extension_rpc.rs`：native host 主动请求浏览器时的 `request_id` 映射
+- `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
 - `src/browser_agent.rs`：浏览器侧 agent 请求协议、会话创建、流式事件转发
 - `src/acp_agent.rs`：ACP client、持续会话 actor、agent 事件转换
 - `src/cli.rs`：命令行单次工具调用入口
