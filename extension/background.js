@@ -158,11 +158,35 @@ chrome.runtime.onConnect.addListener((panelPort) => {
   if (panelPort.name !== 'agent-rpc') return;
   const panel = new RpcPeer((msg) => panelPort.postMessage(msg), 'p');
   panelPort.onMessage.addListener((msg) => panel.dispatch(msg));
-  panelPort.onDisconnect.addListener(() => panel.rejectAll(new Error('Agent panel disconnected')));
+  // Live sessions opened by this panel instance; closed when the panel
+  // disconnects (devtools closed) so the agent subprocesses don't leak.
+  const liveSessions = new Set();
+  let disconnected = false;
+  panelPort.onDisconnect.addListener(() => {
+    disconnected = true;
+    panel.rejectAll(new Error('Agent panel disconnected'));
+    for (const sessionId of liveSessions) {
+      peer.call('agent_session_close', { sessionId }).catch(() => {});
+    }
+  });
   for (const method of AGENT_METHODS) {
-    panel.handle(method, (params, { emit }) =>
-      peer.call(method, params, { onEvent: emit, timeoutSeconds: params.timeoutSeconds }),
-    );
+    panel.handle(method, async (params, { emit }) => {
+      const result = await peer.call(method, params, {
+        onEvent: emit,
+        timeoutSeconds: params.timeoutSeconds,
+      });
+      if (method === 'agent_session_create' || method === 'agent_session_load') {
+        // A create/load settling after disconnect would leak the session.
+        if (disconnected) {
+          peer.call('agent_session_close', { sessionId: result.sessionId }).catch(() => {});
+        } else {
+          liveSessions.add(result.sessionId);
+        }
+      } else if (method === 'agent_session_close') {
+        liveSessions.delete(params.sessionId);
+      }
+      return result;
+    });
   }
 });
 
