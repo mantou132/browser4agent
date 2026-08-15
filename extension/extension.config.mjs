@@ -48,6 +48,7 @@ export default {
                             'popup-*': '/popup/elements/*',
                             'market-*': '/pages/elements/*',
                             'welcome-*': '/pages/elements/*',
+                            'agent-*': '/pages/elements/*',
                           },
                         },
                       },

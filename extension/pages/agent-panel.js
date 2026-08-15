@@ -23,7 +23,8 @@ class AgentPanelPageElement extends GemElement {
     draft: false, // "new session" was requested but not yet created
     messages: [], // { role: 'user' | 'agent', text } | { type: 'event', data }
     pending: false, // prompt in flight
-    loading: false, // loading/creating a session
+    booting: true, // initial sessions fetching state (whole page loader)
+    loadingSession: false, // loading a specific session in the right pane
     loadingId: null, // session id currently being loaded in the left list
     deleting: null, // session id being deleted
     error: '',
@@ -33,7 +34,13 @@ class AgentPanelPageElement extends GemElement {
   #listRef = createRef();
 
   @mounted()
-  #boot = () => this.#refreshSessions();
+  #boot = async () => {
+    try {
+      await this.#refreshSessions();
+    } finally {
+      this.#s({ booting: false });
+    }
+  };
 
   @effect((i) => [i.#s.messages])
   #scrollToBottom = () => {
@@ -73,7 +80,7 @@ class AgentPanelPageElement extends GemElement {
 
   #send = async () => {
     const prompt = this.#s.input.trim();
-    if (!prompt || this.#s.pending || this.#s.loading) return;
+    if (!prompt || this.#s.pending || this.#s.loadingSession) return;
     this.#s({
       input: '',
       pending: true,
@@ -112,16 +119,16 @@ class AgentPanelPageElement extends GemElement {
   };
 
   #newSession = () => {
-    if (this.#s.pending || this.#s.loading) return;
+    if (this.#s.pending || this.#s.loadingSession) return;
     if (this.#s.sessionId) agentApi.closeSession(this.#s.sessionId).catch(() => {});
     this.#s({ sessionId: null, draft: true, messages: [], error: '' });
   };
 
   #openSession = async (sessionId) => {
-    if (this.#s.pending || this.#s.loading || sessionId === this.#s.sessionId) return;
+    if (this.#s.pending || this.#s.loadingSession || sessionId === this.#s.sessionId) return;
     const previous = this.#s.sessionId;
     // Clear before load: the replayed history rebuilds the list via #onEvent
-    this.#s({ loading: true, loadingId: sessionId, error: '', messages: [] });
+    this.#s({ loadingSession: true, loadingId: sessionId, error: '', messages: [] });
     try {
       // The live session we are leaving is closed; best-effort cleanup
       if (previous) await agentApi.closeSession(previous).catch(() => {});
@@ -132,13 +139,12 @@ class AgentPanelPageElement extends GemElement {
     } catch (e) {
       this.#s({ error: e.message });
     } finally {
-      this.#s({ loading: false, loadingId: null });
+      this.#s({ loadingSession: false, loadingId: null });
     }
   };
 
-  #deleteSession = async (sessionId, e) => {
-    e.stopPropagation();
-    if (this.#s.deleting || this.#s.loading || this.#s.pending) return;
+  #deleteSession = async (sessionId) => {
+    if (this.#s.deleting || this.#s.loadingSession || this.#s.pending) return;
     const isCurrent = this.#s.sessionId === sessionId;
     this.#s({ deleting: sessionId });
     try {
@@ -189,137 +195,108 @@ class AgentPanelPageElement extends GemElement {
     return null;
   }
 
-  #isActive = (session) => (this.#s.draft ? session.temp : session.sessionId === this.#s.sessionId);
-
-  #renderSession = (session) => {
-    const mtime = session.mtime ? new Date(session.mtime).toLocaleString() : '';
-    const active = this.#isActive(session);
-    const deleting = this.#s.deleting === session.sessionId;
-    const loading = this.#s.loadingId === session.sessionId;
-    return html`
-      <li
-        class=${classMap({
-          'flex items-center gap-2 border-b border-border px-3 py-2': true,
-          'cursor-pointer hover:bg-bg-hover': !deleting && !loading,
-          'bg-bg-hover': active,
-          'opacity-60': deleting,
-        })}
-        title=${session.sessionId || ''}
-        @click=${() => !session.temp && !deleting && !loading && this.#openSession(session.sessionId)}
-      >
-        <span class="min-w-0 flex-1">
-          <span class="block truncate text-highlight">${session.title || session.sessionId}</span>
-          <span v-if=${mtime} class="block truncate text-xs text-describe">${mtime}</span>
-        </span>
-        <!-- loading: delete button is replaced by a static loading icon -->
-        <dy-use
-          v-if=${loading && !deleting}
-          class="size-3.5 shrink-0 text-describe"
-          .element=${icons.loading}
-        ></dy-use>
-        <!-- deleting: no icon at all, the item is disabled -->
-        <dy-use
-          v-if=${!deleting && !loading && !session.temp}
-          class="size-3.5 shrink-0 cursor-pointer text-describe hover:text-negative"
-          .element=${icons.close}
-          title=${t('devtoolsPanelDelete')}
-          @click=${(e) => this.#deleteSession(session.sessionId, e)}
-        ></dy-use>
-      </li>
-    `;
-  };
-
-  #renderMessage = (msg) => {
-    if (msg.type === 'event') {
-      return html`
-        <details class="my-2 text-xs text-describe">
-          <summary class="cursor-pointer select-none">${msg.data.sessionUpdate || 'event'}</summary>
-          <pre class="overflow-auto rounded bg-bg-light p-2">${JSON.stringify(msg.data, null, 2)}</pre>
-        </details>
-      `;
-    }
-    const isUser = msg.role === 'user';
-    return html`
-      <div class=${`my-2 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-        <div
-          class=${`max-w-[80%] whitespace-pre-wrap rounded-lg px-3 py-2 ${
-            isUser ? 'bg-primary text-white' : 'bg-bg-light text-text'
-          }`}
-        >
-          ${msg.text}
-        </div>
-      </div>
-    `;
-  };
+  #isActive = (session) => (session ? (this.#s.draft ? Boolean(session.temp) : session.sessionId === this.#s.sessionId) : false);
 
   @template()
   #content = () => {
-    const { sessions, sessionId, messages, pending, loading, error, input } = this.#s;
+    const { sessions, sessionId, messages, pending, booting, loadingSession, loadingId, deleting, error, input } =
+      this.#s;
+
+    if (booting) {
+      return html`
+        <div class="grid h-full place-items-center bg-bg text-describe">
+          <dy-loading></dy-loading>
+        </div>
+      `;
+    }
+
+    const tempSession = this.#tempSession;
+
     return html`
       <div class="flex h-full">
-        <aside class="flex w-64 shrink-0 flex-col border-r border-border">
-          <header class="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+        <aside class="flex w-64 shrink-0 flex-col border-r border-border bg-bg-light/30">
+          <header class="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
             <span class="font-semibold text-highlight">${t('devtoolsPanelSessions')}</span>
-            <span class="flex gap-1">
-              <button
-                class="rounded border border-border px-2 py-0.5 text-xs text-text hover:bg-bg-hover"
+            <div class="flex items-center gap-1">
+              <dy-button
+                small
+                .icon=${icons.add}
                 @click=${this.#newSession}
               >
                 ${t('devtoolsPanelNew')}
-              </button>
-              <button
-                class="rounded border border-border px-2 py-0.5 text-xs text-text hover:bg-bg-hover"
+              </dy-button>
+              <dy-button
+                small
+                square
+                color="cancel"
+                .icon=${icons.refresh}
+                title=${t('devtoolsPanelRefresh')}
                 @click=${this.#refreshSessions}
-              >
-                ${t('devtoolsPanelRefresh')}
-              </button>
-            </span>
+              ></dy-button>
+            </div>
           </header>
           <ul class="m-0 flex-1 list-none overflow-auto p-0">
             <li
-              v-if=${!sessions.length && !this.#tempSession}
-              class="px-3 py-2 text-describe"
+              v-if=${!sessions.length && !tempSession}
+              class="px-3 py-4 text-center text-xs text-describe"
             >
               ${t('devtoolsPanelNoSessions')}
             </li>
-            ${this.#tempSession ? this.#renderSession(this.#tempSession) : ''}
-            ${sessions.map(this.#renderSession)}
+            <agent-session-item
+              v-if=${!!tempSession}
+              .session=${tempSession}
+              ?active=${this.#isActive(tempSession)}
+            ></agent-session-item>
+            ${sessions.map(
+              (session) => html`
+                <agent-session-item
+                  .session=${session}
+                  ?active=${this.#isActive(session)}
+                  ?loading=${loadingId === session.sessionId}
+                  ?deleting=${deleting === session.sessionId}
+                  @select=${() => this.#openSession(session.sessionId)}
+                  @delete=${() => this.#deleteSession(session.sessionId)}
+                ></agent-session-item>
+              `,
+            )}
           </ul>
         </aside>
-        <section class="flex min-w-0 flex-1 flex-col">
-          <header v-if=${!loading && this.#canChat} class="border-b border-border px-3 py-2">
-            <span class="block truncate text-xs text-describe" title=${sessionId || ''}>
+        <section class="flex min-w-0 flex-1 flex-col bg-bg">
+          <header v-if=${!loadingSession && this.#canChat} class="border-b border-border px-4 py-2.5 bg-bg">
+            <span class="block truncate text-xs font-medium text-describe" title=${sessionId || ''}>
               ${this.#currentTitle}
             </span>
           </header>
-          <div v-if=${loading} class="grid min-h-0 flex-1 place-items-center text-describe">
+          <div v-if=${loadingSession} class="grid min-h-0 flex-1 place-items-center text-describe">
             <span class="flex items-center gap-2">
               <dy-loading></dy-loading>
               <span>${t('devtoolsPanelLoading')}</span>
             </span>
           </div>
-          <div v-if=${!loading && !this.#canChat} class="grid min-h-0 flex-1 place-items-center text-describe">
-            ${t('devtoolsPanelEmpty')}
+          <div v-if=${!loadingSession && !this.#canChat} class="grid min-h-0 flex-1 place-items-center text-describe">
+            <dy-empty text=${t('devtoolsPanelEmpty')}></dy-empty>
           </div>
-          <div v-if=${!loading && this.#canChat} ${this.#listRef} class="min-h-0 flex-1 overflow-auto px-4 py-2">
-            ${messages.map(this.#renderMessage)}
+          <div v-if=${!loadingSession && this.#canChat} ${this.#listRef} class="min-h-0 flex-1 overflow-auto px-4 py-2">
+            ${messages.map((msg) => html`<agent-message-bubble .message=${msg}></agent-message-bubble>`)}
           </div>
-          <div v-if=${error} class="border-t border-negative px-4 py-2 text-negative">${error}</div>
-          <footer v-if=${!loading && this.#canChat} class="flex items-end gap-2 border-t border-border p-3">
-            <textarea
+          <div v-if=${error} class="border-t border-negative/30 bg-negative/5 px-4 py-2 text-xs text-negative">${error}</div>
+          <footer v-if=${!loadingSession && this.#canChat} class="flex items-end gap-2 border-t border-border p-3 bg-bg">
+            <dy-input
+              type="textarea"
               rows="2"
-              class="min-w-0 flex-1 resize-none rounded border border-border bg-bg px-2 py-1.5 outline-none focus:border-focus"
+              class="min-w-0 flex-1"
               placeholder=${t('devtoolsPanelPlaceholder')}
               .value=${input}
-              @input=${(e) => this.#s({ input: e.target.value })}
+              @change=${(e) => this.#s({ input: e.detail })}
               @keydown=${this.#onKeydown}
-            ></textarea>
-            <button
-              class="rounded bg-primary px-3 py-1.5 text-white hover:opacity-90"
+            ></dy-input>
+            <dy-button
+              type=${pending ? 'reverse' : 'solid'}
+              color=${pending ? 'cancel' : 'normal'}
               @click=${() => (pending ? this.#cancel() : this.#send())}
             >
               ${pending ? t('devtoolsPanelCancel') : t('devtoolsPanelSend')}
-            </button>
+            </dy-button>
           </footer>
         </section>
       </div>
