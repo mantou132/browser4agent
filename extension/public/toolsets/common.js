@@ -14,7 +14,9 @@ function normalize(text) {
 }
 
 function setInputValue(element, value) {
-  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  // textarea 的 value setter 在 HTMLTextAreaElement.prototype 上，用错原型会抛 TypeError
+  const proto = element instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const nativeInputValueSetter = Object.getOwnPropertyDescriptor(proto, 'value').set;
   nativeInputValueSetter.call(element, value);
 }
 
@@ -106,6 +108,9 @@ export function click_by_text({ text, exact = false } = {}) {
     ...document.deepQuerySelectorAll('>>> button'),
     ...document.deepQuerySelectorAll('>>> a'),
     ...document.deepQuerySelectorAll('>>> [role="button"]'),
+    ...document.deepQuerySelectorAll('>>> [role="tab"]'),
+    ...document.deepQuerySelectorAll('>>> [role="menuitem"]'),
+    ...document.deepQuerySelectorAll('>>> [role="link"]'),
     ...document.deepQuerySelectorAll('>>> input[type="button"]'),
     ...document.deepQuerySelectorAll('>>> input[type="submit"]'),
   ];

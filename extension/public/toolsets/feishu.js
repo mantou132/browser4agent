@@ -118,8 +118,38 @@ export async function delete_paragraph({ paragraph_index, text } = {}) {
   }
 
   const deletedContent = zone.textContent.replace(/\u200B/g, '');
+  const zoneIndex = bodyZones.indexOf(zone);
 
   await simulateInput(zone, '');
+
+  // \u6E05\u7A7A\u6587\u672C\u540E\u6BB5\u843D\u5757\u4ECD\u6B8B\u7559\uFF0C\u9009\u4E2D\u7A7A\u5757\u6D3E\u53D1 Backspace \u771F\u6B63\u5220\u9664\uFF1B
+  // \u7F16\u8F91\u5668\u72B6\u6001\u540C\u6B65\u662F\u5F02\u6B65\u7684\uFF0C\u4E00\u6B21\u53EF\u80FD\u4E0D\u751F\u6548\uFF0C\u5220\u9664\u540E\u91CD\u65B0\u68C0\u67E5\u5E76\u91CD\u8BD5
+  for (let i = 0; i < 3; i++) {
+    await new Promise((r) => setTimeout(r, 500));
+    const zones = [...document.querySelectorAll('.page-block-children .zone-container.text-editor')];
+    const emptyZone = zones[zoneIndex] ?? zone;
+    if (!emptyZone.isConnected || zoneText(emptyZone)) break;
+    emptyZone.focus();
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(emptyZone);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.dispatchEvent(new Event('selectionchange'));
+    await new Promise((r) => setTimeout(r, 200));
+    emptyZone.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Backspace',
+        code: 'Backspace',
+        keyCode: 8,
+        which: 8,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }
+  await new Promise((r) => setTimeout(r, 300));
+
   return { deletedContent };
 }
 
