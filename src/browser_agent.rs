@@ -1,4 +1,8 @@
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
@@ -30,7 +34,10 @@ fn event_forwarder(
 /// Drop the event sender and wait for the forwarder to drain so streamed
 /// events never overtake the final result.
 async fn settle_forwarder(
-    forwarder: Option<(mpsc::UnboundedSender<AgentEvent>, tokio::task::JoinHandle<()>)>,
+    forwarder: Option<(
+        mpsc::UnboundedSender<AgentEvent>,
+        tokio::task::JoinHandle<()>,
+    )>,
     ok: bool,
 ) {
     if let Some((tx, done)) = forwarder {
@@ -73,13 +80,26 @@ pub fn register(peer: &Peer) {
     });
     let sessions = AgentSessionManager::new(
         Some(Arc::new(move |session_id| {
-            notify_peer.notify(
-                "agent_session_ended",
-                json!({ "sessionId": session_id }),
-            );
+            notify_peer.notify("agent_session_ended", json!({ "sessionId": session_id }));
         })),
         Some(resolver.clone()),
     );
+
+    peer.handle("agent_cwd_complete", move |params, _ctx| async move {
+        let input = params
+            .get("input")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let limit = params
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(100)
+            .clamp(1, 200) as usize;
+        tokio::task::spawn_blocking(move || complete_directories(&input, limit))
+            .await
+            .map_err(|err| format!("Directory completion task failed: {err}"))?
+    });
 
     let create_sessions = sessions.clone();
     peer.handle("agent_session_create", move |params, _ctx| {
@@ -153,27 +173,33 @@ pub fn register(peer: &Peer) {
         }
     });
 
-    peer.handle("agent_session_list", move |params, _ctx| async move {
-        let cwd = message_cwd(&params);
-        let cursor = params
-            .get("cursor")
-            .and_then(|v| v.as_str())
-            .filter(|v| !v.is_empty())
-            .map(str::to_string);
-        let timeout_secs = message_timeout_secs(&params);
-        match tokio::time::timeout(
-            Duration::from_secs(timeout_secs),
-            acp_agent::list_sessions(cwd, cursor),
-        )
-        .await
-        {
-            Ok(Ok(list)) => Ok(list),
-            Ok(Err(err)) => Err(err.to_string()),
-            Err(_) => Err("Timeout listing ACP agent sessions".to_string()),
+    let list_sessions = sessions.clone();
+    peer.handle("agent_session_list", move |params, _ctx| {
+        let sessions = list_sessions.clone();
+        async move {
+            let cwd = message_cwd(&params);
+            let cursor = params
+                .get("cursor")
+                .and_then(|v| v.as_str())
+                .filter(|v| !v.is_empty())
+                .map(str::to_string);
+            let timeout_secs = message_timeout_secs(&params);
+            match tokio::time::timeout(
+                Duration::from_secs(timeout_secs),
+                sessions.list_sessions(cwd, cursor),
+            )
+            .await
+            {
+                Ok(Ok(list)) => Ok(list),
+                Ok(Err(err)) => Err(err.to_string()),
+                Err(_) => Err("Timeout listing ACP agent sessions".to_string()),
+            }
         }
     });
 
+    let delete_sessions = sessions.clone();
     peer.handle("agent_session_delete", move |params, _ctx| {
+        let sessions = delete_sessions.clone();
         async move {
             let session_id = params
                 .get("sessionId")
@@ -183,7 +209,7 @@ pub fn register(peer: &Peer) {
             let timeout_secs = message_timeout_secs(&params);
             match tokio::time::timeout(
                 Duration::from_secs(timeout_secs),
-                acp_agent::delete_session(session_id),
+                sessions.delete_session(session_id),
             )
             .await
             {
@@ -225,7 +251,6 @@ pub fn register(peer: &Peer) {
     let prompt_sessions = sessions.clone();
     peer.handle("agent_prompt", move |params, ctx| {
         let sessions = prompt_sessions.clone();
-        let resolver = resolver.clone();
         async move {
             let prompt = params
                 .get("prompt")
@@ -233,14 +258,13 @@ pub fn register(peer: &Peer) {
                 .map(str::to_string)
                 .filter(|v| !v.is_empty())
                 .ok_or_else(|| "agent_prompt requires a string prompt".to_string())?;
-            let cwd = message_cwd(&params);
             let timeout_secs = message_timeout_secs(&params);
             let attachments = message_attachments(&params)?;
             let session_id = params
                 .get("sessionId")
                 .and_then(|v| v.as_str())
                 .filter(|v| !v.is_empty())
-                .map(str::to_string);
+                .ok_or_else(|| "agent_prompt requires a string sessionId".to_string())?;
 
             // Stream agent events as `{ id, event }` frames while the prompt
             // runs; the forwarder is drained before the final result so no
@@ -248,21 +272,9 @@ pub fn register(peer: &Peer) {
             let forwarder = message_stream(&params).then(|| event_forwarder(&ctx));
             let event_tx = forwarder.as_ref().map(|(tx, _)| tx.clone());
 
-            let result = if let Some(session_id) = &session_id {
-                sessions
-                    .prompt(session_id, prompt, attachments, timeout_secs, event_tx)
-                    .await
-            } else {
-                match tokio::time::timeout(
-                    Duration::from_secs(timeout_secs),
-                    acp_agent::ask_stream(prompt, attachments, cwd, Some(resolver), event_tx),
-                )
-                .await
-                {
-                    Ok(result) => result,
-                    Err(_) => Err(anyhow::anyhow!("Timeout waiting for ACP agent")),
-                }
-            };
+            let result = sessions
+                .prompt(session_id, prompt, attachments, timeout_secs, event_tx)
+                .await;
 
             settle_forwarder(forwarder, result.is_ok()).await;
 
@@ -316,6 +328,71 @@ pub fn register(peer: &Peer) {
                 .map_err(|err| err.to_string())
         }
     });
+}
+
+fn complete_directories(input: &str, limit: usize) -> Result<Value, String> {
+    let current_dir = std::env::current_dir()
+        .map_err(|err| format!("Failed to resolve current directory: {err}"))?;
+    let base_dir = dirs::home_dir().unwrap_or_else(|| current_dir.clone());
+    let input = input.trim();
+    let path = resolve_directory_path(input, &base_dir);
+    let is_directory = path.is_dir();
+    let (directory, prefix) = if is_directory {
+        (path.clone(), String::new())
+    } else {
+        let directory = path
+            .parent()
+            .filter(|path| !path.as_os_str().is_empty())
+            .unwrap_or(&base_dir)
+            .to_path_buf();
+        let prefix = path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        (directory, prefix)
+    };
+
+    let prefix = prefix.to_lowercase();
+    let mut directories = std::fs::read_dir(&directory)
+        .map_err(|err| format!("Failed to read {}: {err}", directory.display()))?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| entry.path().is_dir())
+        .filter(|entry| {
+            prefix.is_empty()
+                || entry
+                    .file_name()
+                    .to_string_lossy()
+                    .to_lowercase()
+                    .starts_with(&prefix)
+        })
+        .map(|entry| entry.path().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    directories.sort_by_key(|path| path.to_lowercase());
+    directories.truncate(limit);
+
+    Ok(json!({
+        "value": path.to_string_lossy(),
+        "isDirectory": is_directory,
+        "directories": directories,
+    }))
+}
+
+fn resolve_directory_path(input: &str, base_dir: &Path) -> PathBuf {
+    if input.is_empty() || input == "~" {
+        base_dir.to_path_buf()
+    } else if let Some(relative) = input
+        .strip_prefix("~/")
+        .or_else(|| input.strip_prefix("~\\"))
+    {
+        base_dir.join(relative)
+    } else {
+        let path = PathBuf::from(input);
+        if path.is_absolute() {
+            path
+        } else {
+            base_dir.join(path)
+        }
+    }
 }
 
 fn required_session_id<'a>(params: &'a Value, method: &str) -> Result<&'a str, String> {
@@ -397,4 +474,46 @@ fn message_attachments(params: &Value) -> Result<Vec<acp_agent::Attachment>, Str
             other => Err(format!("unknown attachment type: {other:?}")),
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        path::PathBuf,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
+    use super::{complete_directories, resolve_directory_path};
+
+    #[test]
+    fn completes_and_validates_directories() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("browser4agent-cwd-{unique}"));
+        let alpha = root.join("alpha");
+        let alpine = root.join("alpine");
+        std::fs::create_dir_all(&alpha).expect("create alpha directory");
+        std::fs::create_dir_all(&alpine).expect("create alpine directory");
+
+        let prefix = root.join("al").to_string_lossy().into_owned();
+        let completion = complete_directories(&prefix, 100).expect("complete directory prefix");
+        let exact =
+            complete_directories(&alpha.to_string_lossy(), 100).expect("validate exact directory");
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+
+        assert_eq!(completion["isDirectory"], false);
+        assert_eq!(completion["directories"].as_array().map(Vec::len), Some(2));
+        assert_eq!(exact["isDirectory"], true);
+    }
+
+    #[test]
+    fn expands_home_directory_shorthand() {
+        let home = PathBuf::from("home").join("user");
+
+        assert_eq!(resolve_directory_path("~", &home), home);
+        assert_eq!(resolve_directory_path("~/test", &home), home.join("test"));
+        assert_eq!(resolve_directory_path("~\\test", &home), home.join("test"));
+    }
 }

@@ -151,8 +151,7 @@ impl BrowserMcpServer {
         &self,
         Parameters(p): Parameters<TabIdParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.call("get_errors", json!({ "tabId": p.tab_id }))
-            .await
+        self.call("get_errors", json!({ "tabId": p.tab_id })).await
     }
 
     #[tool(

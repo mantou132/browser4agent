@@ -28,4 +28,3 @@ pub fn write_native_message(msg: &serde_json::Value) {
     let _ = stdout.write_all(&buf);
     let _ = stdout.flush();
 }
-

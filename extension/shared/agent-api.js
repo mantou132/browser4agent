@@ -10,11 +10,20 @@ import { RpcPeer } from './rpc.js';
 export function createAgentApi() {
   let port = null;
   let peer = null;
+  let permissionHandler = null;
 
   function rpc() {
     if (peer) return peer;
     port = chrome.runtime.connect({ name: 'agent-rpc' });
     peer = new RpcPeer((msg) => port.postMessage(msg), 'p');
+    peer.handle('agent_permission_request', async (request) => {
+      if (!permissionHandler) throw new Error('No permission UI available');
+      const optionId = await permissionHandler(request);
+      if (typeof optionId !== 'string' || !optionId) {
+        throw new Error('Permission request cancelled');
+      }
+      return { optionId };
+    });
     port.onMessage.addListener((msg) => peer.dispatch(msg));
     port.onDisconnect.addListener(() => {
       peer.rejectAll(new Error(chrome.runtime.lastError?.message || 'Background disconnected'));
@@ -25,6 +34,16 @@ export function createAgentApi() {
   }
 
   return {
+    setPermissionHandler(handler) {
+      permissionHandler = typeof handler === 'function' ? handler : null;
+      if (permissionHandler) rpc();
+    },
+
+    completeCwd(input = '', options = {}) {
+      const params = { input, limit: options.limit, timeoutSeconds: options.timeoutSeconds };
+      return rpc().call('agent_cwd_complete', params, options);
+    },
+
     /** Create a persistent agent session. Returns `{ sessionId, modes,
      * configOptions }`: `sessionId` is the agent-side ACP session id — use
      * it for `ask` now, and persist it for `loadSession` later. */
@@ -43,9 +62,11 @@ export function createAgentApi() {
       if (typeof prompt !== 'string' || !prompt.trim()) {
         return Promise.reject(new Error('ask requires a non-empty prompt'));
       }
+      if (typeof options.sessionId !== 'string' || !options.sessionId) {
+        return Promise.reject(new Error('ask requires a sessionId'));
+      }
       const params = {
         prompt,
-        cwd: options.cwd,
         sessionId: options.sessionId,
         timeoutSeconds: options.timeoutSeconds,
         stream: Boolean(options.onEvent),
@@ -79,10 +100,9 @@ export function createAgentApi() {
     // Sessions persisted by the agent are addressed by their ACP session id,
     // not the live handle id.
 
-    /** List agent-persisted sessions: `{ sessions, nextCursor? }`. Pass the
-     * previous `nextCursor` as `options.cursor` to fetch the next page. */
+    /** List the first page of agent-persisted sessions. */
     listSessions(options = {}) {
-      const params = { cwd: options.cwd, cursor: options.cursor, timeoutSeconds: options.timeoutSeconds };
+      const params = { cwd: options.cwd, timeoutSeconds: options.timeoutSeconds };
       return rpc().call('agent_session_list', params, options);
     },
 

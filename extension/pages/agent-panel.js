@@ -1,6 +1,7 @@
 import { icons } from 'duoyun-ui/lib/icons';
 import { createAgentApi } from '../shared/agent-api.js';
 import { setPageI18n, t } from '../shared/i18n.js';
+import { displayHomePath } from '../shared/path.js';
 
 setPageI18n();
 
@@ -17,11 +18,13 @@ const style = css`
 @customElement('agent-panel-page')
 @adoptedStyle(style)
 class AgentPanelPageElement extends GemElement {
+  @boolattribute showEvents;
+
   #s = createState({
-    sessions: [], // persisted sessions: { sessionId, title?, cwd?, mtime? }
+    sessions: [], // persisted sessions: { sessionId, title?, cwd?, updatedAt? }
     sessionId: null, // current live session
     draft: false, // "new session" was requested but not yet created
-    messages: [], // { role: 'user' | 'agent', text } | { type: 'event', data }
+    messages: [], // text messages, thought blocks, tool calls, or raw events
     pending: false, // prompt in flight
     booting: true, // initial sessions fetching state (whole page loader)
     loadingSession: false, // loading a specific session in the right pane
@@ -29,36 +32,84 @@ class AgentPanelPageElement extends GemElement {
     deleting: null, // session id being deleted
     error: '',
     input: '',
+    cwd: '',
+    home: '',
+    cwdPicker: false,
+    permissionRequest: null,
   });
 
-  #listRef = createRef();
+  #permissionResolve = null;
 
   @mounted()
   #boot = async () => {
+    agentApi.setPermissionHandler(this.#requestPermission);
     try {
-      await this.#refreshSessions();
+      await Promise.all([this.#refreshSessions(), this.#loadHome()]);
     } finally {
       this.#s({ booting: false });
     }
   };
 
-  @effect((i) => [i.#s.messages])
-  #scrollToBottom = () => {
-    this.#listRef.current?.scrollTo(0, Number.MAX_SAFE_INTEGER);
+  @unmounted()
+  #cleanup = () => {
+    this.#settlePermission(null);
+    agentApi.setPermissionHandler(null);
+  };
+
+  #requestPermission = (request) => {
+    this.#settlePermission(null);
+    return new Promise((resolve) => {
+      this.#permissionResolve = resolve;
+      this.#s({ permissionRequest: request });
+    });
+  };
+
+  #settlePermission = (optionId) => {
+    const resolve = this.#permissionResolve;
+    this.#permissionResolve = null;
+    this.#s({ permissionRequest: null });
+    resolve?.(optionId);
   };
 
   #refreshSessions = async () => {
     try {
       const { sessions } = await agentApi.listSessions();
-      this.#s({ sessions: sessions || [] });
+      this.#s({ sessions: sessions || [], error: '' });
     } catch (e) {
       this.#s({ error: e.message });
     }
   };
 
+  #loadHome = async () => {
+    try {
+      const { value } = await agentApi.completeCwd('');
+      this.#s({ home: value || '' });
+    } catch {
+      // Home shortening is optional; absolute paths remain usable.
+    }
+  };
+
+  #completeThought = (messages) => {
+    const last = messages.at(-1);
+    if (last?.type !== 'thought' || !last.pending) return messages;
+    const next = messages.slice();
+    next[next.length - 1] = { ...last, pending: false };
+    return next;
+  };
+
+  #finishThought = () => {
+    const messages = this.#completeThought(this.#s.messages);
+    if (messages !== this.#s.messages) this.#s({ messages });
+  };
+
   #onEvent = (event) => {
-    if (event.event !== 'session_update') return;
+    if (event.event !== 'session_update') {
+      if (event.event === 'stop') this.#finishThought();
+      return;
+    }
     const { update } = event;
+    const thoughtChunk = update.sessionUpdate === 'agent_thought_chunk' && update.content?.type === 'text';
+    const currentMessages = thoughtChunk ? this.#s.messages : this.#completeThought(this.#s.messages);
     // Text chunks: live turns stream agent chunks; load replays both roles
     const role =
       update.sessionUpdate === 'agent_message_chunk'
@@ -67,20 +118,50 @@ class AgentPanelPageElement extends GemElement {
           ? 'user'
           : null;
     if (role && update.content?.type === 'text') {
-      const messages = this.#s.messages.slice();
+      const messages = currentMessages.slice();
       const last = messages.at(-1);
-      if (last?.role === role) last.text += update.content.text;
-      else messages.push({ role, text: update.content.text });
+      if (last?.role === role) {
+        messages[messages.length - 1] = { ...last, text: last.text + update.content.text };
+      } else {
+        messages.push({ role, text: update.content.text });
+      }
+      this.#s({ messages });
+    } else if (thoughtChunk) {
+      const messages = currentMessages.slice();
+      const last = messages.at(-1);
+      if (last?.type === 'thought') {
+        messages[messages.length - 1] = { ...last, text: last.text + update.content.text, pending: true };
+      } else {
+        messages.push({ type: 'thought', text: update.content.text, pending: true });
+      }
+      this.#s({ messages });
+    } else if (update.sessionUpdate === 'tool_call') {
+      this.#s({ messages: [...currentMessages, { type: 'tool', data: update }] });
+    } else if (update.sessionUpdate === 'tool_call_update') {
+      const messages = currentMessages.slice();
+      const index = messages.findLastIndex(
+        (message) => message.type === 'tool' && message.data.toolCallId === update.toolCallId,
+      );
+      if (index === -1) {
+        messages.push({ type: 'tool', data: update });
+      } else {
+        messages[index] = {
+          ...messages[index],
+          data: { ...messages[index].data, ...update, sessionUpdate: 'tool_call' },
+        };
+      }
+      messages.push({ type: 'event', data: update });
       this.#s({ messages });
     } else {
       // Surface other ACP session updates (tool calls, plans, …) for inspection
-      this.#s({ messages: [...this.#s.messages, { type: 'event', data: update }] });
+      this.#s({ messages: [...currentMessages, { type: 'event', data: update }] });
     }
   };
 
   #send = async () => {
     const prompt = this.#s.input.trim();
     if (!prompt || this.#s.pending || this.#s.loadingSession) return;
+    const turnStart = this.#s.messages.length;
     this.#s({
       input: '',
       pending: true,
@@ -93,19 +174,19 @@ class AgentPanelPageElement extends GemElement {
       // otherwise the whole pane flashes the loading screen.
       let sessionId = this.#s.sessionId;
       if (!sessionId) {
-        sessionId = (await agentApi.createSession()).sessionId;
+        sessionId = (await agentApi.createSession({ cwd: this.#s.cwd })).sessionId;
         this.#s({ sessionId, draft: false });
       }
       const answer = await agentApi.ask(prompt, { sessionId, onEvent: this.#onEvent });
-      // Fall back to the final answer if chunk events were missed; trailing
-      // event entries (usage updates, …) must not hide the streamed bubble
-      const messages = this.#s.messages.slice();
-      const last = messages.findLast((m) => m.type !== 'event');
-      if (last?.role === 'agent') last.text = answer || last.text;
-      else if (answer) messages.push({ role: 'agent', text: answer });
-      this.#s({ messages });
+      this.#finishThought();
+      const messages = this.#s.messages;
+      const receivedAgentText = messages.slice(turnStart).some((message) => message.role === 'agent' && message.text);
+      if (answer && !receivedAgentText) {
+        this.#s({ messages: [...messages, { role: 'agent', text: answer }] });
+      }
       await this.#refreshSessions();
     } catch (e) {
+      this.#finishThought();
       this.#s({ error: e.message });
     } finally {
       this.#s({ pending: false });
@@ -113,6 +194,7 @@ class AgentPanelPageElement extends GemElement {
   };
 
   #cancel = () => {
+    this.#settlePermission(null);
     if (this.#s.sessionId) {
       agentApi.cancelPrompt(this.#s.sessionId).catch((e) => this.#s({ error: e.message }));
     }
@@ -120,24 +202,31 @@ class AgentPanelPageElement extends GemElement {
 
   #newSession = () => {
     if (this.#s.pending || this.#s.loadingSession) return;
+    this.#s({ cwdPicker: true, error: '' });
+  };
+
+  #confirmNewSession = (cwd) => {
     if (this.#s.sessionId) agentApi.closeSession(this.#s.sessionId).catch(() => {});
-    this.#s({ sessionId: null, draft: true, messages: [], error: '' });
+    this.#s({ sessionId: null, draft: true, messages: [], cwd, cwdPicker: false, error: '' });
   };
 
   #openSession = async (sessionId) => {
     if (this.#s.pending || this.#s.loadingSession || sessionId === this.#s.sessionId) return;
     const previous = this.#s.sessionId;
+    const previousMessages = this.#s.messages;
+    const selected = this.#s.sessions.find((session) => session.sessionId === sessionId);
     // Clear before load: the replayed history rebuilds the list via #onEvent
     this.#s({ loadingSession: true, loadingId: sessionId, error: '', messages: [] });
     try {
-      // The live session we are leaving is closed; best-effort cleanup
-      if (previous) await agentApi.closeSession(previous).catch(() => {});
       const { sessionId: liveId } = await agentApi.loadSession(sessionId, {
         onEvent: this.#onEvent,
       });
-      this.#s({ sessionId: liveId, draft: false });
+      this.#finishThought();
+      // Keep the previous live session usable until the replacement succeeds.
+      if (previous) await agentApi.closeSession(previous).catch(() => {});
+      this.#s({ sessionId: liveId, draft: false, cwd: selected?.cwd || '' });
     } catch (e) {
-      this.#s({ error: e.message });
+      this.#s({ error: e.message, messages: previousMessages });
     } finally {
       this.#s({ loadingSession: false, loadingId: null });
     }
@@ -151,7 +240,7 @@ class AgentPanelPageElement extends GemElement {
       // If it is the live session, disconnect it before removing the record
       if (isCurrent) {
         await agentApi.closeSession(sessionId).catch(() => {});
-        this.#s({ sessionId: null, draft: false, messages: [] });
+        this.#s({ sessionId: null, draft: false, messages: [], cwd: '' });
       }
       await agentApi.deleteSession(sessionId);
       await this.#refreshSessions();
@@ -181,26 +270,58 @@ class AgentPanelPageElement extends GemElement {
     return current?.title || this.#s.sessionId;
   }
 
+  get #currentCwd() {
+    if (this.#s.draft) return this.#s.cwd;
+    const current = this.#s.sessions.find((session) => session.sessionId === this.#s.sessionId);
+    return current?.cwd || this.#s.cwd;
+  }
+
+  get #recentCwd() {
+    const timestamp = (session) => Date.parse(session.updatedAt || '') || 0;
+    return (
+      this.#s.sessions
+        .filter((session) => session.cwd)
+        .reduce((recent, session) => (!recent || timestamp(session) > timestamp(recent) ? session : recent), null)
+        ?.cwd || this.#s.cwd
+    );
+  }
+
   /**
    * Temporary entry pinned to the top of the list: the pending draft after
    * "new session", or a just-created session that is not in the persisted
    * list yet.
    */
   get #tempSession() {
-    if (this.#s.draft) return { sessionId: null, title: t('devtoolsPanelNewSession'), temp: true };
-    const { sessionId, sessions } = this.#s;
+    if (this.#s.draft) {
+      return { sessionId: null, title: t('devtoolsPanelNewSession'), cwd: this.#s.cwd, temp: true };
+    }
+    const { sessionId, sessions, cwd } = this.#s;
     if (sessionId && !sessions.some((s) => s.sessionId === sessionId)) {
-      return { sessionId, temp: true };
+      return { sessionId, cwd, temp: true };
     }
     return null;
   }
 
-  #isActive = (session) => (session ? (this.#s.draft ? Boolean(session.temp) : session.sessionId === this.#s.sessionId) : false);
+  #isActive = (session) =>
+    session ? (this.#s.draft ? Boolean(session.temp) : session.sessionId === this.#s.sessionId) : false;
 
   @template()
   #content = () => {
-    const { sessions, sessionId, messages, pending, booting, loadingSession, loadingId, deleting, error, input } =
-      this.#s;
+    const {
+      sessions,
+      sessionId,
+      messages,
+      pending,
+      booting,
+      loadingSession,
+      loadingId,
+      deleting,
+      error,
+      input,
+      cwdPicker,
+      home,
+      permissionRequest,
+    } = this.#s;
 
     if (booting) {
       return html`
@@ -211,6 +332,7 @@ class AgentPanelPageElement extends GemElement {
     }
 
     const tempSession = this.#tempSession;
+    const visibleMessages = this.showEvents ? messages : messages.filter((message) => message.type !== 'event');
 
     return html`
       <div class="flex h-full">
@@ -245,12 +367,14 @@ class AgentPanelPageElement extends GemElement {
             <agent-session-item
               v-if=${!!tempSession}
               .session=${tempSession}
+              .home=${home}
               ?active=${this.#isActive(tempSession)}
             ></agent-session-item>
             ${sessions.map(
               (session) => html`
                 <agent-session-item
                   .session=${session}
+                  .home=${home}
                   ?active=${this.#isActive(session)}
                   ?loading=${loadingId === session.sessionId}
                   ?deleting=${deleting === session.sessionId}
@@ -261,10 +385,17 @@ class AgentPanelPageElement extends GemElement {
             )}
           </ul>
         </aside>
-        <section class="flex min-w-0 flex-1 flex-col bg-bg">
+        <section class="relative flex min-w-0 flex-1 flex-col bg-bg">
           <header v-if=${!loadingSession && this.#canChat} class="border-b border-border px-4 py-2.5 bg-bg">
-            <span class="block truncate text-xs font-medium text-describe" title=${sessionId || ''}>
+            <span class="block truncate text-sm font-medium text-highlight" title=${sessionId || ''}>
               ${this.#currentTitle}
+            </span>
+            <span
+              v-if=${!!this.#currentCwd}
+              class="mt-0.5 block truncate font-mono text-xs text-describe"
+              title=${this.#currentCwd}
+            >
+              ${displayHomePath(this.#currentCwd, home)}
             </span>
           </header>
           <div v-if=${loadingSession} class="grid min-h-0 flex-1 place-items-center text-describe">
@@ -276,8 +407,22 @@ class AgentPanelPageElement extends GemElement {
           <div v-if=${!loadingSession && !this.#canChat} class="grid min-h-0 flex-1 place-items-center text-describe">
             <dy-empty text=${t('devtoolsPanelEmpty')}></dy-empty>
           </div>
-          <div v-if=${!loadingSession && this.#canChat} ${this.#listRef} class="min-h-0 flex-1 overflow-auto px-4 py-2">
-            ${messages.map((msg) => html`<agent-message-bubble .message=${msg}></agent-message-bubble>`)}
+          <div
+            v-if=${!loadingSession && this.#canChat}
+            class="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-2"
+          >
+            ${visibleMessages.map((msg) => html`<agent-message-bubble .message=${msg}></agent-message-bubble>`)}
+            ${
+              permissionRequest
+                ? html`
+                    <agent-permission-request
+                      class="sticky bottom-0 z-10 mt-auto block"
+                      .request=${permissionRequest}
+                      @decision=${(e) => this.#settlePermission(e.detail)}
+                    ></agent-permission-request>
+                  `
+                : null
+            }
           </div>
           <div v-if=${error} class="border-t border-negative/30 bg-negative/5 px-4 py-2 text-xs text-negative">${error}</div>
           <footer v-if=${!loadingSession && this.#canChat} class="flex items-end gap-2 border-t border-border p-3 bg-bg">
@@ -291,13 +436,28 @@ class AgentPanelPageElement extends GemElement {
               @keydown=${this.#onKeydown}
             ></dy-input>
             <dy-button
-              type=${pending ? 'reverse' : 'solid'}
+              type=${pending ? null : 'solid'}
               color=${pending ? 'cancel' : 'normal'}
               @click=${() => (pending ? this.#cancel() : this.#send())}
             >
               ${pending ? t('devtoolsPanelCancel') : t('devtoolsPanelSend')}
             </dy-button>
           </footer>
+          <agent-cwd-modal
+            v-if=${cwdPicker}
+            .open=${true}
+            .customize=${true}
+            .maskClosable=${true}
+            @close=${() => this.#s({ cwdPicker: false })}
+          >
+            <agent-cwd-picker
+              class="block w-[calc(100vw-2rem)] max-w-2xl"
+              .complete=${(value) => agentApi.completeCwd(value)}
+              .initialValue=${displayHomePath(this.#recentCwd, home)}
+              .home=${home}
+              @confirm=${(event) => this.#confirmNewSession(event.detail)}
+            ></agent-cwd-picker>
+          </agent-cwd-modal>
         </section>
       </div>
     `;

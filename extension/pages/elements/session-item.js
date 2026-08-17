@@ -1,9 +1,11 @@
 import { icons } from 'duoyun-ui/lib/icons';
 import { t } from '../../shared/i18n.js';
+import { displayHomePath } from '../../shared/path.js';
 
 @customElement('agent-session-item')
 class AgentSessionItemElement extends GemElement {
   @property session;
+  @property home;
   @boolattribute active;
   @boolattribute loading;
   @boolattribute deleting;
@@ -29,7 +31,7 @@ class AgentSessionItemElement extends GemElement {
     const { session, active, loading, deleting } = this;
     if (!session) return html``;
 
-    const mtime = session.mtime ? new Date(session.mtime).toLocaleString() : '';
+    const updatedAt = session.updatedAt ? new Date(session.updatedAt).toLocaleString() : '';
     const title = session.title || session.sessionId;
 
     return html`
@@ -45,7 +47,10 @@ class AgentSessionItemElement extends GemElement {
       >
         <span class="min-w-0 flex-1">
           <span class="block truncate font-medium text-highlight">${title}</span>
-          <span v-if=${mtime} class="block truncate text-xs text-describe mt-0.5">${mtime}</span>
+          <span v-if=${session.cwd} class="mt-0.5 block truncate font-mono text-xs text-describe" title=${session.cwd}>
+            ${displayHomePath(session.cwd, this.home)}
+          </span>
+          <span v-if=${updatedAt} class="block truncate text-xs text-describe mt-0.5">${updatedAt}</span>
         </span>
         <dy-use
           v-if=${loading && !deleting}

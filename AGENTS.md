@@ -30,7 +30,7 @@
  3. `src/native_messaging.rs` 负责 Native Messaging 基础读写
  4. `src/peer.rs` 负责与扩展的双工 RPC 协议（请求/响应、流事件、通知），两端 API 对称
  5. `src/browser_agent.rs` 负责浏览器 agent 协议消息、流式事件转发
- 6. `src/acp_agent.rs` 负责 ACP 会话管理和 `claude-agent-acp` 子进程
+ 6. `src/acp_agent.rs` 负责 ACP 会话管理；Native Host 内复用一个可重连的长生命周期 `claude-agent-acp` connection，每个 ACP session 仍由独立 actor 串行处理
 7. CLI 模式：
   1. `src/cli.rs` 解析 `--tool` / `--input`（或 stdin JSON）
   2. 转发单次工具调用到后台 MCP HTTP 服务 `127.0.0.1:39271/mcp`，打印结果后退出
@@ -60,7 +60,7 @@
 - `src/native_messaging.rs`：Native Messaging 基础消息读写
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
 - `src/browser_agent.rs`：浏览器侧 agent 请求协议、会话创建、流式事件转发
-- `src/acp_agent.rs`：ACP client、持续会话 actor、agent 事件转换
+- `src/acp_agent.rs`：共享的长生命周期 ACP connection、持续会话 actor、agent 事件转换
 - `src/cli.rs`：命令行单次工具调用入口
 - `src/skill.md`：Skill 模板内容，内容应该和 MCP server 的描述语义上同步
 

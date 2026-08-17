@@ -211,7 +211,8 @@ pub fn uninstall_mcp() -> Result<()> {
 
     let vscode_path = dirs::config_dir().map(|p| p.join("Code/User/mcp.json"));
     if let Some(path) = vscode_path {
-        // VS Code's mcp.json may use either "servers" or "mcpServers" depending on version.
+        // VS Code's mcp.json may use either "servers" or "mcpServers" depending on
+        // version.
         let removed = remove_nested_key(&path, "servers", SERVER_NAME)?
             | remove_nested_key(&path, "mcpServers", SERVER_NAME)?;
         if removed {

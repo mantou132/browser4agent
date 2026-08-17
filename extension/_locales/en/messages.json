@@ -130,6 +130,33 @@
   "devtoolsPanelSessions": {
     "message": "Sessions"
   },
+  "devtoolsThought": {
+    "message": "Thought"
+  },
+  "devtoolsToolCall": {
+    "message": "Tool call"
+  },
+  "devtoolsToolInput": {
+    "message": "Parameters"
+  },
+  "devtoolsCwdNoDirectories": {
+    "message": "No matching directories"
+  },
+  "devtoolsCwdPlaceholder": {
+    "message": "Working directory"
+  },
+  "devtoolsCwdTitle": {
+    "message": "Choose working directory"
+  },
+  "devtoolsPermissionCancel": {
+    "message": "Cancel"
+  },
+  "devtoolsPermissionTitle": {
+    "message": "Permission required"
+  },
+  "devtoolsPermissionToolFallback": {
+    "message": "The agent wants to run a tool"
+  },
   "downloadAria": {
     "message": "Download $NAME$ version",
     "placeholders": {

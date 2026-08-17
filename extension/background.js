@@ -119,23 +119,16 @@ peer.handle('get_local_storage', (p) => getLocalStorage(p.tabId));
 peer.handle('screenshot_tab', (p) => screenshotTab(p.tabId));
 
 peer.onNotify('connected', () => console.log('Connected to native host:', NATIVE_HOST_NAME));
+const agentSessionOwners = new Map();
 peer.onNotify('agent_session_ended', (params) => {
   console.log('Agent session ended:', params?.sessionId);
+  agentSessionOwners.delete(params?.sessionId);
 });
 
-// ACP permission requests forwarded by the native host:
-// `{ sessionId, toolCall, options }`, where each option has `optionId`,
-// `name` and a `kind` like allow/allow_always/reject. Assign a handler to
-// build the approval UI later; it must return the chosen optionId:
-//   globalThis.onAgentPermissionRequest = async (request) => '<optionId>';
-// Until then requests are declined and the agent cancels the tool call.
 peer.handle('agent_permission_request', async (params) => {
-  if (typeof globalThis.onAgentPermissionRequest === 'function') {
-    const optionId = await globalThis.onAgentPermissionRequest(params);
-    if (typeof optionId === 'string' && optionId) return { optionId };
-    throw new Error('Permission request was not answered with an optionId');
-  }
-  throw new Error('No permission UI available');
+  const owner = agentSessionOwners.get(params?.sessionId);
+  if (!owner) throw new Error('No Agent panel owns this session');
+  return owner.call('agent_permission_request', params, { timeoutSeconds: 300 });
 });
 
 /**
@@ -145,6 +138,7 @@ peer.handle('agent_permission_request', async (params) => {
  * frames and final responses back unchanged.
  */
 const AGENT_METHODS = [
+  'agent_cwd_complete',
   'agent_session_create',
   'agent_session_load',
   'agent_session_list',
@@ -166,6 +160,7 @@ chrome.runtime.onConnect.addListener((panelPort) => {
     disconnected = true;
     panel.rejectAll(new Error('Agent panel disconnected'));
     for (const sessionId of liveSessions) {
+      if (agentSessionOwners.get(sessionId) === panel) agentSessionOwners.delete(sessionId);
       peer.call('agent_session_close', { sessionId }).catch(() => {});
     }
   });
@@ -181,9 +176,11 @@ chrome.runtime.onConnect.addListener((panelPort) => {
           peer.call('agent_session_close', { sessionId: result.sessionId }).catch(() => {});
         } else {
           liveSessions.add(result.sessionId);
+          agentSessionOwners.set(result.sessionId, panel);
         }
       } else if (method === 'agent_session_close') {
         liveSessions.delete(params.sessionId);
+        if (agentSessionOwners.get(params.sessionId) === panel) agentSessionOwners.delete(params.sessionId);
       }
       return result;
     });

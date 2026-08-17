@@ -130,6 +130,33 @@
   "devtoolsPanelSessions": {
     "message": "会话"
   },
+  "devtoolsThought": {
+    "message": "思考"
+  },
+  "devtoolsToolCall": {
+    "message": "工具调用"
+  },
+  "devtoolsToolInput": {
+    "message": "参数"
+  },
+  "devtoolsCwdNoDirectories": {
+    "message": "没有匹配的目录"
+  },
+  "devtoolsCwdPlaceholder": {
+    "message": "工作目录"
+  },
+  "devtoolsCwdTitle": {
+    "message": "选择工作目录"
+  },
+  "devtoolsPermissionCancel": {
+    "message": "取消"
+  },
+  "devtoolsPermissionTitle": {
+    "message": "需要授权"
+  },
+  "devtoolsPermissionToolFallback": {
+    "message": "Agent 请求运行工具"
+  },
   "downloadAria": {
     "message": "下载 $NAME$ 版本",
     "placeholders": {

@@ -1,8 +1,6 @@
+use std::{env, fs::OpenOptions, io::Write, path::PathBuf};
+
 use chrono::Local;
-use std::env;
-use std::fs::OpenOptions;
-use std::io::Write;
-use std::path::PathBuf;
 
 fn log_path() -> PathBuf {
     let mut path = env::current_exe().unwrap();

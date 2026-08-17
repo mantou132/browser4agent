@@ -1,7 +1,11 @@
 use std::{
     collections::{HashMap, VecDeque},
+    future,
     path::PathBuf,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use agent_client_protocol::{
@@ -65,105 +69,191 @@ pub struct SessionInit {
     pub config_options: Option<serde_json::Value>,
 }
 
-/// Spawn the ACP agent subprocess, initialize it, and run `op` against the
-/// bare connection. Shared by session runners and session-level operations
-/// (list/delete), which don't need a session of their own. `op` receives a
-/// cancel flag: flipping it to true tells in-flight permission requests to
-/// settle as cancelled (required when a prompt turn is cancelled).
-async fn with_agent_connection<F, T>(resolver: Option<PermissionResolver>, op: F) -> Result<T>
-where
-    F: AsyncFnOnce(
-        ConnectionTo<Agent>,
-        watch::Sender<bool>,
-    ) -> Result<T, agent_client_protocol::Error>,
-{
-    let command = claude_agent_command();
-    logger::info(&format!("Starting ACP agent: {}", command.join(" ")));
-    let agent = AcpAgent::from_args(command).context("failed to configure ACP agent command")?;
-
-    let (cancel_flag, _) = watch::channel(false);
-    let request_cancel_flag = cancel_flag.clone();
-
-    Client
-        .builder()
-        .name("browser4agent")
-        .on_receive_request(
-            async move |request: RequestPermissionRequest, responder, _connection| {
-                let payload = serde_json::json!({
-                    "sessionId": request.session_id.to_string(),
-                    "toolCall": to_json(request.tool_call),
-                    "options": to_json(request.options),
-                });
-                let resolution = match resolver.clone() {
-                    Some(resolver) => {
-                        let mut cancel_rx = request_cancel_flag.subscribe();
-                        if *cancel_rx.borrow() {
-                            None
-                        } else {
-                            tokio::select! {
-                                resolution = resolver(payload) => resolution,
-                                // The prompt turn was cancelled: pending
-                                // permission requests must settle cancelled.
-                                _ = cancel_rx.changed() => None,
-                            }
-                        }
-                    }
-                    None => None,
-                };
-                match resolution {
-                    Some(option_id) => {
-                        logger::info(&format!("ACP permission granted, option: {option_id}"));
-                        responder.respond(RequestPermissionResponse::new(
-                            RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
-                                PermissionOptionId::from(option_id),
-                            )),
-                        ))
-                    }
-                    None => {
-                        logger::info(
-                            "Cancelled ACP permission request because no option was selected",
-                        );
-                        responder.respond(RequestPermissionResponse::new(
-                            RequestPermissionOutcome::Cancelled,
-                        ))
-                    }
-                }
-            },
-            agent_client_protocol::on_receive_request!(),
-        )
-        .connect_with(agent, |connection: ConnectionTo<Agent>| async move {
-            let response = connection
-                .send_request(InitializeRequest::new(ProtocolVersion::V1))
-                .block_task()
-                .await?;
-            logger::info(&format!(
-                "ACP agent capabilities: {:?}",
-                response.agent_capabilities
-            ));
-            op(connection, cancel_flag).await
-        })
-        .await
-        .context("ACP agent request failed")
+/// Lazily starts one ACP subprocess and shares its connection across sessions.
+/// A failed connection is discarded and started again on the next API call.
+struct RuntimeState {
+    connection: Option<ConnectionTo<Agent>>,
+    connecting: bool,
+    generation: u64,
+    waiters: Vec<oneshot::Sender<Result<ConnectionTo<Agent>, String>>>,
 }
 
-/// Spawn the ACP agent, start a session in `cwd` — creating a new one, or
-/// loading an existing one when `load` is given — and run `op` with it and
-/// the session metadata. Shared by one-shot prompts and persistent sessions.
-async fn with_agent_session<F, T>(
-    cwd: PathBuf,
-    load: Option<SessionId>,
+#[derive(Clone)]
+struct AcpRuntime {
+    state: Arc<Mutex<RuntimeState>>,
     resolver: Option<PermissionResolver>,
-    op: F,
-) -> Result<T>
-where
-    F: for<'responder> AsyncFnOnce(
-        ActiveSession<'responder, Agent>,
+    permission_cancels: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
+    disconnects: watch::Sender<u64>,
+}
+
+impl AcpRuntime {
+    fn new(resolver: Option<PermissionResolver>) -> Self {
+        let (disconnects, _) = watch::channel(0);
+        Self {
+            state: Arc::new(Mutex::new(RuntimeState {
+                connection: None,
+                connecting: false,
+                generation: 0,
+                waiters: Vec::new(),
+            })),
+            resolver,
+            permission_cancels: Arc::new(Mutex::new(HashMap::new())),
+            disconnects,
+        }
+    }
+
+    async fn connection(&self) -> Result<ConnectionTo<Agent>> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let generation = {
+            let mut state = self.state.lock().await;
+            if let Some(connection) = &state.connection {
+                return Ok(connection.clone());
+            }
+            state.waiters.push(reply_tx);
+            if state.connecting {
+                None
+            } else {
+                state.connecting = true;
+                state.generation += 1;
+                Some(state.generation)
+            }
+        };
+        if let Some(generation) = generation {
+            self.spawn_connection(generation);
+        }
+        match reply_rx.await {
+            Ok(Ok(connection)) => Ok(connection),
+            Ok(Err(err)) => anyhow::bail!(err),
+            Err(_) => anyhow::bail!("ACP runtime stopped while connecting"),
+        }
+    }
+
+    fn spawn_connection(&self, generation: u64) {
+        let runtime = self.clone();
+        tokio::spawn(async move {
+            let result = runtime.serve_connection(generation).await;
+            let error = result
+                .err()
+                .map(|err| err.to_string())
+                .unwrap_or_else(|| "ACP agent connection stopped".to_string());
+            logger::info(&error);
+            runtime.connection_stopped(generation, error).await;
+        });
+    }
+
+    async fn serve_connection(&self, generation: u64) -> Result<()> {
+        let command = claude_agent_command();
+        logger::info(&format!("Starting ACP agent: {}", command.join(" ")));
+        let agent =
+            AcpAgent::from_args(command).context("failed to configure ACP agent command")?;
+        let resolver = self.resolver.clone();
+        let permission_cancels = self.permission_cancels.clone();
+        let runtime = self.clone();
+
+        Client
+            .builder()
+            .name("browser4agent")
+            .on_receive_request(
+                async move |request: RequestPermissionRequest, responder, connection| {
+                    let resolver = resolver.clone();
+                    let permission_cancels = permission_cancels.clone();
+                    connection.spawn(async move {
+                        let session_id = request.session_id.to_string();
+                        let payload = serde_json::json!({
+                            "sessionId": session_id,
+                            "toolCall": to_json(request.tool_call),
+                            "options": to_json(request.options),
+                        });
+                        let cancel = permission_cancels.lock().await.get(&session_id).cloned();
+                        let resolution = match (resolver, cancel) {
+                            (Some(resolver), Some(cancel)) => {
+                                let mut cancel_rx = cancel.subscribe();
+                                if *cancel_rx.borrow() {
+                                    None
+                                } else {
+                                    tokio::select! {
+                                        resolution = resolver(payload) => resolution,
+                                        _ = cancel_rx.changed() => None,
+                                    }
+                                }
+                            }
+                            (Some(resolver), None) => resolver(payload).await,
+                            (None, _) => None,
+                        };
+                        match resolution {
+                            Some(option_id) => responder.respond(RequestPermissionResponse::new(
+                                RequestPermissionOutcome::Selected(SelectedPermissionOutcome::new(
+                                    PermissionOptionId::from(option_id),
+                                )),
+                            )),
+                            None => responder.respond(RequestPermissionResponse::new(
+                                RequestPermissionOutcome::Cancelled,
+                            )),
+                        }
+                    })
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .connect_with(agent, |connection: ConnectionTo<Agent>| async move {
+                let response = connection
+                    .send_request(InitializeRequest::new(ProtocolVersion::V1))
+                    .block_task()
+                    .await?;
+                logger::info(&format!(
+                    "ACP agent capabilities: {:?}",
+                    response.agent_capabilities
+                ));
+                runtime.connection_ready(generation, connection).await;
+                future::pending::<Result<(), agent_client_protocol::Error>>().await
+            })
+            .await
+            .context("ACP agent connection failed")
+    }
+
+    async fn connection_ready(&self, generation: u64, connection: ConnectionTo<Agent>) {
+        let waiters = {
+            let mut state = self.state.lock().await;
+            if state.generation != generation {
+                return;
+            }
+            state.connection = Some(connection.clone());
+            std::mem::take(&mut state.waiters)
+        };
+        for waiter in waiters {
+            let _ = waiter.send(Ok(connection.clone()));
+        }
+    }
+
+    async fn connection_stopped(&self, generation: u64, error: String) {
+        let waiters = {
+            let mut state = self.state.lock().await;
+            if state.generation != generation {
+                return;
+            }
+            state.connection = None;
+            state.connecting = false;
+            std::mem::take(&mut state.waiters)
+        };
+        for waiter in waiters {
+            let _ = waiter.send(Err(error.clone()));
+        }
+        let _ = self.disconnects.send(generation);
+    }
+
+    async fn start_session(
+        &self,
+        cwd: PathBuf,
+        load: Option<SessionId>,
+    ) -> Result<(
+        ActiveSession<'static, Agent>,
         SessionInit,
         watch::Sender<bool>,
-    ) -> Result<T, agent_client_protocol::Error>,
-{
-    with_agent_connection(resolver, async move |connection, cancel_flag| {
-        let (session, init) = match load {
+        watch::Receiver<u64>,
+        u64,
+    )> {
+        let connection = self.connection().await?;
+        let generation = self.state.lock().await.generation;
+        let (session, init): (ActiveSession<'static, Agent>, SessionInit) = match load {
             Some(session_id) => {
                 let response = connection
                     .send_request_to(Agent, LoadSessionRequest::new(session_id.clone(), cwd))
@@ -174,12 +264,8 @@ where
                     modes: response.modes.as_ref().map(to_json),
                     config_options: response.config_options.as_ref().map(to_json),
                 };
-                // The agent keeps the session id; synthesize a new-session
-                // response so the crate's session plumbing can attach.
-                let session = connection.attach_session(
-                    NewSessionResponse::new(session_id),
-                    Default::default(),
-                )?;
+                let session = connection
+                    .attach_session(NewSessionResponse::new(session_id), Default::default())?;
                 (session, init)
             }
             None => {
@@ -196,45 +282,27 @@ where
                 (session, init)
             }
         };
-        op(session, init, cancel_flag).await
-    })
-    .await
-}
-
-/// List sessions persisted by the agent (`session/list`, requires the agent's
-/// `sessionCapabilities.list`). Pass the previous response's `nextCursor` as
-/// `cursor` to fetch the next page. Returns the raw response:
-/// `{ sessions: [...], nextCursor? }`.
-pub async fn list_sessions(cwd: Option<PathBuf>, cursor: Option<String>) -> Result<serde_json::Value> {
-    with_agent_connection(None, async move |connection, _cancel_flag| {
-        let mut request = ListSessionsRequest::new();
-        if let Some(cwd) = cwd {
-            request = request.cwd(cwd);
+        let (cancel, _) = watch::channel(false);
+        let mut permission_cancels = self.permission_cancels.lock().await;
+        if permission_cancels.contains_key(&init.acp_session_id) {
+            anyhow::bail!(
+                "ACP agent session is already active: {}",
+                init.acp_session_id
+            );
         }
-        if let Some(cursor) = cursor {
-            request = request.cursor(cursor);
-        }
-        let response = connection
-            .send_request_to(Agent, request)
-            .block_task()
-            .await?;
-        Ok(to_json(response))
-    })
-    .await
-}
+        permission_cancels.insert(init.acp_session_id.clone(), cancel.clone());
+        Ok((
+            session,
+            init,
+            cancel,
+            self.disconnects.subscribe(),
+            generation,
+        ))
+    }
 
-/// Delete a session persisted by the agent (`session/delete`, requires the
-/// agent's `sessionCapabilities.delete`).
-pub async fn delete_session(acp_session_id: &str) -> Result<()> {
-    let session_id = SessionId::from(acp_session_id.to_string());
-    with_agent_connection(None, async move |connection, _cancel_flag| {
-        connection
-            .send_request_to(Agent, DeleteSessionRequest::new(session_id))
-            .block_task()
-            .await?;
-        Ok(())
-    })
-    .await
+    async fn unregister_session(&self, session_id: &str) {
+        self.permission_cancels.lock().await.remove(session_id);
+    }
 }
 
 /// Extra content sent along with a prompt.
@@ -270,23 +338,6 @@ impl Attachment {
     }
 }
 
-pub async fn ask_stream(
-    prompt: String,
-    attachments: Vec<Attachment>,
-    cwd: Option<PathBuf>,
-    resolver: Option<PermissionResolver>,
-    event_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
-) -> Result<String> {
-    let cwd = resolve_cwd(cwd)?;
-    with_agent_session(cwd, None, resolver, async move |mut session, _init, cancel_flag| {
-        let (answer, _deferred) =
-            run_prompt_turn(&mut session, prompt, attachments, event_tx, &cancel_flag, None)
-                .await?;
-        Ok(answer)
-    })
-    .await
-}
-
 /// Stream events forwarded to the extension. `update` is the raw ACP session
 /// update payload (text chunks included); `stop` terminates the prompt.
 #[derive(Debug, Clone, Serialize)]
@@ -312,16 +363,24 @@ pub struct CreatedSession {
 #[derive(Clone)]
 pub struct AgentSessionManager {
     sessions: Arc<Mutex<HashMap<String, AgentSession>>>,
+    runtime: AcpRuntime,
     /// Invoked with the session id whenever a session actor exits, whether
     /// closed on purpose, cancelled, or died with the subprocess.
     on_end: Option<SessionEndCallback>,
-    /// Forwards ACP permission requests to be resolved (by the browser).
-    resolver: Option<PermissionResolver>,
 }
 
 #[derive(Clone)]
 struct AgentSession {
     tx: mpsc::Sender<SessionCommand>,
+    busy: Arc<AtomicBool>,
+}
+
+struct BusyGuard(Arc<AtomicBool>);
+
+impl Drop for BusyGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
 }
 
 enum SessionCommand {
@@ -345,14 +404,11 @@ enum SessionCommand {
 }
 
 impl AgentSessionManager {
-    pub fn new(
-        on_end: Option<SessionEndCallback>,
-        resolver: Option<PermissionResolver>,
-    ) -> Self {
+    pub fn new(on_end: Option<SessionEndCallback>, resolver: Option<PermissionResolver>) -> Self {
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
+            runtime: AcpRuntime::new(resolver),
             on_end,
-            resolver,
         }
     }
 
@@ -388,10 +444,10 @@ impl AgentSessionManager {
         let (tx, rx) = mpsc::channel(8);
         let (ready_tx, ready_rx) = oneshot::channel();
         let (ended_tx, ended_rx) = oneshot::channel::<()>();
-        let resolver = self.resolver.clone();
+        let runtime = self.runtime.clone();
         tokio::spawn(async move {
             // ended_tx drops when the actor exits, triggering cleanup.
-            run_session_actor(cwd, load, resolver, replay_tx, rx, ready_tx, ended_tx).await;
+            run_session_actor(cwd, load, runtime, replay_tx, rx, ready_tx, ended_tx).await;
         });
 
         // Readiness is bounded by the caller's timeout, not here. The
@@ -405,7 +461,13 @@ impl AgentSessionManager {
                         // Dropping tx ends the duplicate actor.
                         anyhow::bail!("ACP agent session is already active: {session_id}");
                     }
-                    sessions.insert(session_id.clone(), AgentSession { tx });
+                    sessions.insert(
+                        session_id.clone(),
+                        AgentSession {
+                            tx,
+                            busy: Arc::new(AtomicBool::new(false)),
+                        },
+                    );
                 }
                 let sessions = self.sessions.clone();
                 let on_end = self.on_end.clone();
@@ -446,6 +508,10 @@ impl AgentSessionManager {
             .get(session_id)
             .cloned()
             .with_context(|| format!("Unknown agent session: {session_id}"))?;
+        if session.busy.swap(true, Ordering::AcqRel) {
+            anyhow::bail!("ACP agent session already has a prompt in progress");
+        }
+        let _busy = BusyGuard(session.busy.clone());
 
         let (reply_tx, reply_rx) = oneshot::channel();
         session
@@ -547,18 +613,50 @@ impl AgentSessionManager {
         let _ = session.tx.send(SessionCommand::Close).await;
         true
     }
+
+    pub async fn list_sessions(
+        &self,
+        cwd: Option<PathBuf>,
+        cursor: Option<String>,
+    ) -> Result<serde_json::Value> {
+        let connection = self.runtime.connection().await?;
+        let mut request = ListSessionsRequest::new();
+        if let Some(cwd) = cwd {
+            request = request.cwd(cwd);
+        }
+        if let Some(cursor) = cursor {
+            request = request.cursor(cursor);
+        }
+        let response = connection
+            .send_request_to(Agent, request)
+            .block_task()
+            .await?;
+        Ok(to_json(response))
+    }
+
+    pub async fn delete_session(&self, acp_session_id: &str) -> Result<()> {
+        let connection = self.runtime.connection().await?;
+        connection
+            .send_request_to(
+                Agent,
+                DeleteSessionRequest::new(SessionId::from(acp_session_id.to_string())),
+            )
+            .block_task()
+            .await?;
+        Ok(())
+    }
 }
 
 async fn run_session_actor(
     cwd: PathBuf,
     load: Option<SessionId>,
-    resolver: Option<PermissionResolver>,
+    runtime: AcpRuntime,
     replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     rx: mpsc::Receiver<SessionCommand>,
     ready_tx: oneshot::Sender<Result<SessionInit, String>>,
     _ended_tx: oneshot::Sender<()>,
 ) {
-    if let Err(err) = run_session_actor_inner(cwd, load, resolver, replay_tx, rx, ready_tx).await {
+    if let Err(err) = run_session_actor_inner(cwd, load, runtime, replay_tx, rx, ready_tx).await {
         logger::info(&format!("ACP session actor stopped: {err}"));
     }
 }
@@ -566,114 +664,120 @@ async fn run_session_actor(
 async fn run_session_actor_inner(
     cwd: PathBuf,
     load: Option<SessionId>,
-    resolver: Option<PermissionResolver>,
+    runtime: AcpRuntime,
     replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     mut rx: mpsc::Receiver<SessionCommand>,
     ready_tx: oneshot::Sender<Result<SessionInit, String>>,
 ) -> Result<()> {
-    let ready_tx = Arc::new(std::sync::Mutex::new(Some(ready_tx)));
-    let ready_tx_for_session = ready_tx.clone();
-
-    let result = with_agent_session(
-        cwd,
-        load,
-        resolver,
-        async move |mut session, init, cancel_flag| {
-            // The load-time history replay is queued before attach; forward it
-            // before reporting ready so the client sees the events before the
-            // load call resolves.
-            if let Some(replay_tx) = &replay_tx {
-                drain_replay(&mut session, replay_tx).await?;
+    let (mut session, init, cancel_flag, mut disconnects, connection_generation) =
+        match runtime.start_session(cwd, load).await {
+            Ok(session) => session,
+            Err(err) => {
+                let _ = ready_tx.send(Err(err.to_string()));
+                return Err(err);
             }
-            if let Some(ready_tx) = ready_tx_for_session.lock().ok().and_then(|mut tx| tx.take()) {
-                let _ = ready_tx.send(Ok(init));
-            }
-            // Commands arriving while a prompt turn runs come back deferred
-            // and are processed after the turn settles.
-            let mut deferred: VecDeque<SessionCommand> = VecDeque::new();
-            loop {
-                let command = match deferred.pop_front() {
-                    Some(command) => Some(command),
-                    None => rx.recv().await,
-                };
-                let Some(command) = command else { break };
-                match command {
-                    SessionCommand::Prompt {
+        };
+    let session_id = init.acp_session_id.clone();
+    let result: Result<(), agent_client_protocol::Error> = async {
+        // The load-time history replay is queued before attach; forward it
+        // before reporting ready so the client sees the events before the
+        // load call resolves.
+        if let Some(replay_tx) = &replay_tx {
+            drain_replay(&mut session, replay_tx).await?;
+        }
+        let _ = ready_tx.send(Ok(init));
+        // Commands arriving while a prompt turn runs come back deferred
+        // and are processed after the turn settles.
+        let mut deferred: VecDeque<SessionCommand> = VecDeque::new();
+        loop {
+            let command = match deferred.pop_front() {
+                Some(command) => Some(command),
+                None => tokio::select! {
+                    command = rx.recv() => command,
+                    changed = disconnects.changed() => {
+                        if changed.is_err() || *disconnects.borrow() >= connection_generation {
+                            None
+                        } else {
+                            continue;
+                        }
+                    }
+                },
+            };
+            let Some(command) = command else { break };
+            match command {
+                SessionCommand::Prompt {
+                    prompt,
+                    attachments,
+                    event_tx,
+                    reply,
+                } => {
+                    match run_prompt_turn(
+                        &mut session,
                         prompt,
                         attachments,
                         event_tx,
-                        reply,
-                    } => {
-                        match run_prompt_turn(
-                            &mut session,
-                            prompt,
-                            attachments,
-                            event_tx,
-                            &cancel_flag,
-                            Some(&mut rx),
-                        )
-                        .await
-                        {
-                            Ok((answer, new_deferred)) => {
-                                let _ = reply.send(Ok(answer));
-                                deferred.extend(new_deferred);
-                            }
-                            Err(err) => {
-                                let _ = reply.send(Err(err.to_string()));
-                            }
+                        &cancel_flag,
+                        Some(&mut rx),
+                    )
+                    .await
+                    {
+                        Ok((answer, new_deferred)) => {
+                            let _ = reply.send(Ok(answer));
+                            deferred.extend(new_deferred);
+                        }
+                        Err(err) => {
+                            let _ = reply.send(Err(err.to_string()));
                         }
                     }
-                    SessionCommand::Cancel => {
-                        // No prompt running, nothing to cancel.
-                    }
-                    SessionCommand::SetMode { mode_id, reply } => {
-                        let request = SetSessionModeRequest::new(
-                            session.session_id().clone(),
-                            SessionModeId::from(mode_id),
-                        );
-                        let result = session
-                            .connection()
-                            .send_request_to(Agent, request)
-                            .block_task()
-                            .await
-                            .map(|_| ())
-                            .map_err(|err| err.to_string());
-                        let _ = reply.send(result);
-                    }
-                    SessionCommand::SetConfig {
-                        config_id,
-                        value,
-                        reply,
-                    } => {
-                        let request = SetSessionConfigOptionRequest::new(
-                            session.session_id().clone(),
-                            SessionConfigId::from(config_id),
-                            SessionConfigValueId::from(value),
-                        );
-                        let result = session
-                            .connection()
-                            .send_request_to(Agent, request)
-                            .block_task()
-                            .await
-                            .map(|_| ())
-                            .map_err(|err| err.to_string());
-                        let _ = reply.send(result);
-                    }
-                    SessionCommand::Close => {
-                        close_session_gracefully(&session).await;
-                        break;
-                    }
+                }
+                SessionCommand::Cancel => {
+                    // No prompt running, nothing to cancel.
+                }
+                SessionCommand::SetMode { mode_id, reply } => {
+                    let request = SetSessionModeRequest::new(
+                        session.session_id().clone(),
+                        SessionModeId::from(mode_id),
+                    );
+                    let result = session
+                        .connection()
+                        .send_request_to(Agent, request)
+                        .block_task()
+                        .await
+                        .map(|_| ())
+                        .map_err(|err| err.to_string());
+                    let _ = reply.send(result);
+                }
+                SessionCommand::SetConfig {
+                    config_id,
+                    value,
+                    reply,
+                } => {
+                    let request = SetSessionConfigOptionRequest::new(
+                        session.session_id().clone(),
+                        SessionConfigId::from(config_id),
+                        SessionConfigValueId::from(value),
+                    );
+                    let result = session
+                        .connection()
+                        .send_request_to(Agent, request)
+                        .block_task()
+                        .await
+                        .map(|_| ())
+                        .map_err(|err| err.to_string());
+                    let _ = reply.send(result);
+                }
+                SessionCommand::Close => {
+                    close_session_gracefully(&session).await;
+                    break;
                 }
             }
-            Ok(())
-        },
-    )
+        }
+        Ok(())
+    }
     .await;
+    runtime.unregister_session(&session_id).await;
 
     if let Err(err) = result {
-        if let Some(ready_tx) = ready_tx.lock().ok().and_then(|mut tx| tx.take()) {
-            let _ = ready_tx.send(Err(err.to_string()));
-        }
         anyhow::bail!("ACP agent session failed: {err}");
     }
 
@@ -788,8 +892,8 @@ async fn run_prompt_turn(
             },
         };
         match input {
-            TurnInput::Update(update) => match update? {
-                SessionMessage::SessionMessage(dispatch) => {
+            TurnInput::Update(update) => {
+                if let SessionMessage::SessionMessage(dispatch) = update? {
                     MatchDispatch::new(dispatch)
                         .if_notification(async |notif: SessionNotification| {
                             handle_session_update(notif.update, &mut answer, event_tx.as_ref())?;
@@ -798,8 +902,7 @@ async fn run_prompt_turn(
                         .await
                         .otherwise_ignore()?;
                 }
-                _ => {}
-            },
+            }
             TurnInput::Stop(stop_result) => {
                 let response = stop_result?;
                 send_agent_event(

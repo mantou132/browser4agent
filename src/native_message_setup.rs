@@ -1,7 +1,10 @@
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+
 use anyhow::{Context, Result};
 use serde_json::json;
-use std::fs;
-use std::path::{Path, PathBuf};
 use strum::IntoEnumIterator;
 
 #[derive(Debug, Clone, Copy, strum::EnumIter, strum::Display)]
@@ -69,8 +72,7 @@ fn get_native_message_dir(browser: Browser) -> Option<PathBuf> {
 
 #[cfg(windows)]
 fn write_registry(name: &str, browser: Browser, manifest_path: &Path) -> Result<()> {
-    use winreg::RegKey;
-    use winreg::enums::*;
+    use winreg::{RegKey, enums::*};
 
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     let key_path = if browser.is_firefox() {

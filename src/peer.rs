@@ -26,7 +26,8 @@ impl CallCtx {
     }
 }
 
-type Handler = Arc<dyn Fn(Value, CallCtx) -> BoxFuture<'static, Result<Value, String>> + Send + Sync>;
+type Handler =
+    Arc<dyn Fn(Value, CallCtx) -> BoxFuture<'static, Result<Value, String>> + Send + Sync>;
 
 struct Pending {
     reply: oneshot::Sender<Result<Value, String>>,
@@ -70,10 +71,13 @@ impl Peer {
             format!("r{next}")
         };
         let (tx, rx) = oneshot::channel();
-        self.pending
-            .lock()
-            .expect("lock poisoned")
-            .insert(id.clone(), Pending { reply: tx, on_event });
+        self.pending.lock().expect("lock poisoned").insert(
+            id.clone(),
+            Pending {
+                reply: tx,
+                on_event,
+            },
+        );
 
         write_native_message(&json!({ "id": id, "method": method, "params": params }));
 
@@ -155,7 +159,9 @@ impl Peer {
             .get(&method)
             .cloned();
         let Some(handler) = handler else {
-            write_native_message(&json!({ "id": id, "error": format!("Unknown method: {method}") }));
+            write_native_message(
+                &json!({ "id": id, "error": format!("Unknown method: {method}") }),
+            );
             return;
         };
 
