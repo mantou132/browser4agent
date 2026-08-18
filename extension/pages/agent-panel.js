@@ -1,4 +1,6 @@
+import { addListener } from '@mantou/gem/lib/utils';
 import { icons } from 'duoyun-ui/lib/icons';
+import { polling } from 'duoyun-ui/lib/timer';
 import { createAgentApi } from '../shared/agent-api.js';
 import { setPageI18n, t } from '../shared/i18n.js';
 import { displayHomePath } from '../shared/path.js';
@@ -21,6 +23,7 @@ class AgentPanelPageElement extends GemElement {
   @boolattribute showEvents;
 
   #s = createState({
+    sidebar: false,
     sessions: [], // persisted sessions: { sessionId, title?, cwd?, updatedAt? }
     sessionId: null, // current live session
     draft: false, // "new session" was requested but not yet created
@@ -42,18 +45,30 @@ class AgentPanelPageElement extends GemElement {
 
   @mounted()
   #boot = async () => {
-    agentApi.setPermissionHandler(this.#requestPermission);
     try {
-      await Promise.all([this.#refreshSessions(), this.#loadHome()]);
+      await this.#loadHome();
     } finally {
       this.#s({ booting: false });
     }
   };
 
-  @unmounted()
-  #cleanup = () => {
-    this.#settlePermission(null);
-    agentApi.setPermissionHandler(null);
+  @mounted()
+  #setup = () => {
+    const sidebarMediaQuery =matchMedia('(width <= 1280px)')
+    this.#s({ sidebar: sidebarMediaQuery.matches });
+    agentApi.setPermissionHandler(this.#requestPermission);
+    const removeMediaQueryListener = addListener(sidebarMediaQuery, 'change', this.#updateSidebarMode);
+    const stopRefreshingSessions = polling(this.#refreshSessions, 5000);
+    return () => {
+      removeMediaQueryListener();
+      stopRefreshingSessions();
+      this.#settlePermission(null);
+      agentApi.setPermissionHandler(null);
+    };
+  };
+
+  #updateSidebarMode = ({ matches }) => {
+    this.#s({ sidebar: matches });
   };
 
   #requestPermission = (request) => {
@@ -258,6 +273,15 @@ class AgentPanelPageElement extends GemElement {
     }
   };
 
+  #onSessionSelect = (e) => {
+    const sessionId = e.detail;
+    if (sessionId === '__new__') {
+      this.#newSession();
+    } else if (sessionId) {
+      this.#openSession(sessionId);
+    }
+  };
+
   /** Whether the right pane has something to chat with (draft or live session). */
   get #canChat() {
     return this.#s.draft || Boolean(this.#s.sessionId);
@@ -308,6 +332,7 @@ class AgentPanelPageElement extends GemElement {
   @template()
   #content = () => {
     const {
+      sidebar,
       sessions,
       sessionId,
       messages,
@@ -333,31 +358,53 @@ class AgentPanelPageElement extends GemElement {
 
     const tempSession = this.#tempSession;
     const visibleMessages = this.showEvents ? messages : messages.filter((message) => message.type !== 'event');
+    const sessionOptions = [
+      ...(tempSession ? [{ label: t('devtoolsPanelNewSession'), value: '__new__' }] : []),
+      ...sessions.map((session) => {
+        const title = session.title || session.sessionId;
+        const cwd = displayHomePath(session.cwd, home);
+        return { label: title, description: cwd || undefined, value: session.sessionId };
+      }),
+    ];
 
     return html`
-      <div class="flex h-full">
-        <aside class="flex w-64 shrink-0 flex-col border-r border-border bg-bg-light/30">
-          <header class="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
-            <span class="font-semibold text-highlight">${t('devtoolsPanelSessions')}</span>
-            <div class="flex items-center gap-1">
-              <dy-button
-                small
-                .icon=${icons.add}
-                @click=${this.#newSession}
-              >
-                ${t('devtoolsPanelNew')}
-              </dy-button>
-              <dy-button
-                small
-                square
-                color="cancel"
-                .icon=${icons.refresh}
-                title=${t('devtoolsPanelRefresh')}
-                @click=${this.#refreshSessions}
-              ></dy-button>
+      <div class=${sidebar ? 'flex h-full flex-col' : 'flex h-full'}>
+        <aside class=${sidebar ? 'flex shrink-0 flex-col border-b border-border bg-bg-light/30' : 'flex w-64 shrink-0 flex-col border-r border-border bg-bg-light/30'}>
+          <header class=${sidebar ? 'bg-bg px-3 py-2.5' : 'flex items-center justify-between gap-2 border-b border-border px-3 py-2.5'}>
+            <div class="flex w-full items-center justify-between gap-2">
+              <dy-picker
+                v-if=${sidebar}
+                class="min-w-0 flex-1 font-semibold"
+                borderless
+                fit
+                .options=${sessionOptions}
+                .value=${this.#s.draft ? '__new__' : sessionId}
+                placeholder=${t('devtoolsPanelNoSessions')}
+                @change=${this.#onSessionSelect}
+                aria-label=${t('devtoolsPanelSessions')}
+              ></dy-picker>
+              <span v-else class="font-semibold text-highlight">${t('devtoolsPanelSessions')}</span>
+              <div class="flex items-center gap-1">
+                <dy-button
+                  v-if=${sidebar && !!sessionId && !pending}
+                  small
+                  square
+                  color="cancel"
+                  .icon=${icons.delete}
+                  title=${t('devtoolsPanelDelete')}
+                  @click=${() => this.#deleteSession(sessionId)}
+                ></dy-button>
+                <dy-button
+                  small
+                  .icon=${icons.add}
+                  @click=${this.#newSession}
+                >
+                  ${t('devtoolsPanelNew')}
+                </dy-button>
+              </div>
             </div>
           </header>
-          <ul class="m-0 flex-1 list-none overflow-auto p-0">
+          <ul v-if=${!sidebar} class="m-0 flex-1 list-none overflow-auto p-0">
             <li
               v-if=${!sessions.length && !tempSession}
               class="px-3 py-4 text-center text-xs text-describe"
@@ -385,8 +432,8 @@ class AgentPanelPageElement extends GemElement {
             )}
           </ul>
         </aside>
-        <section class="relative flex min-w-0 flex-1 flex-col bg-bg">
-          <header v-if=${!loadingSession && this.#canChat} class="border-b border-border px-4 py-2.5 bg-bg">
+        <section class="relative flex min-h-0 min-w-0 flex-1 flex-col bg-bg">
+          <header v-if=${!sidebar && !loadingSession && this.#canChat} class="border-b border-border px-4 py-2.5 bg-bg">
             <span class="block truncate text-sm font-medium text-highlight" title=${sessionId || ''}>
               ${this.#currentTitle}
             </span>

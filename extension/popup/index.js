@@ -23,6 +23,16 @@ class AgentPopupPageElement extends GemElement {
     window.close();
   };
 
+  #openAgentSidebar = async () => {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (chrome.sidePanel?.open && tab?.windowId != null) {
+      await chrome.sidePanel.open({ windowId: tab.windowId });
+    } else if (chrome.sidebarAction?.open) {
+      await chrome.sidebarAction.open();
+    }
+    window.close();
+  };
+
   #toggleTool = (toolsetId, toolName, e) => {
     setToolEnabled(toolsetId, toolName, e.detail);
   };
@@ -58,7 +68,7 @@ class AgentPopupPageElement extends GemElement {
             <img src=${icon} class="w-6 h-6" />
             <span>${manifest.name}</span>
           </span>
-          <dy-button .icon=${icons.tune} square color="cancel" @click=${this.#openOptions}></dy-button>
+          <dy-button .icon=${icons.outward} square color="cancel" title=${t('openAgentSidebar')} @click=${this.#openAgentSidebar}></dy-button>
         </header>
 
         <div class="pt-3 pb-2 px-3.5 border-b border-border">

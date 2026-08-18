@@ -121,9 +121,6 @@
   "devtoolsPanelPlaceholder": {
     "message": "Message the agent — Enter to send, Shift+Enter for a new line"
   },
-  "devtoolsPanelRefresh": {
-    "message": "Refresh"
-  },
   "devtoolsPanelSend": {
     "message": "Send"
   },
@@ -237,6 +234,9 @@
   },
   "manageToolsets": {
     "message": "Manage Toolsets"
+  },
+  "openAgentSidebar": {
+    "message": "Open Agent sidebar"
   },
   "marketSubtitle": {
     "message": "Discover community toolsets you can subscribe to directly, or upload JSON, JavaScript, or TypeScript files to publish your own automation capabilities."

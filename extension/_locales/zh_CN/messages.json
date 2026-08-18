@@ -121,9 +121,6 @@
   "devtoolsPanelPlaceholder": {
     "message": "向 Agent 发送消息，Enter 发送，Shift+Enter 换行"
   },
-  "devtoolsPanelRefresh": {
-    "message": "刷新"
-  },
   "devtoolsPanelSend": {
     "message": "发送"
   },
@@ -237,6 +234,9 @@
   },
   "manageToolsets": {
     "message": "管理工具集"
+  },
+  "openAgentSidebar": {
+    "message": "打开 Agent 侧边栏"
   },
   "marketSubtitle": {
     "message": "发现可直接订阅的社区工具集，也可以上传 JSON、JavaScript 或 TypeScript 文件发布自己的自动化能力。"
