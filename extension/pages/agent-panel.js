@@ -9,6 +9,11 @@ setPageI18n();
 
 const agentApi = createAgentApi();
 
+function getPanelContext() {
+  const tabId = globalThis.chrome?.devtools?.inspectedWindow?.tabId;
+  return Number.isInteger(tabId) ? { surface: 'devtools', tabId } : { surface: 'side_panel' };
+}
+
 const style = css`
   :scope {
     display: block;
@@ -23,7 +28,7 @@ class AgentPanelPageElement extends GemElement {
   @boolattribute showEvents;
 
   #s = createState({
-    sidebar: false,
+    compact: false,
     sessions: [], // persisted sessions: { sessionId, title?, cwd?, updatedAt? }
     sessionId: null, // current live session
     draft: false, // "new session" was requested but not yet created
@@ -57,10 +62,10 @@ class AgentPanelPageElement extends GemElement {
 
   @mounted()
   #setup = () => {
-    const sidebarMediaQuery = matchMedia('(width <= 1280px)');
-    this.#s({ sidebar: sidebarMediaQuery.matches });
+    const compactMediaQuery = matchMedia('(width <= 1280px)');
+    this.#s({ compact: compactMediaQuery.matches });
     agentApi.setPermissionHandler(this.#requestPermission);
-    const removeMediaQueryListener = addListener(sidebarMediaQuery, 'change', this.#updateSidebarMode);
+    const removeMediaQueryListener = addListener(compactMediaQuery, 'change', this.#updateCompactMode);
     const stopRefreshingSessions = polling(this.#refreshSessions, 5000);
     return () => {
       removeMediaQueryListener();
@@ -92,8 +97,8 @@ class AgentPanelPageElement extends GemElement {
     if (!this.#s.loadingSession) this.#scrollToLatest();
   };
 
-  #updateSidebarMode = ({ matches }) => {
-    this.#s({ sidebar: matches });
+  #updateCompactMode = ({ matches }) => {
+    this.#s({ compact: matches });
   };
 
   #requestPermission = (request) => {
@@ -215,7 +220,7 @@ class AgentPanelPageElement extends GemElement {
       // otherwise the whole pane flashes the loading screen.
       let sessionId = this.#s.sessionId;
       if (!sessionId) {
-        sessionId = (await agentApi.createSession({ cwd: this.#s.cwd })).sessionId;
+        sessionId = (await agentApi.createSession({ cwd: this.#s.cwd, panelContext: getPanelContext() })).sessionId;
         this.#s({ sessionId, draft: false });
       }
       const answer = await agentApi.ask(prompt, { sessionId, onEvent: this.#onEvent });
@@ -263,6 +268,7 @@ class AgentPanelPageElement extends GemElement {
     try {
       const { sessionId: liveId } = await agentApi.loadSession(sessionId, {
         onEvent: this.#onEvent,
+        panelContext: getPanelContext(),
       });
       this.#finishThought();
       // Keep the previous live session usable until the replacement succeeds.
@@ -360,7 +366,7 @@ class AgentPanelPageElement extends GemElement {
   @template()
   #content = () => {
     const {
-      sidebar,
+      compact,
       sessions,
       sessionId,
       messages,
@@ -396,12 +402,12 @@ class AgentPanelPageElement extends GemElement {
     ];
 
     return html`
-      <div class=${sidebar ? 'flex h-full flex-col' : 'flex h-full'}>
-        <aside class=${sidebar ? 'flex shrink-0 flex-col border-b border-border bg-bg-light/30' : 'flex w-64 shrink-0 flex-col border-r border-border bg-bg-light/30'}>
-          <header class=${sidebar ? 'bg-bg px-3 py-2.5' : 'flex items-center justify-between gap-2 border-b border-border px-3 py-2.5'}>
+      <div class=${compact ? 'flex h-full flex-col' : 'flex h-full'}>
+        <aside class=${compact ? 'flex shrink-0 flex-col border-b border-border bg-bg-light/30' : 'flex w-64 shrink-0 flex-col border-r border-border bg-bg-light/30'}>
+          <header class=${compact ? 'bg-bg px-3 py-2.5' : 'flex items-center justify-between gap-2 border-b border-border px-3 py-2.5'}>
             <div class="flex w-full items-center justify-between gap-2">
               <dy-picker
-                v-if=${sidebar}
+                v-if=${compact}
                 class="min-w-0 flex-1 font-semibold"
                 borderless
                 fit
@@ -414,7 +420,7 @@ class AgentPanelPageElement extends GemElement {
               <span v-else class="font-semibold text-highlight">${t('devtoolsPanelSessions')}</span>
               <div class="flex items-center gap-1">
                 <dy-button
-                  v-if=${sidebar && !!sessionId && !pending}
+                  v-if=${compact && !!sessionId && !pending}
                   small
                   square
                   color="cancel"
@@ -432,7 +438,7 @@ class AgentPanelPageElement extends GemElement {
               </div>
             </div>
           </header>
-          <ul v-if=${!sidebar} class="m-0 flex-1 list-none overflow-auto p-0">
+          <ul v-if=${!compact} class="m-0 flex-1 list-none overflow-auto p-0">
             <li
               v-if=${!sessions.length && !tempSession}
               class="px-3 py-4 text-center text-xs text-describe"
@@ -461,7 +467,7 @@ class AgentPanelPageElement extends GemElement {
           </ul>
         </aside>
         <section class="relative flex min-h-0 min-w-0 flex-1 flex-col bg-bg">
-          <header v-if=${!sidebar && !loadingSession && this.#canChat} class="border-b border-border px-4 py-2.5 bg-bg">
+          <header v-if=${!compact && !loadingSession && this.#canChat} class="border-b border-border px-4 py-2.5 bg-bg">
             <span class="block truncate text-sm font-medium text-highlight" title=${sessionId || ''}>
               ${this.#currentTitle}
             </span>

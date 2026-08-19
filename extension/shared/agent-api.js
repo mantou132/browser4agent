@@ -48,7 +48,11 @@ export function createAgentApi() {
      * configOptions }`: `sessionId` is the agent-side ACP session id — use
      * it for `ask` now, and persist it for `loadSession` later. */
     createSession(options = {}) {
-      const params = { cwd: options.cwd, timeoutSeconds: options.timeoutSeconds };
+      const params = {
+        cwd: options.cwd,
+        panelContext: options.panelContext,
+        timeoutSeconds: options.timeoutSeconds,
+      };
       return rpc().call('agent_session_create', params, options);
     },
 
@@ -117,6 +121,7 @@ export function createAgentApi() {
       const params = {
         sessionId,
         cwd: options.cwd,
+        panelContext: options.panelContext,
         timeoutSeconds: options.timeoutSeconds,
         stream: Boolean(options.onEvent),
       };

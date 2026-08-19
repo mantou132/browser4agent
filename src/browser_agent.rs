@@ -106,10 +106,11 @@ pub fn register(peer: &Peer) {
         let sessions = create_sessions.clone();
         async move {
             let cwd = message_cwd(&params);
+            let system_prompt = message_panel_system_prompt(&params)?;
             let timeout_secs = message_timeout_secs(&params);
             match tokio::time::timeout(
                 Duration::from_secs(timeout_secs),
-                sessions.create_session(cwd),
+                sessions.create_session(cwd, system_prompt),
             )
             .await
             {
@@ -134,6 +135,7 @@ pub fn register(peer: &Peer) {
                 .filter(|v| !v.is_empty())
                 .ok_or_else(|| "agent_session_load requires a string sessionId".to_string())?;
             let cwd = message_cwd(&params);
+            let system_prompt = message_panel_system_prompt(&params)?;
             let timeout_secs = message_timeout_secs(&params);
 
             // The actor drains the load-time history replay into this channel
@@ -149,7 +151,7 @@ pub fn register(peer: &Peer) {
 
             let result = match tokio::time::timeout(
                 Duration::from_secs(timeout_secs),
-                sessions.load_session(acp_session_id, cwd, replay_tx),
+                sessions.load_session(acp_session_id, cwd, system_prompt, replay_tx),
             )
             .await
             {
@@ -411,6 +413,41 @@ fn message_cwd(params: &Value) -> Option<PathBuf> {
         .map(PathBuf::from)
 }
 
+fn message_panel_system_prompt(params: &Value) -> Result<Option<String>, String> {
+    let Some(context) = params.get("panelContext") else {
+        return Ok(None);
+    };
+    let surface = context
+        .get("surface")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "panelContext.surface must be a string".to_string())?;
+    match surface {
+        "devtools" => {
+            let tab_id = context
+                .get("tabId")
+                .and_then(Value::as_u64)
+                .ok_or_else(|| "DevTools panelContext requires a numeric tabId".to_string())?;
+            Ok(Some(format!(
+                "You are running inside browser4agent's Agent panel in browser DevTools. This \
+                 DevTools instance is attached to browser tab ID {tab_id}. Treat that inspected \
+                 tab as the primary target for browser-related requests. For browser tools that \
+                 accept a tabId, use {tab_id}; do not substitute the globally active tab unless \
+                 the user explicitly asks you to. Read the inspected tab before acting when page \
+                 context is needed, and prefer a suitable page-provided tool returned by read_tab."
+            )))
+        }
+        "side_panel" => Ok(Some(
+            "You are running inside browser4agent's browser sidebar Agent panel. Treat the \
+             currently active browser tab as the primary target for browser-related requests. The \
+             active tab may change during this session, so resolve it with read_active_tab at the \
+             start of each browser task and use the returned tabId for related actions. Prefer a \
+             suitable page-provided tool returned by read_active_tab."
+                .to_string(),
+        )),
+        _ => Err(format!("unknown panelContext.surface: {surface}")),
+    }
+}
+
 fn message_timeout_secs(params: &Value) -> u64 {
     params
         .get("timeoutSeconds")
@@ -483,7 +520,32 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use super::{complete_directories, resolve_directory_path};
+    use super::{complete_directories, message_panel_system_prompt, resolve_directory_path};
+
+    #[test]
+    fn builds_devtools_panel_system_prompt() {
+        let prompt = message_panel_system_prompt(&serde_json::json!({
+            "panelContext": { "surface": "devtools", "tabId": 42 }
+        }))
+        .expect("valid panel context")
+        .expect("system prompt");
+
+        assert!(prompt.contains("browser DevTools"));
+        assert!(prompt.contains("tab ID 42"));
+        assert!(prompt.contains("use 42"));
+    }
+
+    #[test]
+    fn builds_side_panel_system_prompt() {
+        let prompt = message_panel_system_prompt(&serde_json::json!({
+            "panelContext": { "surface": "side_panel" }
+        }))
+        .expect("valid panel context")
+        .expect("system prompt");
+
+        assert!(prompt.contains("browser sidebar"));
+        assert!(prompt.contains("read_active_tab"));
+    }
 
     #[test]
     fn completes_and_validates_directories() {

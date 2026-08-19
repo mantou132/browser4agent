@@ -244,6 +244,7 @@ impl AcpRuntime {
         &self,
         cwd: PathBuf,
         load: Option<SessionId>,
+        system_prompt: Option<String>,
     ) -> Result<(
         ActiveSession<'static, Agent>,
         SessionInit,
@@ -255,8 +256,12 @@ impl AcpRuntime {
         let generation = self.state.lock().await.generation;
         let (session, init): (ActiveSession<'static, Agent>, SessionInit) = match load {
             Some(session_id) => {
+                let mut request = LoadSessionRequest::new(session_id.clone(), cwd);
+                if let Some(system_prompt) = &system_prompt {
+                    request = request.meta(system_prompt_meta(system_prompt));
+                }
                 let response = connection
-                    .send_request_to(Agent, LoadSessionRequest::new(session_id.clone(), cwd))
+                    .send_request_to(Agent, request)
                     .block_task()
                     .await?;
                 let init = SessionInit {
@@ -269,8 +274,12 @@ impl AcpRuntime {
                 (session, init)
             }
             None => {
+                let mut request = NewSessionRequest::new(cwd);
+                if let Some(system_prompt) = &system_prompt {
+                    request = request.meta(system_prompt_meta(system_prompt));
+                }
                 let response = connection
-                    .send_request_to(Agent, NewSessionRequest::new(cwd))
+                    .send_request_to(Agent, request)
                     .block_task()
                     .await?;
                 let init = SessionInit {
@@ -303,6 +312,13 @@ impl AcpRuntime {
     async fn unregister_session(&self, session_id: &str) {
         self.permission_cancels.lock().await.remove(session_id);
     }
+}
+
+fn system_prompt_meta(prompt: &str) -> serde_json::Map<String, serde_json::Value> {
+    serde_json::Map::from_iter([(
+        "systemPrompt".to_string(),
+        serde_json::json!({ "append": prompt }),
+    )])
 }
 
 /// Extra content sent along with a prompt.
@@ -412,8 +428,12 @@ impl AgentSessionManager {
         }
     }
 
-    pub async fn create_session(&self, cwd: Option<PathBuf>) -> Result<CreatedSession> {
-        self.start_session(cwd, None, None).await
+    pub async fn create_session(
+        &self,
+        cwd: Option<PathBuf>,
+        system_prompt: Option<String>,
+    ) -> Result<CreatedSession> {
+        self.start_session(cwd, None, system_prompt, None).await
     }
 
     /// Resume a persisted session by its ACP session id (requires the agent to
@@ -424,11 +444,13 @@ impl AgentSessionManager {
         &self,
         acp_session_id: &str,
         cwd: Option<PathBuf>,
+        system_prompt: Option<String>,
         replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     ) -> Result<CreatedSession> {
         self.start_session(
             cwd,
             Some(SessionId::from(acp_session_id.to_string())),
+            system_prompt,
             replay_tx,
         )
         .await
@@ -438,6 +460,7 @@ impl AgentSessionManager {
         &self,
         cwd: Option<PathBuf>,
         load: Option<SessionId>,
+        system_prompt: Option<String>,
         replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     ) -> Result<CreatedSession> {
         let cwd = resolve_cwd(cwd)?;
@@ -447,7 +470,17 @@ impl AgentSessionManager {
         let runtime = self.runtime.clone();
         tokio::spawn(async move {
             // ended_tx drops when the actor exits, triggering cleanup.
-            run_session_actor(cwd, load, runtime, replay_tx, rx, ready_tx, ended_tx).await;
+            run_session_actor(
+                cwd,
+                load,
+                system_prompt,
+                runtime,
+                replay_tx,
+                rx,
+                ready_tx,
+                ended_tx,
+            )
+            .await;
         });
 
         // Readiness is bounded by the caller's timeout, not here. The
@@ -650,13 +683,16 @@ impl AgentSessionManager {
 async fn run_session_actor(
     cwd: PathBuf,
     load: Option<SessionId>,
+    system_prompt: Option<String>,
     runtime: AcpRuntime,
     replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     rx: mpsc::Receiver<SessionCommand>,
     ready_tx: oneshot::Sender<Result<SessionInit, String>>,
     _ended_tx: oneshot::Sender<()>,
 ) {
-    if let Err(err) = run_session_actor_inner(cwd, load, runtime, replay_tx, rx, ready_tx).await {
+    if let Err(err) =
+        run_session_actor_inner(cwd, load, system_prompt, runtime, replay_tx, rx, ready_tx).await
+    {
         logger::info(&format!("ACP session actor stopped: {err}"));
     }
 }
@@ -664,13 +700,14 @@ async fn run_session_actor(
 async fn run_session_actor_inner(
     cwd: PathBuf,
     load: Option<SessionId>,
+    system_prompt: Option<String>,
     runtime: AcpRuntime,
     replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     mut rx: mpsc::Receiver<SessionCommand>,
     ready_tx: oneshot::Sender<Result<SessionInit, String>>,
 ) -> Result<()> {
     let (mut session, init, cancel_flag, mut disconnects, connection_generation) =
-        match runtime.start_session(cwd, load).await {
+        match runtime.start_session(cwd, load, system_prompt).await {
             Ok(session) => session,
             Err(err) => {
                 let _ = ready_tx.send(Err(err.to_string()));
