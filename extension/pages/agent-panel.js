@@ -42,6 +42,9 @@ class AgentPanelPageElement extends GemElement {
   });
 
   #permissionResolve = null;
+  #messagesRef = createRef();
+  #followMessages = true;
+  #scrollFrame = 0;
 
   @mounted()
   #boot = async () => {
@@ -54,7 +57,7 @@ class AgentPanelPageElement extends GemElement {
 
   @mounted()
   #setup = () => {
-    const sidebarMediaQuery =matchMedia('(width <= 1280px)')
+    const sidebarMediaQuery = matchMedia('(width <= 1280px)');
     this.#s({ sidebar: sidebarMediaQuery.matches });
     agentApi.setPermissionHandler(this.#requestPermission);
     const removeMediaQueryListener = addListener(sidebarMediaQuery, 'change', this.#updateSidebarMode);
@@ -62,9 +65,31 @@ class AgentPanelPageElement extends GemElement {
     return () => {
       removeMediaQueryListener();
       stopRefreshingSessions();
+      cancelAnimationFrame(this.#scrollFrame);
       this.#settlePermission(null);
       agentApi.setPermissionHandler(null);
     };
+  };
+
+  #onMessagesScroll = () => {
+    const element = this.#messagesRef.value;
+    if (!element) return;
+    this.#followMessages = element.scrollHeight - element.clientHeight - element.scrollTop <= 32;
+  };
+
+  #scrollToLatest = (force = false) => {
+    if (force) this.#followMessages = true;
+    if (!this.#followMessages) return;
+    cancelAnimationFrame(this.#scrollFrame);
+    this.#scrollFrame = requestAnimationFrame(() => {
+      const element = this.#messagesRef.value;
+      if (element) element.scrollTop = element.scrollHeight;
+    });
+  };
+
+  @effect((element) => [element.#s.messages, element.#s.loadingSession, element.#s.permissionRequest])
+  #followLatestMessage = () => {
+    if (!this.#s.loadingSession) this.#scrollToLatest();
   };
 
   #updateSidebarMode = ({ matches }) => {
@@ -176,6 +201,7 @@ class AgentPanelPageElement extends GemElement {
   #send = async () => {
     const prompt = this.#s.input.trim();
     if (!prompt || this.#s.pending || this.#s.loadingSession) return;
+    this.#scrollToLatest(true);
     const turnStart = this.#s.messages.length;
     this.#s({
       input: '',
@@ -222,6 +248,7 @@ class AgentPanelPageElement extends GemElement {
 
   #confirmNewSession = (cwd) => {
     if (this.#s.sessionId) agentApi.closeSession(this.#s.sessionId).catch(() => {});
+    this.#followMessages = true;
     this.#s({ sessionId: null, draft: true, messages: [], cwd, cwdPicker: false, error: '' });
   };
 
@@ -230,6 +257,7 @@ class AgentPanelPageElement extends GemElement {
     const previous = this.#s.sessionId;
     const previousMessages = this.#s.messages;
     const selected = this.#s.sessions.find((session) => session.sessionId === sessionId);
+    this.#followMessages = true;
     // Clear before load: the replayed history rebuilds the list via #onEvent
     this.#s({ loadingSession: true, loadingId: sessionId, error: '', messages: [] });
     try {
@@ -456,7 +484,9 @@ class AgentPanelPageElement extends GemElement {
           </div>
           <div
             v-if=${!loadingSession && this.#canChat}
+            ${this.#messagesRef}
             class="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-2"
+            @scroll=${this.#onMessagesScroll}
           >
             ${visibleMessages.map((msg) => html`<agent-message-bubble .message=${msg}></agent-message-bubble>`)}
             ${

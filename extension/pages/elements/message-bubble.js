@@ -1,8 +1,92 @@
+import { marked } from 'marked';
 import { t } from '../../shared/i18n.js';
 
+const style = css`
+  :scope {
+    .agent-markdown {
+      line-height: 1.6;
+
+      &:first-child { margin-top: 0; }
+      &:last-child { margin-bottom: 0; }
+
+      p {
+        margin: 0;
+        &:not(:first-child) { margin-top: 0.4rem; }
+      }
+
+      h1, h2, h3 {
+        margin: 0.65rem 0 0.3rem;
+        font-weight: 650;
+      }
+      h1 { font-size: 1.2em; }
+      h2 { font-size: 1.1em; }
+
+      ul, ol {
+        margin: 0.3rem 0;
+        padding-left: 1.35rem;
+      }
+      li + li { margin-top: 0.15rem; }
+
+      blockquote {
+        margin: 0.4rem 0;
+        border-left: 3px solid var(--color-border);
+        padding-left: 0.75rem;
+        color: var(--color-describe);
+      }
+
+      pre {
+        margin: 0.5rem 0;
+        overflow-x: auto;
+        border-radius: 4px;
+        background: var(--color-bg);
+        padding: 0.65rem 0.75rem;
+      }
+      code {
+        border-radius: 3px;
+        background: var(--color-bg);
+        padding: 0.1em 0.3em;
+        font: 0.9em/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
+      }
+      pre code { background: none; padding: 0; }
+      a { color: var(--color-primary); text-decoration: underline; }
+    }
+  }
+`;
+
+const safeUrl = (value) => (/^(?:https?:|mailto:|\/|#)/i.test(value.trim()) ? value.trim() : '#');
+const escapeAttribute = (value) =>
+  String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+const markdownRenderer = new marked.Renderer();
+markdownRenderer.link = function ({ href, title, tokens }) {
+  const label = this.parser.parseInline(tokens);
+  const titleAttribute = title ? ` title="${escapeAttribute(title)}"` : '';
+  return `<a href="${escapeAttribute(safeUrl(href))}" target="_blank" rel="noopener noreferrer"${titleAttribute}>${label}</a>`;
+};
+
+const markdownToHtml = (value) =>
+  marked.parse(value || '', {
+    async: false,
+    breaks: true,
+    gfm: true,
+    html: false,
+    renderer: markdownRenderer,
+  });
+
 @customElement('agent-message-bubble')
+@adoptedStyle(style)
 class AgentMessageBubbleElement extends GemElement {
   @property message;
+
+  #markdownRef = createRef();
+  #markdownText = '';
+
+  @effect()
+  #updateMarkdown = () => {
+    const text = this.message?.text || '';
+    if (!this.#markdownRef.value || text === this.#markdownText) return;
+    this.#markdownText = text;
+    this.#markdownRef.value.innerHTML = markdownToHtml(text);
+  };
 
   @template()
   #content = () => {
@@ -11,14 +95,14 @@ class AgentMessageBubbleElement extends GemElement {
 
     if (msg.type === 'thought') {
       return html`
-        <details class="my-2 border-l-2 border-border pl-3 text-xs text-describe">
-          <summary class="cursor-pointer select-none py-1 font-medium text-text">
+        <details ?open=${msg.pending} class="my-2 border-l-2 border-border text-xs text-describe">
+          <summary class="cursor-pointer select-none px-2.5 py-1 font-medium text-text">
             <span class="inline-flex items-center gap-1.5">
               <span>${t('devtoolsThought')}</span>
               ${msg.pending ? html`<dy-loading class="size-3 text-describe"></dy-loading>` : null}
             </span>
           </summary>
-          <div class="whitespace-pre-wrap break-words pb-1 leading-relaxed">${msg.text}</div>
+          <div ${this.#markdownRef} class="agent-markdown break-words px-2.5 pb-1 leading-relaxed"></div>
         </details>
       `;
     }
@@ -66,12 +150,13 @@ class AgentMessageBubbleElement extends GemElement {
       <div class=${`my-3 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
         <div
           class=${classMap({
-            'max-w-[85%] rounded-lg px-3.5 py-2.5 leading-relaxed break-words whitespace-pre-wrap shadow-sm': true,
+            'max-w-[85%] rounded-lg px-3.5 py-2.5 leading-relaxed break-words shadow-sm': true,
+            'whitespace-pre-wrap': isUser,
             'bg-primary text-white rounded-br-xs': isUser,
             'bg-bg-light text-text border border-border rounded-bl-xs': !isUser,
           })}
         >
-          ${msg.text}
+          ${isUser ? msg.text : html`<div ${this.#markdownRef} class="agent-markdown"></div>`}
         </div>
       </div>
     `;
