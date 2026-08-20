@@ -7,7 +7,7 @@ index 753e79ef0d0fbdb8aaad09733e4dc851ab6d5737..aa504975b7a31966030167e349581418
  */
  
 -*,
-+:not(:state(gem-style-boundary)),
++:not(:state(gem-element)),
  ::after,
  ::before,
  ::backdrop,

@@ -4,14 +4,16 @@
 
 @theme {
   --color-primary: var(--color-indigo-500);
-  --color-highlight: var(--color-slate-900);
-  --color-text: var(--color-slate-700);
-  --color-describe: var(--color-slate-500);
-  --color-bg: var(--color-white);
-  --color-bg-light: var(--color-slate-50);
-  --color-bg-hover: var(--color-slate-100);
-  --color-border: var(--color-slate-200);
-  --color-disabled: var(--color-slate-200);
+  /* Palette pairs resolve via the used `color-scheme`; custom properties
+     inherit into ShadowDOM, so duoyun-ui elements follow. */
+  --color-highlight: light-dark(var(--color-slate-900), var(--color-slate-200));
+  --color-text: light-dark(var(--color-slate-700), var(--color-slate-300));
+  --color-describe: light-dark(var(--color-slate-500), var(--color-slate-400));
+  --color-bg: light-dark(var(--color-white), var(--color-slate-900));
+  --color-bg-light: light-dark(var(--color-slate-50), var(--color-slate-800));
+  --color-bg-hover: light-dark(var(--color-slate-100), var(--color-slate-700));
+  --color-border: light-dark(var(--color-slate-200), var(--color-slate-700));
+  --color-disabled: light-dark(var(--color-slate-200), var(--color-slate-700));
   --color-informative: var(--color-sky-500);
   --color-neutral: var(--color-slate-400);
   --color-positive: var(--color-teal-500);

@@ -80,7 +80,7 @@
 
 # 前端开发
 
-使用 [`@mantou/gem`](https://gemjs.org/) 框架，[`duoyun-ui`](https://duoyun-ui.gemjs.org/) UI 库，使用了自动导入插件，不需要再导入 `@mantou/gem` 成员和 `duoyun-ui` 元素。用 ECMAScript 最新的规范写，样式尽量使用 TailwindCSS（注意：ShadowDOM 元素内不能使用；没有 Preflight）。
+使用 [`@mantou/gem`](https://gemjs.org/) 框架，[`duoyun-ui`](https://duoyun-ui.gemjs.org/) UI 库，使用了自动导入插件，不需要再导入 `@mantou/gem` 成员和 `duoyun-ui` 元素。用 ECMAScript 最新的规范写，样式尽量使用 TailwindCSS（注意：ShadowDOM 元素内不能使用；Preflight 已启用，`patches/tailwindcss.patch` 用 `:not(:state(gem-element))` 把 gem 元素排除在重置之外）。
 
 ## Gem Element Development
 

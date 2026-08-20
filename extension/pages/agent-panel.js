@@ -1,5 +1,5 @@
 import { addListener } from '@mantou/gem/lib/utils';
-import { icons } from 'duoyun-ui/lib/icons';
+import { genIcon, icons } from 'duoyun-ui/lib/icons';
 import { polling } from 'duoyun-ui/lib/timer';
 import { createAgentApi } from '../shared/agent-api.js';
 import { setPageI18n, t } from '../shared/i18n.js';
@@ -7,7 +7,12 @@ import { displayHomePath } from '../shared/path.js';
 
 setPageI18n();
 
+const themeName = globalThis.chrome?.devtools?.panels?.themeName;
+if (themeName) document.documentElement.style.colorScheme = themeName === 'dark' ? 'dark' : 'light';
+
 const agentApi = createAgentApi();
+const sendIcon = genIcon('M5 11h10.17l-4.59-4.59L12 5l7 7-7 7-1.41-1.41L15.17 13H5v-2z');
+const stopIcon = genIcon('M7 7h10v10H7z');
 
 function getPanelContext() {
   const tabId = globalThis.chrome?.devtools?.inspectedWindow?.tabId;
@@ -508,23 +513,31 @@ class AgentPanelPageElement extends GemElement {
             }
           </div>
           <div v-if=${error} class="border-t border-negative/30 bg-negative/5 px-4 py-2 text-xs text-negative">${error}</div>
-          <footer v-if=${!loadingSession && this.#canChat} class="flex items-end gap-2 border-t border-border p-3 bg-bg">
-            <dy-input
-              type="textarea"
-              rows="2"
-              class="min-w-0 flex-1"
-              placeholder=${t('devtoolsPanelPlaceholder')}
-              .value=${input}
-              @change=${(e) => this.#s({ input: e.detail })}
-              @keydown=${this.#onKeydown}
-            ></dy-input>
-            <dy-button
-              type=${pending ? null : 'solid'}
-              color=${pending ? 'cancel' : 'normal'}
-              @click=${() => (pending ? this.#cancel() : this.#send())}
+          <footer v-if=${!loadingSession && this.#canChat} class="bg-bg px-4 pb-4 pt-2">
+            <div
+              class="w-full rounded-lg border border-border bg-bg shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:border-focus focus-within:ring-2 focus-within:ring-focus/15"
             >
-              ${pending ? t('devtoolsPanelCancel') : t('devtoolsPanelSend')}
-            </dy-button>
+              <textarea
+                class="field-sizing-content box-border block min-h-13 max-h-48 w-full resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 text-sm leading-6 text-text outline-none placeholder:text-describe"
+                rows="1"
+                placeholder=${t('devtoolsPanelPlaceholder')}
+                .value=${input}
+                @input=${(e) => this.#s({ input: e.target.value })}
+                @keydown=${this.#onKeydown}
+              ></textarea>
+              <div class="flex min-h-10 items-center justify-end px-2 pb-2">
+                <button
+                  type="button"
+                  class="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-primary text-white transition-[opacity,transform] duration-150 hover:opacity-[.85] active:scale-[.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-default disabled:bg-disabled disabled:text-describe disabled:hover:opacity-100"
+                  ?disabled=${!pending && !input.trim()}
+                  title=${pending ? t('devtoolsPanelCancel') : t('devtoolsPanelSend')}
+                  aria-label=${pending ? t('devtoolsPanelCancel') : t('devtoolsPanelSend')}
+                  @click=${() => (pending ? this.#cancel() : this.#send())}
+                >
+                  <dy-use class="size-4" .element=${pending ? stopIcon : sendIcon}></dy-use>
+                </button>
+              </div>
+            </div>
           </footer>
           <agent-cwd-modal
             v-if=${cwdPicker}

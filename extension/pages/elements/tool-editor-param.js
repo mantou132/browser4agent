@@ -1,3 +1,4 @@
+import { theme } from 'duoyun-ui/lib/theme';
 import { t } from '../../shared/i18n.js';
 
 const TYPE_OPTIONS = [
@@ -14,9 +15,9 @@ const style = css`
     align-items: center;
     margin-block-end: 1rem;
     width: 100%;
-    border: 1px solid var(--color-border);
+    border: 1px solid ${theme.borderColor};
     border-radius: 0.75rem;
-    background: color-mix(in srgb, var(--color-bg-light) 64%, white);
+    background: color-mix(in srgb, ${theme.lightBackgroundColor} 64%, white);
     padding: 0.75rem;
   }
   .desc {
@@ -29,7 +30,7 @@ const style = css`
     justify-content: flex-end;
     font-size: 0.75rem;
     white-space: nowrap;
-    color: var(--color-describe);
+    color: ${theme.describeColor};
   }
   * {
     inline-size: auto;
