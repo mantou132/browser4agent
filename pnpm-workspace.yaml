@@ -4,6 +4,5 @@ packages:
   - toolset-parser
 
 patchedDependencies:
-  '@mantou/gem': patches/@mantou__gem.patch
   duoyun-ui: patches/duoyun-ui.patch
   tailwindcss: patches/tailwindcss.patch

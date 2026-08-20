@@ -1,3 +1,4 @@
+import { theme } from 'duoyun-ui/lib/theme';
 import { marked } from 'marked';
 import { t } from '../../shared/i18n.js';
 
@@ -29,26 +30,26 @@ const style = css`
 
       blockquote {
         margin: 0.4rem 0;
-        border-left: 3px solid var(--color-border);
+        border-left: 3px solid ${theme.borderColor};
         padding-left: 0.75rem;
-        color: var(--color-describe);
+        color: ${theme.describeColor};
       }
 
       pre {
         margin: 0.5rem 0;
         overflow-x: auto;
         border-radius: 4px;
-        background: var(--color-bg);
+        background: ${theme.backgroundColor};
         padding: 0.65rem 0.75rem;
       }
       code {
         border-radius: 3px;
-        background: var(--color-bg);
+        background: ${theme.backgroundColor};
         padding: 0.1em 0.3em;
         font: 0.9em/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
       }
       pre code { background: none; padding: 0; }
-      a { color: var(--color-primary); text-decoration: underline; }
+      a { color: ${theme.primaryColor}; text-decoration: underline; }
     }
   }
 `;
@@ -97,10 +98,7 @@ class AgentMessageBubbleElement extends GemElement {
       return html`
         <details ?open=${msg.pending} class="my-2 border-l-2 border-border text-xs text-describe">
           <summary class="cursor-pointer select-none px-2.5 py-1 font-medium text-text">
-            <span class="inline-flex items-center gap-1.5">
-              <span>${t('devtoolsThought')}</span>
-              ${msg.pending ? html`<dy-loading class="size-3 text-describe"></dy-loading>` : null}
-            </span>
+            <span>${t('devtoolsThought')}</span>
           </summary>
           <div ${this.#markdownRef} class="agent-markdown break-words px-2.5 pb-1 leading-relaxed"></div>
         </details>
