@@ -19,6 +19,11 @@ function getPanelContext() {
   return Number.isInteger(tabId) ? { surface: 'devtools', tabId } : { surface: 'side_panel' };
 }
 
+/** Keep the `mode` config option in sync with a `current_mode_update`. */
+function withCurrentMode(configOptions, currentModeId) {
+  return configOptions.map((option) => (option.id === 'mode' ? { ...option, currentValue: currentModeId } : option));
+}
+
 const style = css`
   :scope {
     display: block;
@@ -38,6 +43,7 @@ class AgentPanelPageElement extends GemElement {
     sessionId: null, // current live session
     draft: false, // "new session" was requested but not yet created
     messages: [], // text messages, thought blocks, tool calls, or raw events
+    configOptions: [], // current session's ACP config options (mode/model/effort/…)
     pending: false, // prompt in flight
     booting: true, // initial sessions fetching state (whole page loader)
     loadingSession: false, // loading a specific session in the right pane
@@ -202,6 +208,12 @@ class AgentPanelPageElement extends GemElement {
       }
       messages.push({ type: 'event', data: update });
       this.#s({ messages });
+    } else if (update.sessionUpdate === 'current_mode_update') {
+      // Selector state, not chat content: keep the mode entry current.
+      const configOptions = withCurrentMode(this.#s.configOptions, update.currentModeId);
+      this.#s({ configOptions });
+    } else if (update.sessionUpdate === 'config_option_update') {
+      this.#s({ configOptions: Array.isArray(update.configOptions) ? update.configOptions : [] });
     } else {
       // Surface other ACP session updates (tool calls, plans, …) for inspection
       this.#s({ messages: [...currentMessages, { type: 'event', data: update }] });
@@ -225,8 +237,9 @@ class AgentPanelPageElement extends GemElement {
       // otherwise the whole pane flashes the loading screen.
       let sessionId = this.#s.sessionId;
       if (!sessionId) {
-        sessionId = (await agentApi.createSession({ cwd: this.#s.cwd, panelContext: getPanelContext() })).sessionId;
-        this.#s({ sessionId, draft: false });
+        const created = await agentApi.createSession({ cwd: this.#s.cwd, panelContext: getPanelContext() });
+        sessionId = created.sessionId;
+        this.#s({ sessionId, draft: false, configOptions: created.configOptions || [] });
       }
       const answer = await agentApi.ask(prompt, { sessionId, onEvent: this.#onEvent });
       this.#finishThought();
@@ -259,28 +272,34 @@ class AgentPanelPageElement extends GemElement {
   #confirmNewSession = (cwd) => {
     if (this.#s.sessionId) agentApi.closeSession(this.#s.sessionId).catch(() => {});
     this.#followMessages = true;
-    this.#s({ sessionId: null, draft: true, messages: [], cwd, cwdPicker: false, error: '' });
+    this.#s({ sessionId: null, draft: true, messages: [], configOptions: [], cwd, cwdPicker: false, error: '' });
   };
 
   #openSession = async (sessionId) => {
     if (this.#s.pending || this.#s.loadingSession || sessionId === this.#s.sessionId) return;
     const previous = this.#s.sessionId;
     const previousMessages = this.#s.messages;
+    const previousConfigOptions = this.#s.configOptions;
     const selected = this.#s.sessions.find((session) => session.sessionId === sessionId);
     this.#followMessages = true;
     // Clear before load: the replayed history rebuilds the list via #onEvent
-    this.#s({ loadingSession: true, loadingId: sessionId, error: '', messages: [] });
+    this.#s({ loadingSession: true, loadingId: sessionId, error: '', messages: [], configOptions: [] });
     try {
-      const { sessionId: liveId } = await agentApi.loadSession(sessionId, {
+      const { sessionId: liveId, configOptions } = await agentApi.loadSession(sessionId, {
         onEvent: this.#onEvent,
         panelContext: getPanelContext(),
       });
       this.#finishThought();
       // Keep the previous live session usable until the replacement succeeds.
       if (previous) await agentApi.closeSession(previous).catch(() => {});
-      this.#s({ sessionId: liveId, draft: false, cwd: selected?.cwd || '' });
+      this.#s({
+        sessionId: liveId,
+        draft: false,
+        cwd: selected?.cwd || '',
+        configOptions: configOptions || [],
+      });
     } catch (e) {
-      this.#s({ error: e.message, messages: previousMessages });
+      this.#s({ error: e.message, messages: previousMessages, configOptions: previousConfigOptions });
     } finally {
       this.#s({ loadingSession: false, loadingId: null });
     }
@@ -294,7 +313,7 @@ class AgentPanelPageElement extends GemElement {
       // If it is the live session, disconnect it before removing the record
       if (isCurrent) {
         await agentApi.closeSession(sessionId).catch(() => {});
-        this.#s({ sessionId: null, draft: false, messages: [], cwd: '' });
+        this.#s({ sessionId: null, draft: false, messages: [], configOptions: [], cwd: '' });
       }
       await agentApi.deleteSession(sessionId);
       await this.#refreshSessions();
@@ -318,6 +337,26 @@ class AgentPanelPageElement extends GemElement {
       this.#newSession();
     } else if (sessionId) {
       this.#openSession(sessionId);
+    }
+  };
+
+  /** Selectable session config options (mode/model/effort/…) reported by the agent. */
+  get #configSelects() {
+    if (this.#s.draft || !this.#s.sessionId) return [];
+    return (this.#s.configOptions || []).filter(
+      (option) => option.type === 'select' && Array.isArray(option.options) && option.options.length,
+    );
+  }
+
+  #changeConfig = async (configId, value) => {
+    const sessionId = this.#s.sessionId;
+    if (!sessionId) return;
+    try {
+      const { configOptions } = await agentApi.setSessionConfigOption(sessionId, configId, value);
+      // A concurrent update may have replaced the list meanwhile.
+      if (Array.isArray(configOptions) && sessionId === this.#s.sessionId) this.#s({ configOptions });
+    } catch (e) {
+      this.#s({ error: e.message });
     }
   };
 
@@ -525,10 +564,31 @@ class AgentPanelPageElement extends GemElement {
                 @input=${(e) => this.#s({ input: e.target.value })}
                 @keydown=${this.#onKeydown}
               ></textarea>
-              <div class="flex min-h-10 items-center justify-end px-2 pb-2">
+              <div class="flex min-h-10 items-center gap-2 px-2 pb-2">
+                <div v-if=${this.#configSelects.length} class="flex min-w-0 flex-wrap items-center gap-1">
+                  ${this.#configSelects.map(
+                    (option) => html`
+                      <dy-picker
+                        borderless
+                        ?disabled=${pending}
+                        class="min-w-0 max-w-40"
+                        placeholder=${option.name}
+                        .options=${option.options.map((item) => ({
+                          label: item.name,
+                          description: item.description,
+                          value: item.value,
+                        }))}
+                        .value=${option.currentValue}
+                        aria-label=${option.name}
+                        title=${option.description || option.name}
+                        @change=${(e) => this.#changeConfig(option.id, e.detail)}
+                      ></dy-picker>
+                    `,
+                  )}
+                </div>
                 <button
                   type="button"
-                  class="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-primary text-white transition-[opacity,transform] duration-150 hover:opacity-[.85] active:scale-[.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-default disabled:bg-disabled disabled:text-describe disabled:hover:opacity-100"
+                  class="ml-auto grid size-8 shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-primary text-white transition-[opacity,transform] duration-150 hover:opacity-[.85] active:scale-[.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-default disabled:bg-disabled disabled:text-describe disabled:hover:opacity-100"
                   ?disabled=${!pending && !input.trim()}
                   title=${pending ? t('devtoolsPanelCancel') : t('devtoolsPanelSend')}
                   aria-label=${pending ? t('devtoolsPanelCancel') : t('devtoolsPanelSend')}

@@ -326,7 +326,6 @@ pub fn register(peer: &Peer) {
             sessions
                 .set_config_option(session_id, config_id, value)
                 .await
-                .map(|_| json!({}))
                 .map_err(|err| err.to_string())
         }
     });

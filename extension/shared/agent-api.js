@@ -92,6 +92,34 @@ export function createAgentApi() {
       return result.cancelled;
     },
 
+    /** Switch the live session mode (`session/set_mode`), e.g. plan mode.
+     * Mode ids come from `createSession` / `loadSession` responses. */
+    setSessionMode(sessionId, modeId, options = {}) {
+      if (typeof sessionId !== 'string' || !sessionId) {
+        return Promise.reject(new Error('setSessionMode requires a sessionId'));
+      }
+      if (typeof modeId !== 'string' || !modeId) {
+        return Promise.reject(new Error('setSessionMode requires a modeId'));
+      }
+      return rpc().call('agent_session_set_mode', { sessionId, modeId }, options);
+    },
+
+    /** Set a live session config option (`session/set_config_option`), e.g.
+     * `model` or `effort`; ids and values come from the session's
+     * `configOptions`. Resolves to the refreshed config options. */
+    setSessionConfigOption(sessionId, configId, value, options = {}) {
+      if (typeof sessionId !== 'string' || !sessionId) {
+        return Promise.reject(new Error('setSessionConfigOption requires a sessionId'));
+      }
+      if (typeof configId !== 'string' || !configId) {
+        return Promise.reject(new Error('setSessionConfigOption requires a configId'));
+      }
+      if (typeof value !== 'string' || !value) {
+        return Promise.reject(new Error('setSessionConfigOption requires a string value'));
+      }
+      return rpc().call('agent_session_set_config_option', { sessionId, configId, value }, options);
+    },
+
     async closeSession(sessionId, options = {}) {
       if (typeof sessionId !== 'string' || !sessionId) {
         return Promise.reject(new Error('closeSession requires a sessionId'));
