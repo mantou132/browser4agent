@@ -414,7 +414,7 @@ enum SessionCommand {
     SetConfig {
         config_id: String,
         value: String,
-        reply: oneshot::Sender<Result<(), String>>,
+        reply: oneshot::Sender<Result<serde_json::Value, String>>,
     },
     Close,
 }
@@ -651,13 +651,14 @@ impl AgentSessionManager {
         }
     }
 
-    /// Set a session config option (`session/set_config_option`).
+    /// Set a session config option (`session/set_config_option`). Returns the
+    /// refreshed config options reported by the agent.
     pub async fn set_config_option(
         &self,
         session_id: &str,
         config_id: &str,
         value: &str,
-    ) -> Result<()> {
+    ) -> Result<serde_json::Value> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.send_command(
             session_id,
@@ -669,7 +670,7 @@ impl AgentSessionManager {
         )
         .await?;
         match reply_rx.await {
-            Ok(Ok(())) => Ok(()),
+            Ok(Ok(config_options)) => Ok(config_options),
             Ok(Err(err)) => anyhow::bail!(err),
             Err(_) => anyhow::bail!("ACP agent session closed before responding"),
         }
@@ -850,7 +851,7 @@ async fn run_session_actor_inner(
                         .send_request_to(Agent, request)
                         .block_task()
                         .await
-                        .map(|_| ())
+                        .map(to_json)
                         .map_err(|err| err.to_string());
                     let _ = reply.send(result);
                 }

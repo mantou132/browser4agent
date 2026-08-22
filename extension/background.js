@@ -146,6 +146,8 @@ const AGENT_METHODS = [
   'agent_session_close',
   'agent_prompt',
   'agent_prompt_cancel',
+  'agent_session_set_mode',
+  'agent_session_set_config_option',
 ];
 
 chrome.runtime.onConnect.addListener((panelPort) => {
