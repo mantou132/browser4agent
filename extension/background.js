@@ -128,7 +128,7 @@ peer.onNotify('agent_session_ended', (params) => {
 peer.handle('agent_permission_request', async (params) => {
   const owner = agentSessionOwners.get(params?.sessionId);
   if (!owner) throw new Error('No Agent panel owns this session');
-  return owner.call('agent_permission_request', params, { timeoutSeconds: 300 });
+  return owner.call('agent_permission_request', params);
 });
 
 /**

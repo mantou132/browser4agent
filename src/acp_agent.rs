@@ -546,29 +546,80 @@ impl AgentSessionManager {
         }
         let _busy = BusyGuard(session.busy.clone());
 
-        let (reply_tx, reply_rx) = oneshot::channel();
+        // Streamed turns carry their events through a pump that renews an idle
+        // deadline on every frame, so only a silent agent times out; a long but
+        // productive turn never does. Without events the deadline never renews
+        // and the same wait caps the whole call.
+        let (turn_event_tx, last_activity) = match event_tx {
+            Some(tx) => {
+                let (turn_tx, mut turn_rx) = mpsc::unbounded_channel::<AgentEvent>();
+                let last_activity =
+                    Arc::new(std::sync::Mutex::new(tokio::time::Instant::now()));
+                let pump_activity = last_activity.clone();
+                tokio::spawn(async move {
+                    while let Some(event) = turn_rx.recv().await {
+                        *pump_activity.lock().expect("activity lock poisoned") =
+                            tokio::time::Instant::now();
+                        let _ = tx.send(event);
+                    }
+                });
+                (Some(turn_tx), Some(last_activity))
+            }
+            None => (None, None),
+        };
+
+        let (reply_tx, mut reply_rx) = oneshot::channel();
+        let streamed = turn_event_tx.is_some();
         session
             .tx
             .send(SessionCommand::Prompt {
                 prompt,
                 attachments,
-                event_tx,
+                event_tx: turn_event_tx,
                 reply: reply_tx,
             })
             .await
             .context("ACP agent session is closed")?;
 
-        match tokio::time::timeout(std::time::Duration::from_secs(timeout_secs), reply_rx).await {
-            Ok(Ok(Ok(answer))) => Ok(answer),
-            Ok(Ok(Err(err))) => anyhow::bail!(err),
-            Ok(Err(_)) => anyhow::bail!("ACP agent session closed before responding"),
-            Err(_) => {
-                // Callers must keep at most one prompt in flight per session
-                // (the panel enforces this), so a timeout means the caller
-                // abandoned its turn: cancel it so the session becomes usable
-                // again instead of finishing unobserved.
-                let _ = session.tx.send(SessionCommand::Cancel).await;
-                anyhow::bail!("Timeout waiting for ACP agent")
+        let timeout = std::time::Duration::from_secs(timeout_secs);
+        loop {
+            let started_at = last_activity
+                .as_deref()
+                .map(|activity| *activity.lock().expect("activity lock poisoned"))
+                .unwrap_or_else(tokio::time::Instant::now);
+            tokio::select! {
+                reply = &mut reply_rx => {
+                    return match reply {
+                        Ok(Ok(answer)) => Ok(answer),
+                        Ok(Err(err)) => anyhow::bail!(err),
+                        Err(_) => anyhow::bail!("ACP agent session closed before responding"),
+                    };
+                }
+                _ = tokio::time::sleep_until(started_at + timeout) => {
+                    // An event may have renewed the deadline while this sleep
+                    // was firing; only give up when the turn really went quiet.
+                    let still_idle = last_activity
+                        .as_deref()
+                        .map(|activity| {
+                            activity.lock().expect("activity lock poisoned").elapsed() >= timeout
+                        })
+                        .unwrap_or(true);
+                    if !still_idle {
+                        continue;
+                    }
+                    // Callers must keep at most one prompt in flight per session
+                    // (the panel enforces this), so a timeout means the caller
+                    // abandoned its turn: cancel it so the session becomes usable
+                    // again instead of finishing unobserved.
+                    let _ = session.tx.send(SessionCommand::Cancel).await;
+                    if streamed {
+                        anyhow::bail!(
+                            "Timeout waiting for ACP agent: no activity for {timeout_secs}s"
+                        );
+                    } else {
+                        anyhow::bail!("Timeout waiting for ACP agent");
+                    }
+                }
             }
         }
     }

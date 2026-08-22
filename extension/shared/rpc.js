@@ -25,22 +25,15 @@ export class RpcPeer {
     this.#idPrefix = idPrefix;
   }
 
-  /** Call the remote peer and await its final result. */
-  call(method, params = {}, { onEvent, timeoutSeconds = 600 } = {}) {
+  /** Call the remote peer and await its final result. Timeout policy lives
+   * with the remote handler; a dead transport rejects via `rejectAll`. */
+  call(method, params = {}, { onEvent } = {}) {
     const id = `${this.#idPrefix}${++this.#nextId}`;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () => {
-          this.#pending.delete(id);
-          reject(new Error(`Timeout waiting for response: ${method}`));
-        },
-        (timeoutSeconds + 5) * 1000,
-      );
-      this.#pending.set(id, { resolve, reject, timer, onEvent });
+      this.#pending.set(id, { resolve, reject, onEvent });
       try {
         this.#send({ id, method, params });
       } catch (e) {
-        clearTimeout(timer);
         this.#pending.delete(id);
         reject(e);
       }
@@ -92,7 +85,6 @@ export class RpcPeer {
   /** Reject all in-flight requests (remote peer disconnected). */
   rejectAll(error) {
     for (const pending of this.#pending.values()) {
-      clearTimeout(pending.timer);
       pending.reject(error);
     }
     this.#pending.clear();
@@ -122,7 +114,7 @@ export class RpcPeer {
   }
 
   #dispatchReply(id, msg) {
-    // Stream event frame: keep the pending request alive.
+    // Stream event frame: intermediate, the pending request stays open.
     if ('event' in msg) {
       this.#pending.get(id)?.onEvent?.(msg.event);
       return;
@@ -130,7 +122,6 @@ export class RpcPeer {
     const pending = this.#pending.get(id);
     this.#pending.delete(id);
     if (!pending) return;
-    clearTimeout(pending.timer);
     if ('error' in msg) {
       pending.reject(new Error(msg.error));
     } else {
