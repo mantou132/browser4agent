@@ -1,5 +1,5 @@
 import { addListener } from '@mantou/gem/lib/utils';
-import { genIcon, icons } from 'duoyun-ui/lib/icons';
+import { icons } from 'duoyun-ui/lib/icons';
 import { polling } from 'duoyun-ui/lib/timer';
 import { createAgentApi } from '../shared/agent-api.js';
 import { setPageI18n, t } from '../shared/i18n.js';
@@ -7,12 +7,7 @@ import { displayHomePath } from '../shared/path.js';
 
 setPageI18n();
 
-const themeName = globalThis.chrome?.devtools?.panels?.themeName;
-if (themeName) document.documentElement.style.colorScheme = themeName === 'dark' ? 'dark' : 'light';
-
 const agentApi = createAgentApi();
-const sendIcon = genIcon('M5 11h10.17l-4.59-4.59L12 5l7 7-7 7-1.41-1.41L15.17 13H5v-2z');
-const stopIcon = genIcon('M7 7h10v10H7z');
 
 function getPanelContext() {
   const tabId = globalThis.chrome?.devtools?.inspectedWindow?.tabId;
@@ -22,6 +17,11 @@ function getPanelContext() {
 /** Keep the `mode` config option in sync with a `current_mode_update`. */
 function withCurrentMode(configOptions, currentModeId) {
   return configOptions.map((option) => (option.id === 'mode' ? { ...option, currentValue: currentModeId } : option));
+}
+
+/** Keep one config option in sync with a locally staged change. */
+function withConfigValue(configOptions, configId, value) {
+  return configOptions.map((option) => (option.id === configId ? { ...option, currentValue: value } : option));
 }
 
 const style = css`
@@ -41,16 +41,14 @@ class AgentPanelPageElement extends GemElement {
     compact: false,
     sessions: [], // persisted sessions: { sessionId, title?, cwd?, updatedAt? }
     sessionId: null, // current live session
-    draft: false, // "new session" was requested but not yet created
     messages: [], // text messages, thought blocks, tool calls, or raw events
     configOptions: [], // current session's ACP config options (mode/model/effort/…)
     pending: false, // prompt in flight
     booting: true, // initial sessions fetching state (whole page loader)
-    loadingSession: false, // loading a specific session in the right pane
+    loadingSession: false, // creating/loading a session in the right pane
     loadingId: null, // session id currently being loaded in the left list
     deleting: null, // session id being deleted
     error: '',
-    input: '',
     cwd: '',
     home: '',
     cwdPicker: false,
@@ -182,6 +180,23 @@ class AgentPanelPageElement extends GemElement {
         messages.push({ role, text: update.content.text });
       }
       this.#s({ messages });
+    } else if (role && update.content?.type === 'image' && update.content.data) {
+      const { mimeType = 'image/png', data } = update.content;
+      const attachment = {
+        id: crypto.randomUUID(),
+        kind: 'image',
+        name: t('devtoolsPanelImageAttachment'),
+        mimeType,
+        previewUrl: `data:${mimeType};base64,${data}`,
+      };
+      const messages = currentMessages.slice();
+      const last = messages.at(-1);
+      if (last?.role === role) {
+        messages[messages.length - 1] = { ...last, attachments: [...(last.attachments || []), attachment] };
+      } else {
+        messages.push({ role, text: '', attachments: [attachment] });
+      }
+      this.#s({ messages });
     } else if (thoughtChunk) {
       const messages = currentMessages.slice();
       const last = messages.at(-1);
@@ -220,28 +235,26 @@ class AgentPanelPageElement extends GemElement {
     }
   };
 
-  #send = async () => {
-    const prompt = this.#s.input.trim();
-    if (!prompt || this.#s.pending || this.#s.loadingSession) return;
+  /** Send one turn; the composer owns the draft and clears it before this. */
+  #send = async ({ prompt, attachments }) => {
+    const sessionId = this.#s.sessionId;
+    if ((!prompt && !attachments.length) || !sessionId || this.#s.pending) return;
     this.#scrollToLatest(true);
     const turnStart = this.#s.messages.length;
+    // Wire format: images as base64 blocks; text files wrapped so the agent
+    // can tell them apart from the user's own words.
+    const wireAttachments = attachments.map((item) =>
+      item.kind === 'image'
+        ? { type: 'image', data: item.data, mimeType: item.mimeType }
+        : { type: 'text', text: `<attachment name="${item.name}">\n${item.text}\n</attachment>` },
+    );
     this.#s({
-      input: '',
       pending: true,
       error: '',
-      messages: [...this.#s.messages, { role: 'user', text: prompt }],
+      messages: [...this.#s.messages, { role: 'user', text: prompt, attachments }],
     });
     try {
-      // Create the session lazily on first send; keep the chat visible while
-      // it is being created (`pending` already blocks input and shows cancel),
-      // otherwise the whole pane flashes the loading screen.
-      let sessionId = this.#s.sessionId;
-      if (!sessionId) {
-        const created = await agentApi.createSession({ cwd: this.#s.cwd, panelContext: getPanelContext() });
-        sessionId = created.sessionId;
-        this.#s({ sessionId, draft: false, configOptions: created.configOptions || [] });
-      }
-      const answer = await agentApi.ask(prompt, { sessionId, onEvent: this.#onEvent });
+      const answer = await agentApi.ask(prompt, { sessionId, onEvent: this.#onEvent, attachments: wireAttachments });
       this.#finishThought();
       const messages = this.#s.messages;
       const receivedAgentText = messages.slice(turnStart).some((message) => message.role === 'agent' && message.text);
@@ -269,10 +282,30 @@ class AgentPanelPageElement extends GemElement {
     this.#s({ cwdPicker: true, error: '' });
   };
 
-  #confirmNewSession = (cwd) => {
-    if (this.#s.sessionId) agentApi.closeSession(this.#s.sessionId).catch(() => {});
+  #confirmNewSession = async (cwd) => {
+    // Create the ACP session right away so its real config options
+    // (mode/model/effort) are selectable before the first message; the
+    // previous live session only closes once creation succeeds.
+    const previous = this.#s.sessionId;
+    const previousMessages = this.#s.messages;
+    const previousConfigOptions = this.#s.configOptions;
     this.#followMessages = true;
-    this.#s({ sessionId: null, draft: true, messages: [], configOptions: [], cwd, cwdPicker: false, error: '' });
+    this.#s({ loadingSession: true, cwdPicker: false, error: '' });
+    try {
+      const created = await agentApi.createSession({ cwd, panelContext: getPanelContext() });
+      if (previous) await agentApi.closeSession(previous).catch(() => {});
+      this.#s({
+        sessionId: created.sessionId,
+        messages: [],
+        configOptions: created.configOptions || [],
+        cwd,
+        error: '',
+      });
+    } catch (e) {
+      this.#s({ error: e.message, messages: previousMessages, configOptions: previousConfigOptions });
+    } finally {
+      this.#s({ loadingSession: false });
+    }
   };
 
   #openSession = async (sessionId) => {
@@ -294,7 +327,6 @@ class AgentPanelPageElement extends GemElement {
       if (previous) await agentApi.closeSession(previous).catch(() => {});
       this.#s({
         sessionId: liveId,
-        draft: false,
         cwd: selected?.cwd || '',
         configOptions: configOptions || [],
       });
@@ -308,27 +340,24 @@ class AgentPanelPageElement extends GemElement {
   #deleteSession = async (sessionId) => {
     if (this.#s.deleting || this.#s.loadingSession || this.#s.pending) return;
     const isCurrent = this.#s.sessionId === sessionId;
-    this.#s({ deleting: sessionId });
+    // Optimistic removal from the list; restored if the host rejects it.
+    const previousSessions = this.#s.sessions;
+    this.#s({
+      deleting: sessionId,
+      sessions: previousSessions.filter((session) => session.sessionId !== sessionId),
+      ...(isCurrent && { sessionId: null, messages: [], configOptions: [], cwd: '' }),
+    });
     try {
-      // If it is the live session, disconnect it before removing the record
-      if (isCurrent) {
-        await agentApi.closeSession(sessionId).catch(() => {});
-        this.#s({ sessionId: null, draft: false, messages: [], configOptions: [], cwd: '' });
-      }
+      // If it was the live session, disconnect it before removing the record
+      if (isCurrent) await agentApi.closeSession(sessionId).catch(() => {});
       await agentApi.deleteSession(sessionId);
-      await this.#refreshSessions();
     } catch (err) {
-      this.#s({ error: err.message });
+      this.#s({ sessions: previousSessions, error: err.message });
+      return;
     } finally {
       this.#s({ deleting: null });
     }
-  };
-
-  #onKeydown = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      this.#send();
-    }
+    await this.#refreshSessions();
   };
 
   #onSessionSelect = (e) => {
@@ -340,9 +369,8 @@ class AgentPanelPageElement extends GemElement {
     }
   };
 
-  /** Selectable session config options (mode/model/effort/…) reported by the agent. */
+  /** Selectable session config options (mode/model/effort/…) for the composer. */
   get #configSelects() {
-    if (this.#s.draft || !this.#s.sessionId) return [];
     return (this.#s.configOptions || []).filter(
       (option) => option.type === 'select' && Array.isArray(option.options) && option.options.length,
     );
@@ -351,29 +379,32 @@ class AgentPanelPageElement extends GemElement {
   #changeConfig = async (configId, value) => {
     const sessionId = this.#s.sessionId;
     if (!sessionId) return;
+    // Reflect the pick right away: while a turn runs the host defers the
+    // change until it finishes, so waiting for the reply would look broken.
+    const previous = this.#s.configOptions;
+    this.#s({ configOptions: withConfigValue(previous, configId, value) });
     try {
       const { configOptions } = await agentApi.setSessionConfigOption(sessionId, configId, value);
       // A concurrent update may have replaced the list meanwhile.
       if (Array.isArray(configOptions) && sessionId === this.#s.sessionId) this.#s({ configOptions });
     } catch (e) {
-      this.#s({ error: e.message });
+      if (sessionId === this.#s.sessionId) this.#s({ configOptions: previous, error: e.message });
     }
   };
 
-  /** Whether the right pane has something to chat with (draft or live session). */
+  /** Whether the right pane has a session to chat with. */
   get #canChat() {
-    return this.#s.draft || Boolean(this.#s.sessionId);
+    return Boolean(this.#s.sessionId);
   }
 
-  /** Session shown in the right header: prefer the persisted title. */
+  /** Session shown in the right header: prefer the persisted title; a
+   * just-created session has neither title nor messages yet. */
   get #currentTitle() {
-    if (this.#s.draft) return t('devtoolsPanelNewSession');
-    const current = this.#s.sessions.find((s) => s.sessionId === this.#s.sessionId);
-    return current?.title || this.#s.sessionId;
+    const current = this.#s.sessions.find((session) => session.sessionId === this.#s.sessionId);
+    return current?.title || (this.#s.messages.length ? this.#s.sessionId : t('devtoolsPanelNewSession'));
   }
 
   get #currentCwd() {
-    if (this.#s.draft) return this.#s.cwd;
     const current = this.#s.sessions.find((session) => session.sessionId === this.#s.sessionId);
     return current?.cwd || this.#s.cwd;
   }
@@ -389,23 +420,16 @@ class AgentPanelPageElement extends GemElement {
   }
 
   /**
-   * Temporary entry pinned to the top of the list: the pending draft after
-   * "new session", or a just-created session that is not in the persisted
-   * list yet.
+   * Temporary entry pinned to the top of the list: a just-created or loaded
+   * session that is not persisted in the list yet.
    */
   get #tempSession() {
-    if (this.#s.draft) {
-      return { sessionId: null, title: t('devtoolsPanelNewSession'), cwd: this.#s.cwd, temp: true };
-    }
-    const { sessionId, sessions, cwd } = this.#s;
-    if (sessionId && !sessions.some((s) => s.sessionId === sessionId)) {
-      return { sessionId, cwd, temp: true };
-    }
-    return null;
+    const { sessionId, sessions, cwd, messages } = this.#s;
+    if (!sessionId || sessions.some((session) => session.sessionId === sessionId)) return null;
+    return { sessionId, title: messages.length ? sessionId : t('devtoolsPanelNewSession'), cwd, temp: true };
   }
 
-  #isActive = (session) =>
-    session ? (this.#s.draft ? Boolean(session.temp) : session.sessionId === this.#s.sessionId) : false;
+  #isActive = (session) => Boolean(session) && session.sessionId === this.#s.sessionId;
 
   @template()
   #content = () => {
@@ -420,7 +444,6 @@ class AgentPanelPageElement extends GemElement {
       loadingId,
       deleting,
       error,
-      input,
       cwdPicker,
       home,
       permissionRequest,
@@ -437,7 +460,7 @@ class AgentPanelPageElement extends GemElement {
     const tempSession = this.#tempSession;
     const visibleMessages = this.showEvents ? messages : messages.filter((message) => message.type !== 'event');
     const sessionOptions = [
-      ...(tempSession ? [{ label: t('devtoolsPanelNewSession'), value: '__new__' }] : []),
+      ...(tempSession ? [{ label: tempSession.title, value: '__new__' }] : []),
       ...sessions.map((session) => {
         const title = session.title || session.sessionId;
         const cwd = displayHomePath(session.cwd, home);
@@ -456,7 +479,7 @@ class AgentPanelPageElement extends GemElement {
                 borderless
                 fit
                 .options=${sessionOptions}
-                .value=${this.#s.draft ? '__new__' : sessionId}
+                .value=${tempSession ? '__new__' : sessionId}
                 placeholder=${t('devtoolsPanelNoSessions')}
                 @change=${this.#onSessionSelect}
                 aria-label=${t('devtoolsPanelSessions')}
@@ -539,65 +562,25 @@ class AgentPanelPageElement extends GemElement {
             @scroll=${this.#onMessagesScroll}
           >
             ${visibleMessages.map((msg) => html`<agent-message-bubble .message=${msg}></agent-message-bubble>`)}
-            ${
-              permissionRequest
-                ? html`
-                    <agent-permission-request
-                      class="sticky bottom-0 z-10 mt-auto block"
-                      .request=${permissionRequest}
-                      @decision=${(e) => this.#settlePermission(e.detail)}
-                    ></agent-permission-request>
-                  `
-                : null
-            }
+            <agent-permission-request
+              v-if=${permissionRequest}
+              class="sticky bottom-0 z-10 mt-auto block"
+              .request=${permissionRequest}
+              @decision=${(e) => this.#settlePermission(e.detail)}
+            ></agent-permission-request>
           </div>
           <div v-if=${error} class="border-t border-negative/30 bg-negative/5 px-4 py-2 text-xs text-negative">${error}</div>
           <footer v-if=${!loadingSession && this.#canChat} class="bg-bg px-4 pb-4 pt-2">
-            <div
-              class="w-full rounded-lg border border-border bg-bg shadow-sm transition-[border-color,box-shadow] duration-150 focus-within:border-focus focus-within:ring-2 focus-within:ring-focus/15"
-            >
-              <textarea
-                class="field-sizing-content box-border block min-h-13 max-h-48 w-full resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 text-sm leading-6 text-text outline-none placeholder:text-describe"
-                rows="1"
-                placeholder=${t('devtoolsPanelPlaceholder')}
-                .value=${input}
-                @input=${(e) => this.#s({ input: e.target.value })}
-                @keydown=${this.#onKeydown}
-              ></textarea>
-              <div class="flex min-h-10 items-center gap-2 px-2 pb-2">
-                <div v-if=${this.#configSelects.length} class="flex min-w-0 flex-wrap items-center gap-1">
-                  ${this.#configSelects.map(
-                    (option) => html`
-                      <dy-picker
-                        borderless
-                        ?disabled=${pending}
-                        class="min-w-0 max-w-40"
-                        placeholder=${option.name}
-                        .options=${option.options.map((item) => ({
-                          label: item.name,
-                          description: item.description,
-                          value: item.value,
-                        }))}
-                        .value=${option.currentValue}
-                        aria-label=${option.name}
-                        title=${option.description || option.name}
-                        @change=${(e) => this.#changeConfig(option.id, e.detail)}
-                      ></dy-picker>
-                    `,
-                  )}
-                </div>
-                <button
-                  type="button"
-                  class="ml-auto grid size-8 shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-primary text-white transition-[opacity,transform] duration-150 hover:opacity-[.85] active:scale-[.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-default disabled:bg-disabled disabled:text-describe disabled:hover:opacity-100"
-                  ?disabled=${!pending && !input.trim()}
-                  title=${pending ? t('devtoolsPanelCancel') : t('devtoolsPanelSend')}
-                  aria-label=${pending ? t('devtoolsPanelCancel') : t('devtoolsPanelSend')}
-                  @click=${() => (pending ? this.#cancel() : this.#send())}
-                >
-                  <dy-use class="size-4" .element=${pending ? stopIcon : sendIcon}></dy-use>
-                </button>
-              </div>
-            </div>
+            <agent-composer
+              class="block"
+              ?disabled=${pending}
+              .configOptions=${this.#configSelects}
+              .sessionId=${sessionId}
+              @send=${(e) => this.#send(e.detail)}
+              @cancel=${this.#cancel}
+              @configchange=${(e) => this.#changeConfig(e.detail.configId, e.detail.value)}
+              @attacherror=${(e) => this.#s({ error: e.detail })}
+            ></agent-composer>
           </footer>
           <agent-cwd-modal
             v-if=${cwdPicker}

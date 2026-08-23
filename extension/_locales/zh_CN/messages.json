@@ -97,14 +97,32 @@
   "description": {
     "message": "描述"
   },
+  "devtoolsPanelAttach": {
+    "message": "添加附件"
+  },
+  "devtoolsPanelAttachmentFailed": {
+    "message": "读取文件失败"
+  },
+  "devtoolsPanelAttachmentTooLarge": {
+    "message": "文本文件过大，上限 256 KB"
+  },
+  "devtoolsPanelAttachmentUnsupported": {
+    "message": "仅支持附加图片和文本文件"
+  },
   "devtoolsPanelCancel": {
     "message": "取消"
   },
   "devtoolsPanelDelete": {
     "message": "删除会话"
   },
+  "devtoolsPanelDropToAttach": {
+    "message": "松开以添加附件"
+  },
   "devtoolsPanelEmpty": {
     "message": "点击「新建」或从左侧选择一个会话开始对话"
+  },
+  "devtoolsPanelImageAttachment": {
+    "message": "图片"
   },
   "devtoolsPanelLoading": {
     "message": "加载会话中…"
@@ -120,6 +138,9 @@
   },
   "devtoolsPanelPlaceholder": {
     "message": "向 Agent 发送消息，Enter 发送，Shift+Enter 换行"
+  },
+  "devtoolsPanelRemoveAttachment": {
+    "message": "移除附件"
   },
   "devtoolsPanelSend": {
     "message": "发送"

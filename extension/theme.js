@@ -1,5 +1,9 @@
 import { theme } from 'duoyun-ui/lib/theme';
 
+// Follow the DevTools panel theme; a no-op outside devtools pages.
+const themeName = globalThis.chrome?.devtools?.panels?.themeName;
+if (themeName) document.documentElement.style.colorScheme = themeName === 'dark' ? 'dark' : 'light';
+
 theme({
   // colorScheme: 'light dark',
   primaryColor: 'var(--color-primary)',

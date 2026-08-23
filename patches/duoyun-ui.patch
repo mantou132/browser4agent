@@ -31,3 +31,42 @@ index 15a623e93a3366c2baf72a815dec34a0b9979923..e66e03d79efd6d6dc62c8e59c1883e0a
      let _handle_decorators;
      let _handle_initializers = [];
      let _handle_extraInitializers = [];
+diff --git a/elements/contextmenu.js b/elements/contextmenu.js
+index 9776ad8..515d0b6 100644
+--- a/elements/contextmenu.js
++++ b/elements/contextmenu.js
+@@ -120,7 +120,7 @@ let DuoyunContextmenuElement = (() => {
+         static async open(contextmenu, options = {}) {
+             if (Array.isArray(contextmenu) && contextmenu.length === 0)
+                 throw new Error('menu length is 0');
+-            const { activeElement, openLeft, x = 0, y = 0, maskClosable = true } = options;
++            const { activeElement, openLeft, x, y, maskClosable = true } = options;
+             const menuObject = getMenuObject(contextmenu);
+             const menu = menuObject.menu;
+             const header = menuObject.header || options.header;
+@@ -128,12 +128,23 @@ let DuoyunContextmenuElement = (() => {
+             const maxHeight = menuObject.maxHeight || options.maxHeight;
+             const searchable = menuObject.searchable || options.searchable;
+             toggleActiveState(activeElement, true);
++            const prevMenu = contextmenuStore.menuStack.at(0);
+             contextmenuStore({
+                 activeElement,
+-                onlyActive: !!x || !!y,
++                onlyActive: x !== undefined || y !== undefined,
+                 openLeft,
+                 maskClosable,
+-                menuStack: [{ x, y, menu, searchable, header, width, maxHeight }],
++                menuStack: [
++                    {
++                        x: x ?? prevMenu?.x ?? 0,
++                        y: y ?? prevMenu?.y ?? 0,
++                        menu,
++                        searchable,
++                        header,
++                        width,
++                        maxHeight,
++                    },
++                ],
+             });
+             if (!ContextMenu.instance) {
+                 const ele = new ContextMenu();
