@@ -11,11 +11,17 @@ export function createAgentApi() {
   let port = null;
   let peer = null;
   let permissionHandler = null;
+  let sessionEndedHandler = null;
+  let hostReconnectedHandler = null;
 
   function rpc() {
     if (peer) return peer;
     port = chrome.runtime.connect({ name: 'agent-rpc' });
     peer = new RpcPeer((msg) => port.postMessage(msg), 'p');
+    peer.onNotify('agent_session_ended', (params) => {
+      if (typeof params?.sessionId === 'string') sessionEndedHandler?.(params.sessionId);
+    });
+    peer.onNotify('host_reconnected', () => hostReconnectedHandler?.());
     peer.handle('agent_permission_request', async (request) => {
       if (!permissionHandler) throw new Error('No permission UI available');
       const optionId = await permissionHandler(request);
@@ -37,6 +43,18 @@ export function createAgentApi() {
     setPermissionHandler(handler) {
       permissionHandler = typeof handler === 'function' ? handler : null;
       if (permissionHandler) rpc();
+    },
+
+    /** Register a callback for host-side session termination (agent crash or
+     * ACP connection reconnect). Receives the ACP session id. */
+    setSessionEndedHandler(handler) {
+      sessionEndedHandler = typeof handler === 'function' ? handler : null;
+    },
+
+    /** Register a callback for the native host process being replaced (crash
+     * or service worker restart): no live session survives it. */
+    setHostReconnectedHandler(handler) {
+      hostReconnectedHandler = typeof handler === 'function' ? handler : null;
     },
 
     completeCwd(input = '', options = {}) {

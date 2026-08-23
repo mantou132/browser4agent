@@ -1,14 +1,8 @@
 import { t } from '../../shared/i18n.js';
 import { icons } from '../../shared/icons.js';
 
-/**
- * One attachment chip: image thumbnail or file icon plus name. Image
- * thumbnails show a large preview on hover. `inverted` adapts the chip to
- * colored surfaces (e.g. the primary user bubble), `small` compacts it,
- * `removable` shows a remove button emitting `request-remove` with the
- * attachment id. The emitter must not be named `remove`: that would shadow
- * `Element.prototype.remove()` and break lit-html's node removal.
- */
+/** The emitter must not be named `remove`: that would shadow
+ * `Element.prototype.remove()` and break lit-html's node removal. */
 @customElement('agent-attachment')
 class AgentAttachmentElement extends GemElement {
   @property attachment;
@@ -18,7 +12,6 @@ class AgentAttachmentElement extends GemElement {
 
   @emitter requestRemove;
 
-  /** Large hover preview for image attachments. */
   #preview = () => {
     const { previewUrl, name } = this.attachment || {};
     return html`

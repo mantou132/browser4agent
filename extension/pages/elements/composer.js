@@ -16,25 +16,16 @@ function isTextFile(file) {
   return !file.type && TEXT_EXTENSION.test(file.name);
 }
 
-/** Compress an image file into a capped data URL for preview and wire. */
 async function readImageAttachment(file) {
   const dataUrl = await compressionImage(file, { dimension: IMAGE_DIMENSION }, { type: 'url' });
   const [header, data] = dataUrl.split(',');
   return { mimeType: header.slice(5, header.indexOf(';')) || 'image/png', previewUrl: dataUrl, data };
 }
 
-/**
- * Message composer: textarea, staged attachments (+ button, paste, drag &
- * drop) and the session's config option pickers. Emits `send` with
- * `{ prompt, attachments }` and clears the draft, `cancel`, `configchange`
- * with `{ configId, value }`, and `attacherror` with a readable reason when
- * staged files are rejected.
- */
 @customElement('agent-composer')
 class AgentComposerElement extends GemElement {
   @boolattribute disabled; // prompt in flight
-  @property configOptions; // selectable session config options (mode/model/effort/…)
-  /** Current session id; the draft resets whenever it changes. */
+  @property configOptions;
   @property sessionId;
 
   @emitter send;
@@ -50,9 +41,13 @@ class AgentComposerElement extends GemElement {
   #fileInputRef = createRef();
   #textareaRef = createRef();
 
-  /** Clear the draft. The DOM value is reset imperatively as well: template
-   * property bindings only rewrite when the bound value differs from their
-   * last commit, which can desync once the user edited the field directly. */
+  focus = () => {
+    this.#textareaRef.value?.focus();
+  };
+
+  /** The DOM value is reset imperatively too: template property bindings only
+   * rewrite when the bound value differs from their last commit, which can
+   * desync once the user edited the field directly. */
   #clearDraft = () => {
     this.#s({ input: '', attachments: [] });
     if (this.#textareaRef.value) this.#textareaRef.value.value = '';
@@ -92,8 +87,6 @@ class AgentComposerElement extends GemElement {
     e.target.value = '';
   };
 
-  /** Turn one picked/pasted/dropped file into a staged attachment or a
-   * rejection reason. */
   #readFile = async (file) => {
     const base = { id: crypto.randomUUID(), name: file.name };
     try {

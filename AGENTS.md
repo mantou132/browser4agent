@@ -57,7 +57,7 @@
 - `extension/shared/icons.js`：通过 `extendIcons` 扩展 duoyun-ui 全局 icon store 的应用自定义图标（send/stop/file…）
 - `extension/shared/rpc.js`：对称双工 RPC 对端（`call` / `handle` / `notify`），同时用于 Native Host 链路和面板链路
 - `extension/shared/agent-api.js`：面板侧 agent 会话 async API 客户端（经 background 的 `agent-rpc` 端口转发）
-- `extension/pages/agent-panel.js`：DevTools 双栏 Agent 面板和侧边栏单列变体的会话、消息及权限交互逻辑；输入区（草稿、附件、配置 picker）在 `pages/elements/composer.js` 的 `agent-composer` 元素
+- `extension/pages/agent-panel.js`：DevTools 双栏 Agent 面板和侧边栏单列变体的会话状态与操作逻辑（会话缓存、加载/切换、权限、错误归属）；纯视图拆在 `pages/elements/`：会话列表 `session-list.js`（`agent-session-list`）、聊天区+滚动跟随+聚焦 `chat-pane.js`（`agent-chat-pane`）、输入区 `composer.js`（`agent-composer`）
 - `extension/tools.js`：MCP 工具实现
 - `src/native_messaging.rs`：Native Messaging 基础消息读写
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
