@@ -14,6 +14,7 @@ A browser extension that lets AI agents read browser tab content and drive the b
 - **Read content** — page text, cookies, localStorage, page errors, screenshots, and more.
 - **Drive the browser** — manage tabs and windows from a background script the agent writes itself.
 - **Run scripts in a tab** — agents can write one-off scripts on the fly; complex flows should ship as [page tools](#page-tools) and be called directly.
+- **Agent panel** — chat with a locally installed coding agent like Claude Code in DevTools or the side panel, next to the page it's driving.
 
 > ⚠️ **Security**
 > - Make sure your AI agent environment is not vulnerable to prompt injection — otherwise an attacker can read your browser data through the extension.
@@ -27,6 +28,12 @@ Agents can call tools scoped to the current tab. Two sources:
 - **Developer-provided** — page authors register tools via the [WebMCP][webmcp] API.
 
 [webmcp]: https://webmachinelearning.github.io/webmcp/
+
+## Agent panel
+
+Open the **Agent** panel in DevTools — or as the browser's side panel — to chat with a locally installed coding agent like Claude Code about the page you're on. Sessions stream live, support attachments and permission prompts, and you can keep several sessions and switch between them. Requires the Native Host, plus the agent installed and logged in locally.
+
+![Chatting with Claude Code in the Agent side panel](./docs/agent.png)
 
 ## Install
 

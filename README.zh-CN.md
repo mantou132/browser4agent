@@ -14,6 +14,7 @@
 - **读取内容** —— 页面文本、Cookie、localStorage、页面错误、截图等。
 - **操控浏览器** —— Agent 自己写后台脚本来管理标签页和窗口。
 - **在标签页中执行脚本** —— 简单脚本 Agent 现写现用；复杂流程应做成[页面工具](#页面工具)直接调用。
+- **Agent 面板** —— 在 DevTools 或浏览器侧边栏里和本地安装的编码 Agent（如 Claude Code）对话，就在它操作的页面旁边。
 
 > ⚠️ **安全提示**
 > - 确保你的 AI Agent 环境不受提示词注入攻击，否则攻击者可以通过扩展读取你的浏览器数据。
@@ -27,6 +28,12 @@ Agent 可以调用作用于当前标签页的工具。来源有两种：
 - **开发者提供** —— 页面作者通过 [WebMCP][webmcp] API 主动注册的工具。
 
 [webmcp]: https://webmachinelearning.github.io/webmcp/
+
+## Agent 面板
+
+在 DevTools 打开 **Agent** 面板（或作为浏览器侧边栏），即可和本地安装的编码 Agent（如 Claude Code）聊当前页面。会话实时流式输出，支持附件、权限确认，可以保留多个会话并随时切换。需要安装 Native Host，且对应 Agent 已在本地安装并登录。
+
+![在浏览器侧边栏中和 Claude Code 对话](./docs/agent.png)
 
 ## 安装
 
