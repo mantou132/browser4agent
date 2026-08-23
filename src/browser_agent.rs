@@ -254,14 +254,17 @@ pub fn register(peer: &Peer) {
     peer.handle("agent_prompt", move |params, ctx| {
         let sessions = prompt_sessions.clone();
         async move {
+            // The prompt may be empty when the content lives in attachments.
             let prompt = params
                 .get("prompt")
                 .and_then(|v| v.as_str())
-                .map(str::to_string)
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| "agent_prompt requires a string prompt".to_string())?;
+                .unwrap_or_default()
+                .to_string();
             let timeout_secs = message_timeout_secs(&params);
             let attachments = message_attachments(&params)?;
+            if prompt.is_empty() && attachments.is_empty() {
+                return Err("agent_prompt requires a non-empty prompt or attachments".to_string());
+            }
             let session_id = params
                 .get("sessionId")
                 .and_then(|v| v.as_str())
@@ -469,6 +472,16 @@ fn message_attachments(params: &Value) -> Result<Vec<acp_agent::Attachment>, Str
     items
         .iter()
         .map(|item| match item.get("type").and_then(|v| v.as_str()) {
+            Some("text") => {
+                let text = item
+                    .get("text")
+                    .and_then(|v| v.as_str())
+                    .filter(|v| !v.is_empty())
+                    .ok_or_else(|| "text attachment requires non-empty text".to_string())?;
+                Ok(acp_agent::Attachment::Text {
+                    text: text.to_string(),
+                })
+            }
             Some("image") => {
                 let data = item
                     .get("data")

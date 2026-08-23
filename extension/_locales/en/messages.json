@@ -97,14 +97,32 @@
   "description": {
     "message": "Description"
   },
+  "devtoolsPanelAttach": {
+    "message": "Add attachment"
+  },
+  "devtoolsPanelAttachmentFailed": {
+    "message": "Could not read that file"
+  },
+  "devtoolsPanelAttachmentTooLarge": {
+    "message": "Text file too large (256 KB max)"
+  },
+  "devtoolsPanelAttachmentUnsupported": {
+    "message": "Only image and text files can be attached"
+  },
   "devtoolsPanelCancel": {
     "message": "Cancel"
   },
   "devtoolsPanelDelete": {
     "message": "Delete session"
   },
+  "devtoolsPanelDropToAttach": {
+    "message": "Drop to attach"
+  },
   "devtoolsPanelEmpty": {
     "message": "Click “New” or pick a session on the left to start chatting"
+  },
+  "devtoolsPanelImageAttachment": {
+    "message": "Image"
   },
   "devtoolsPanelLoading": {
     "message": "Loading session…"
@@ -120,6 +138,9 @@
   },
   "devtoolsPanelPlaceholder": {
     "message": "Message the agent — Enter to send, Shift+Enter for a new line"
+  },
+  "devtoolsPanelRemoveAttachment": {
+    "message": "Remove attachment"
   },
   "devtoolsPanelSend": {
     "message": "Send"

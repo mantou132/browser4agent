@@ -323,6 +323,8 @@ fn system_prompt_meta(prompt: &str) -> serde_json::Map<String, serde_json::Value
 
 /// Extra content sent along with a prompt.
 pub enum Attachment {
+    /// Plain text, e.g. the contents of an attached text file.
+    Text { text: String },
     /// Base64-encoded image (`data` without the data URL prefix).
     Image { data: String, mime_type: String },
     /// Resource the agent reads itself, e.g. a `file://` path on the host.
@@ -336,6 +338,7 @@ pub enum Attachment {
 impl Attachment {
     fn into_content_block(self) -> ContentBlock {
         match self {
+            Attachment::Text { text } => ContentBlock::Text(TextContent::new(text)),
             Attachment::Image { data, mime_type } => {
                 ContentBlock::Image(ImageContent::new(data, mime_type))
             }
@@ -553,8 +556,7 @@ impl AgentSessionManager {
         let (turn_event_tx, last_activity) = match event_tx {
             Some(tx) => {
                 let (turn_tx, mut turn_rx) = mpsc::unbounded_channel::<AgentEvent>();
-                let last_activity =
-                    Arc::new(std::sync::Mutex::new(tokio::time::Instant::now()));
+                let last_activity = Arc::new(std::sync::Mutex::new(tokio::time::Instant::now()));
                 let pump_activity = last_activity.clone();
                 tokio::spawn(async move {
                     while let Some(event) = turn_rx.recv().await {
@@ -945,8 +947,12 @@ async fn run_prompt_turn(
 
     // `send_prompt` only takes text, so build the request manually to support
     // image/resource blocks. The final stop reason then arrives as the
-    // request response instead of through the update stream.
-    let mut content: Vec<ContentBlock> = vec![ContentBlock::Text(TextContent::new(prompt))];
+    // request response instead of through the update stream. An empty prompt
+    // is fine as long as attachments carry the content (callers validate).
+    let mut content: Vec<ContentBlock> = Vec::new();
+    if !prompt.is_empty() {
+        content.push(ContentBlock::Text(TextContent::new(prompt)));
+    }
     content.extend(attachments.into_iter().map(Attachment::into_content_block));
     let stop = session
         .connection()

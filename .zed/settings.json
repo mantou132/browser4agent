@@ -4,6 +4,7 @@
 // see the documentation: https://zed.dev/docs/configuring-zed#settings-files
 {
   "tab_size": 2,
+  "format_on_save": "on",
   "formatter": {
     "language_server": {
       "name": "biome"

@@ -100,7 +100,7 @@ class AgentMessageBubbleElement extends GemElement {
           <summary class="cursor-pointer select-none px-2.5 py-1 font-medium text-text">
             <span>${t('devtoolsThought')}</span>
           </summary>
-          <div ${this.#markdownRef} class="agent-markdown break-words px-2.5 pb-1 leading-relaxed"></div>
+          <div ${this.#markdownRef} class="agent-markdown wrap-break-word px-2.5 pb-1 leading-relaxed"></div>
         </details>
       `;
     }
@@ -113,20 +113,14 @@ class AgentMessageBubbleElement extends GemElement {
             <span class="font-medium text-text">${title || t('devtoolsToolCall')}</span>
             <span v-if=${kind || status} class="ml-2 font-mono">${[kind, status].filter(Boolean).join(' / ')}</span>
           </summary>
-          ${
-            rawInput === undefined
-              ? null
-              : html`
-                  <div class="border-t border-border p-2.5">
-                    <div class="mb-1.5 font-medium text-describe">${t('devtoolsToolInput')}</div>
-                    <pre class="m-0 overflow-auto rounded bg-bg p-2.5 font-mono leading-relaxed text-text">${JSON.stringify(
-                      rawInput,
-                      null,
-                      2,
-                    )}</pre>
-                  </div>
-                `
-          }
+          <div v-if=${rawInput !== undefined} class="border-t border-border p-2.5">
+            <div class="mb-1.5 font-medium text-describe">${t('devtoolsToolInput')}</div>
+            <pre class="m-0 overflow-auto rounded bg-bg p-2.5 font-mono leading-relaxed text-text">${JSON.stringify(
+              rawInput,
+              null,
+              2,
+            )}</pre>
+          </div>
         </details>
       `;
     }
@@ -148,14 +142,17 @@ class AgentMessageBubbleElement extends GemElement {
       <div class=${`my-3 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
         <div
           class=${classMap({
-            'max-w-[85%] rounded-lg px-3.5 py-2.5 leading-relaxed break-words shadow-sm': true,
-            'whitespace-pre-wrap': isUser,
-            'bg-primary text-white rounded-br-xs': isUser,
-            'bg-bg-light text-text border border-border rounded-bl-xs': !isUser,
+            'rounded-lg px-3.5 py-2.5 leading-relaxed break-words': true,
+            'max-w-[85%] bg-primary text-white rounded-br-xs': isUser,
+            'w-full bg-bg-light text-text border border-border rounded-bl-xs': !isUser,
           })}
         >
-          ${isUser ? msg.text : html`<div ${this.#markdownRef} class="agent-markdown"></div>`}
-        </div>
+          <div v-if=${isUser && msg.attachments?.length} class="mb-1.5 flex flex-wrap justify-end gap-1">
+            ${msg.attachments?.map(
+              (item) => html`<agent-attachment inverted small .attachment=${item}></agent-attachment>`,
+            )}
+          </div>
+          ${isUser ? msg.text : html`<div ${this.#markdownRef} class="agent-markdown"></div>`}</div>
       </div>
     `;
   };

@@ -60,11 +60,15 @@ export function createAgentApi() {
      * `options.onEvent`, events are also streamed:
      * `{ event: 'session_update', update }` (ACP session updates, text
      * chunks included) and finally `{ event: 'stop', stop_reason }`.
+     * An empty `prompt` is allowed when attachments carry the content.
      * Attachments wire format, passed through as-is:
-     * `[{ type: 'image', data: '<base64>', mimeType }, { type: 'resource', uri, name, mimeType? }]` */
+     * `[{ type: 'image', data: '<base64>', mimeType },
+     *   { type: 'text', text: '<file contents>' },
+     *   { type: 'resource', uri, name, mimeType? }]` */
     async ask(prompt, options = {}) {
-      if (typeof prompt !== 'string' || !prompt.trim()) {
-        return Promise.reject(new Error('ask requires a non-empty prompt'));
+      const hasAttachments = Array.isArray(options.attachments) && options.attachments.length > 0;
+      if ((typeof prompt !== 'string' || !prompt.trim()) && !hasAttachments) {
+        return Promise.reject(new Error('ask requires a non-empty prompt or attachments'));
       }
       if (typeof options.sessionId !== 'string' || !options.sessionId) {
         return Promise.reject(new Error('ask requires a sessionId'));
