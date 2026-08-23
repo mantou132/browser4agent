@@ -119,13 +119,16 @@
     "message": "Drop to attach"
   },
   "devtoolsPanelEmpty": {
-    "message": "Click “New” or pick a session on the left to start chatting"
+    "message": "Click “New” or pick a session on the left to start chatting. Requires Claude Code installed and logged in locally"
   },
   "devtoolsPanelImageAttachment": {
     "message": "Image"
   },
   "devtoolsPanelLoading": {
     "message": "Loading session…"
+  },
+  "devtoolsPanelHostReconnected": {
+    "message": "Native host reconnected — the current session is stale; reopen or create a session"
   },
   "devtoolsPanelNew": {
     "message": "New"

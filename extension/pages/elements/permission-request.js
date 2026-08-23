@@ -14,7 +14,7 @@ class AgentPermissionRequestElement extends GemElement {
     const input = toolCall.rawInput;
 
     return html`
-      <section class="mx-auto my-2 w-full max-w-xl rounded-lg border border-border bg-bg shadow-lg">
+      <section class="my-2 w-full rounded-lg border border-border bg-bg-light/60">
         <header class="px-3 py-2">
           <div class="flex items-center justify-between gap-3">
             <h2 class="m-0 text-sm font-semibold text-highlight">${t('devtoolsPermissionTitle')}</h2>

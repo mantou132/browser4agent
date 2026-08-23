@@ -118,11 +118,19 @@ peer.handle('execute_script_in_background', (p) => executeScriptInBackground(p.f
 peer.handle('get_local_storage', (p) => getLocalStorage(p.tabId));
 peer.handle('screenshot_tab', (p) => screenshotTab(p.tabId));
 
-peer.onNotify('connected', () => console.log('Connected to native host:', NATIVE_HOST_NAME));
 const agentSessionOwners = new Map();
+const agentPanelPeers = new Set();
+peer.onNotify('connected', () => {
+  console.log('Connected to native host:', NATIVE_HOST_NAME);
+  // A (re)connected host process knows no live sessions; panels must drop
+  // their cached state.
+  for (const panel of agentPanelPeers) panel.notify('host_reconnected', {});
+});
 peer.onNotify('agent_session_ended', (params) => {
   console.log('Agent session ended:', params?.sessionId);
   agentSessionOwners.delete(params?.sessionId);
+  // Panels keep per-session state for live sessions; let them drop dead ones.
+  for (const panel of agentPanelPeers) panel.notify('agent_session_ended', params);
 });
 
 peer.handle('agent_permission_request', async (params) => {
@@ -154,12 +162,14 @@ chrome.runtime.onConnect.addListener((panelPort) => {
   if (panelPort.name !== 'agent-rpc') return;
   const panel = new RpcPeer((msg) => panelPort.postMessage(msg), 'p');
   panelPort.onMessage.addListener((msg) => panel.dispatch(msg));
+  agentPanelPeers.add(panel);
   // Live sessions opened by this panel instance; closed when the panel
   // disconnects (devtools closed) so the agent subprocesses don't leak.
   const liveSessions = new Set();
   let disconnected = false;
   panelPort.onDisconnect.addListener(() => {
     disconnected = true;
+    agentPanelPeers.delete(panel);
     panel.rejectAll(new Error('Agent panel disconnected'));
     for (const sessionId of liveSessions) {
       if (agentSessionOwners.get(sessionId) === panel) agentSessionOwners.delete(sessionId);

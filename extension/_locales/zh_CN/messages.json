@@ -119,13 +119,16 @@
     "message": "松开以添加附件"
   },
   "devtoolsPanelEmpty": {
-    "message": "点击「新建」或从左侧选择一个会话开始对话"
+    "message": "点击「新建」或从左侧选择一个会话开始对话。需要本地已安装并登录 Claude Code"
   },
   "devtoolsPanelImageAttachment": {
     "message": "图片"
   },
   "devtoolsPanelLoading": {
     "message": "加载会话中…"
+  },
+  "devtoolsPanelHostReconnected": {
+    "message": "Native host 已重连，当前会话已失效，请重新打开或新建会话"
   },
   "devtoolsPanelNew": {
     "message": "新建"
