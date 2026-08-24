@@ -51,6 +51,7 @@
 ## 关键文件
 
 - `extension/extension.config.mjs`：扩展构建配置和 Gem SWC 插件
+- `extension/loaders/prism-local.cjs`：构建期把 dy-code-block 的 esm.sh Prism 地址改写为本地 vendor（`extension/public/vendor/prismjs/`），扩展 CSP 不允许远程脚本
 - `extension/theme.js`：duoyun-ui 全局主题
 - `extension/tailwind.css`：扩展全局 Tailwind 主题和基础样式
 - `extension/shared/i18n.js`：扩展侧 `t()` 翻译帮助函数和页面语言/标题同步

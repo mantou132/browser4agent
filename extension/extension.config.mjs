@@ -18,6 +18,12 @@ export default {
     config.target = ['web', 'es2024'];
     config.module ??= {};
     config.module.rules ??= [];
+    // dy-code-block 的 Prism 改为本地 vendor，见 loaders/prism-local.cjs
+    config.module.rules.unshift({
+      test: /\.js$/,
+      include: (filename) => /[\\/]duoyun-ui[\\/]elements[\\/]code-block\.js$/.test(filename),
+      use: [{ loader: new URL('./loaders/prism-local.mjs', import.meta.url).pathname }],
+    });
     config.module.rules.unshift({
       test: /\.js$/,
       enforce: 'pre',

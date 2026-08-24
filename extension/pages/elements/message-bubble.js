@@ -1,93 +1,107 @@
+import { GemBindMarkedElement } from '@gem-bind/marked';
 import { theme } from 'duoyun-ui/lib/theme';
-import { marked } from 'marked';
 import { t } from '../../shared/i18n.js';
 
-const style = css`
-  :scope {
-    .agent-markdown {
-      line-height: 1.6;
+import 'duoyun-ui/elements/code-block';
 
-      &:first-child { margin-top: 0; }
-      &:last-child { margin-bottom: 0; }
-
-      p {
-        margin: 0;
-        &:not(:first-child) { margin-top: 0.4rem; }
-      }
-
-      h1, h2, h3 {
-        margin: 0.65rem 0 0.3rem;
-        font-weight: 650;
-      }
-      h1 { font-size: 1.2em; }
-      h2 { font-size: 1.1em; }
-
-      ul, ol {
-        margin: 0.3rem 0;
-        padding-left: 1.35rem;
-      }
-      li + li { margin-top: 0.15rem; }
-
-      blockquote {
-        margin: 0.4rem 0;
-        border-left: 3px solid ${theme.borderColor};
-        padding-left: 0.75rem;
-        color: ${theme.describeColor};
-      }
-
-      pre {
-        margin: 0.5rem 0;
-        overflow-x: auto;
-        border-radius: 4px;
-        background: ${theme.backgroundColor};
-        padding: 0.65rem 0.75rem;
-      }
-      code {
-        border-radius: 3px;
-        background: ${theme.backgroundColor};
-        padding: 0.1em 0.3em;
-        font: 0.9em/1.4 ui-monospace, SFMono-Regular, Consolas, monospace;
-      }
-      pre code { background: none; padding: 0; }
-      a { color: ${theme.primaryColor}; text-decoration: underline; }
-    }
+GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
+  :host {
+    display: block;
+    line-height: 1.6;
   }
-`;
+  p {
+    margin: 0;
+  }
+  p:not(:first-child) {
+    margin-top: 0.4rem;
+  }
+  h1,
+  h2,
+  h3 {
+    margin: 0.65rem 0 0.3rem;
+    font-weight: 650;
+  }
+  h1 {
+    font-size: 1.2em;
+  }
+  h2 {
+    font-size: 1.1em;
+  }
+  ul,
+  ol {
+    margin: 0.3rem 0;
+    padding-left: 1.35rem;
+  }
+  li + li {
+    margin-top: 0.15rem;
+  }
+  blockquote {
+    margin: 0.4rem 0;
+    border-left: 3px solid ${theme.borderColor};
+    padding-left: 0.75rem;
+    color: ${theme.describeColor};
+  }
+  table {
+    display: block;
+    max-width: 100%;
+    margin: 0.5rem 0;
+    overflow-x: auto;
+    border-collapse: collapse;
+    border: 1px solid ${theme.borderColor};
+    font-size: 0.9em;
+  }
+  th,
+  td {
+    border: 1px solid ${theme.borderColor};
+    padding: 0.3rem 0.6rem;
+  }
+  thead {
+    background: ${theme.backgroundColor};
+  }
+  th:not([align]) {
+    text-align: left;
+  }
+  code {
+    border-radius: 3px;
+    background: ${theme.backgroundColor};
+    padding: 0.1em 0.3em;
+    font-size: 0.9em;
+    lien-height: 1.4;
+    font-family: ${theme.codeFont};
+  }
+  dy-code-block {
+    margin: 0.5rem 0;
+    border: 1px solid ${theme.borderColor};
+    background: ${theme.backgroundColor};
+  }
+  a {
+    color: ${theme.primaryColor};
+    text-decoration: underline;
+  }
+`);
 
-const safeUrl = (value) => (/^(?:https?:|mailto:|\/|#)/i.test(value.trim()) ? value.trim() : '#');
-const escapeAttribute = (value) =>
-  String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-const markdownRenderer = new marked.Renderer();
-markdownRenderer.link = function ({ href, title, tokens }) {
-  const label = this.parser.parseInline(tokens);
-  const titleAttribute = title ? ` title="${escapeAttribute(title)}"` : '';
-  return `<a href="${escapeAttribute(safeUrl(href))}" target="_blank" rel="noopener noreferrer"${titleAttribute}>${label}</a>`;
-};
-
-const markdownToHtml = (value) =>
-  marked.parse(value || '', {
-    async: false,
-    breaks: true,
+const markdownExtensions = [
+  {
     gfm: true,
-    html: false,
-    renderer: markdownRenderer,
-  });
+    breaks: true,
+    renderer: {
+      link({ href, title, tokens }) {
+        // TODO：默认编辑器中打开本地文件
+        const label = this.parser.parseInline(tokens);
+        const titleAttribute = title ? `title="${title}"` : '';
+        return `<a href="${href}" target="_blank" rel="noopener noreferrer" ${titleAttribute}>${label}</a>`;
+      },
+      code({ text, lang }) {
+        const language = (lang || '').trim().split(/\s+/)[0];
+        return `<dy-code-block ${language ? `codelang="${language}"` : ''}>${text}</dy-code-block>`;
+      },
+    },
+  },
+];
 
 @customElement('agent-message-bubble')
-@adoptedStyle(style)
 class AgentMessageBubbleElement extends GemElement {
   @property message;
-
-  #markdownRef = createRef();
-  #markdownText = '';
-
-  @effect()
-  #updateMarkdown = () => {
-    const text = this.message?.text || '';
-    if (!this.#markdownRef.value || text === this.#markdownText) return;
-    this.#markdownText = text;
-    this.#markdownRef.value.innerHTML = markdownToHtml(text);
-  };
 
   @template()
   #content = () => {
@@ -100,7 +114,11 @@ class AgentMessageBubbleElement extends GemElement {
           <summary class="cursor-pointer select-none px-2.5 py-1 font-medium text-text">
             <span>${t('devtoolsThought')}</span>
           </summary>
-          <div ${this.#markdownRef} class="agent-markdown wrap-break-word px-2.5 pb-1 leading-relaxed"></div>
+          <gem-bind-marked
+            class="block wrap-break-word px-2.5 pb-1 leading-relaxed"
+            .extensions=${markdownExtensions}
+            >${msg.text || ''}</gem-bind-marked
+          >
         </details>
       `;
     }
@@ -152,7 +170,11 @@ class AgentMessageBubbleElement extends GemElement {
               (item) => html`<agent-attachment inverted small .attachment=${item}></agent-attachment>`,
             )}
           </div>
-          ${isUser ? msg.text : html`<div ${this.#markdownRef} class="agent-markdown"></div>`}</div>
+          ${
+            isUser
+              ? msg.text
+              : html`<gem-bind-marked .extensions=${markdownExtensions}>${msg.text || ''}</gem-bind-marked>`
+          }</div>
       </div>
     `;
   };
