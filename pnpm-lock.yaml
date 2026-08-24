@@ -39,8 +39,8 @@ importers:
   extension:
     dependencies:
       '@gem-bind/diff2html':
-        specifier: ^0.0.1
-        version: 0.0.1
+        specifier: ^0.0.2
+        version: 0.0.2
       '@gem-bind/marked':
         specifier: ^0.0.2
         version: 0.0.2
@@ -50,6 +50,9 @@ importers:
       '@swc/helpers':
         specifier: ^0.5.21
         version: 0.5.21
+      diff:
+        specifier: ^8.0.4
+        version: 8.0.4
       duoyun-ui:
         specifier: ^2.2.3
         version: 2.2.3(patch_hash=c3594afe5a41399964b13e4db6d89845d2181c5825576d62e97cf8fe59e0a018)(@mantou/gem@2.2.6)
@@ -689,8 +692,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@gem-bind/diff2html@0.0.1':
-    resolution: {integrity: sha512-1IarkRrtUt5bTvIPM/qoFh4K7Uwy/JdCRGcg/3r3CQ5GliSxCzwfrMkRbKBpLOiUW9yFhm9JCobD5oPIE2pbog==}
+  '@gem-bind/diff2html@0.0.2':
+    resolution: {integrity: sha512-wHbpryPaXdNkAXeZtJk9MFtN1l3WZp9H19wOXiHK5qBQKv/e7EGSX7E/lQB/wL+dcHQmhCxDOBJvTaqfBYnlMg==}
 
   '@gem-bind/marked@0.0.2':
     resolution: {integrity: sha512-O0QeV+I03yP/TSl3K7HDK/hr+waXG/pUG8EqQhwuq/YzhR9ZuMnp3zpAgwIy5gzQxeyEaLss7JiuSJ91rfaMLg==}
@@ -871,6 +874,9 @@ packages:
 
   '@mantou/gem@2.2.6':
     resolution: {integrity: sha512-l0V0M4VtKLdBRTpGAsyGO8eO0z37ISwFq4CgZb9nREAcx0ihAgadMKO4HmPjFz8oHNERJw4q4YBcXLKW5w80Sg==}
+
+  '@mantou/gem@2.2.8':
+    resolution: {integrity: sha512-hoNKfs17DNwjtKOc9TNkqTf255vhuhjBygjIybDoEzDBWyORfYorVD9TCanHttvSsvMQKqB8TIjShI6nVPkF5g==}
 
   '@napi-rs/wasm-runtime@1.1.4':
     resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
@@ -1095,6 +1101,9 @@ packages:
 
   '@swc/helpers@0.5.21':
     resolution: {integrity: sha512-jI/VAmtdjB/RnI8GTnokyX7Ug8c+g+ffD6QRLa6XQewtnGyukKkKSk3wLTM3b5cjt1jNh9x0jfVlagdN2gDKQg==}
+
+  '@swc/helpers@0.5.23':
+    resolution: {integrity: sha512-5lSsMOTXURePglDfvuAQUqkGek9Hg2kksOYay2m0+XR++b2NWYL/4sWyuvVBIs8oKnJaxkdi9whaL/sqN13afw==}
 
   '@swc/types@0.1.26':
     resolution: {integrity: sha512-lyMwd7WGgG79RS7EERZV3T8wMdmPq3xwyg+1nmAM64kIhx5yl+juO2PYIHb7vTiPgPCj8LYjsNV2T5wiQHUEaw==}
@@ -3375,12 +3384,13 @@ snapshots:
   '@esbuild/win32-x64@0.27.3':
     optional: true
 
-  '@gem-bind/diff2html@0.0.1':
+  '@gem-bind/diff2html@0.0.2':
     dependencies:
-      '@mantou/gem': 2.2.6
-      '@swc/helpers': 0.5.21
+      '@mantou/gem': 2.2.8
+      '@swc/helpers': 0.5.23
       diff2html: 3.4.56
-      duoyun-ui: 2.2.3(patch_hash=c3594afe5a41399964b13e4db6d89845d2181c5825576d62e97cf8fe59e0a018)(@mantou/gem@2.2.6)
+      duoyun-ui: 2.2.3(patch_hash=c3594afe5a41399964b13e4db6d89845d2181c5825576d62e97cf8fe59e0a018)(@mantou/gem@2.2.8)
+      highlight.js: 11.11.1
 
   '@gem-bind/marked@0.0.2':
     dependencies:
@@ -3533,6 +3543,8 @@ snapshots:
       '@jridgewell/sourcemap-codec': 1.5.5
 
   '@mantou/gem@2.2.6': {}
+
+  '@mantou/gem@2.2.8': {}
 
   '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
@@ -3701,6 +3713,10 @@ snapshots:
   '@swc/counter@0.1.3': {}
 
   '@swc/helpers@0.5.21':
+    dependencies:
+      tslib: 2.8.1
+
+  '@swc/helpers@0.5.23':
     dependencies:
       tslib: 2.8.1
 
@@ -4216,6 +4232,13 @@ snapshots:
       deep-query-selector: 1.0.2
       elkjs: 0.7.1
 
+  duoyun-ui@2.2.3(patch_hash=c3594afe5a41399964b13e4db6d89845d2181c5825576d62e97cf8fe59e0a018)(@mantou/gem@2.2.8):
+    dependencies:
+      '@mantou/gem': 2.2.8
+      d3-geo: 3.1.1
+      deep-query-selector: 1.0.2
+      elkjs: 0.7.1
+
   edge-location@2.2.0:
     dependencies:
       which: 2.0.2
@@ -4560,8 +4583,7 @@ snapshots:
     dependencies:
       function-bind: 1.1.2
 
-  highlight.js@11.11.1:
-    optional: true
+  highlight.js@11.11.1: {}
 
   human-signals@5.0.0: {}
 
