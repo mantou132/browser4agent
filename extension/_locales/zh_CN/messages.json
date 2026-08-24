@@ -233,6 +233,9 @@
   "flowHostDesc": {
     "message": "本地安全通信桥"
   },
+  "hostIncompatTitle": {
+    "message": "扩展与 native host 不兼容，请升级 native host"
+  },
   "howItWorks": {
     "message": "工作原理"
   },
