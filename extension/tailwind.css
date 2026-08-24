@@ -6,14 +6,17 @@
   --color-primary: var(--color-indigo-500);
   /* Palette pairs resolve via the used `color-scheme`; custom properties
      inherit into ShadowDOM, so duoyun-ui elements follow. */
-  --color-highlight: light-dark(var(--color-slate-900), var(--color-slate-200));
-  --color-text: light-dark(var(--color-slate-700), var(--color-slate-300));
-  --color-describe: light-dark(var(--color-slate-500), var(--color-slate-400));
-  --color-bg: light-dark(var(--color-white), var(--color-slate-900));
-  --color-bg-light: light-dark(var(--color-slate-50), var(--color-slate-800));
-  --color-bg-hover: light-dark(var(--color-slate-100), var(--color-slate-700));
-  --color-border: light-dark(var(--color-slate-200), var(--color-slate-700));
-  --color-disabled: light-dark(var(--color-slate-200), var(--color-slate-700));
+  /* 暗色取 ChatGPT/Codex 应用的炭灰色阶（主底 #212121）；slate 在 DevTools 里泛蓝 */
+  --color-highlight: light-dark(var(--color-slate-900), #ececec);
+  --color-text: light-dark(var(--color-slate-700), #e0e0e0);
+  --color-describe: light-dark(var(--color-slate-500), #a0a0a0);
+  --color-bg: light-dark(var(--color-white), #212121);
+  --color-bg-light: light-dark(var(--color-slate-50), #2f2f2f);
+  --color-bg-hover: light-dark(var(--color-slate-100), #3d3d3d);
+  --color-border: light-dark(var(--color-slate-200), #383838);
+  --color-disabled: light-dark(var(--color-slate-200), #444444);
+  /* 用户消息气泡：亮色跟随主色，暗色用中性灰（Codex 风格） */
+  --color-user-bubble: light-dark(var(--color-indigo-500), #323232);
   --color-informative: var(--color-sky-500);
   --color-neutral: var(--color-slate-400);
   --color-positive: var(--color-teal-500);

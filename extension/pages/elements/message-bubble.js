@@ -50,7 +50,6 @@ GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
     margin: 0.5rem 0;
     overflow-x: auto;
     border-collapse: collapse;
-    border: 1px solid ${theme.borderColor};
     font-size: 0.9em;
   }
   th,
@@ -76,6 +75,17 @@ GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
     margin: 0.5rem 0;
     border: 1px solid ${theme.borderColor};
     background: ${theme.backgroundColor};
+    /* token 配色只有一套亮色默认值，深色底上不可读：亮色沿用默认值，
+       暗色对齐 vendor 的 github-dark（和 diff2html 的 hljs 主题一致）*/
+    --code-comment-color: light-dark(#6e6e6e, #8b949e);
+    --code-title-color: light-dark(#4646c6, #c9d1d9);
+    --code-section-color: light-dark(#c9252d, #7ee787);
+    --code-variable-color: light-dark(#ae0e66, #ffa657);
+    --code-literal-color: light-dark(#6f38b1, #79c0ff);
+    --code-string-color: light-dark(#12805c, #a5d6ff);
+    --code-function-color: light-dark(#0d66d0, #d2a8ff);
+    --code-keyword-color: light-dark(#93219e, #ff7b72);
+    --code-attribute-color: light-dark(#4646c6, #79c0ff);
   }
   a {
     color: ${theme.primaryColor};
@@ -88,7 +98,7 @@ const diffColorScheme = globalThis.chrome?.devtools?.panels?.themeName === 'dark
 // 工具标题已含文件路径，隐藏 d2h 文件头；
 // 元素把自己的样式表排在外来之后，特异性必须高于上游的 .d2h-file-header 才能覆盖
 GemBindDiff2htmlElement[Symbol.metadata].adoptedStyleSheets.push(css`
-  .d2h-wrapper {
+  div.d2h-wrapper {
     .d2h-file-header {
       display: none;
     }
@@ -149,7 +159,7 @@ class AgentMessageBubbleElement extends GemElement {
       const { title, kind, status, rawInput } = msg.data || {};
       const diffs = toolCallDiffs(msg.data);
       return html`
-        <details class="my-2 rounded border border-border bg-bg-light/60 text-xs text-describe">
+        <details class="my-2 rounded border border-border bg-bg-light/60 text-xs text-describe overflow-hidden">
           <summary class="wrap-anywhere cursor-pointer select-none px-2.5 py-2 hover:text-text">
             <span class="font-medium text-text">${title || t('devtoolsToolCall')}</span>
             <span v-if=${kind || status} class="ml-2 font-mono">${[kind, status].filter(Boolean).join(' / ')}</span>
@@ -194,7 +204,7 @@ class AgentMessageBubbleElement extends GemElement {
         <div
           class=${classMap({
             'rounded-lg px-3.5 py-2.5 leading-relaxed break-words': true,
-            'max-w-[85%] bg-primary text-white rounded-br-xs': isUser,
+            'max-w-[85%] bg-user-bubble text-white rounded-br-xs': isUser,
             'w-full bg-bg-light text-text border border-border rounded-bl-xs': !isUser,
           })}
         >
