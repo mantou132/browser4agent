@@ -15,7 +15,7 @@ use crate::{
 /// Run the native messaging loop on the current thread.
 /// Returns when stdin is closed (browser disconnected).
 async fn native_message_loop(peer: Peer) {
-    peer.notify("connected", serde_json::json!({}));
+    peer.notify("connected", serde_json::json!({ "version": env!("CARGO_PKG_VERSION") }));
     logger::info("Connected to browser extension");
 
     loop {

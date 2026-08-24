@@ -19,6 +19,9 @@ import {
 const NATIVE_HOST_NAME = 'browser4agent';
 const WELCOME_URL = chrome.runtime.getURL('pages/welcome.html');
 const MARKET_URL = chrome.runtime.getURL('pages/market.html');
+// Raise when the extension starts relying on host capabilities that older
+// native hosts don't have; hosts below this version get flagged incompatible.
+const MIN_HOST_VERSION = '0.2.0';
 
 chrome.runtime.onInstalled.addListener((details) => {
   ensureAuthToken();
@@ -120,8 +123,33 @@ peer.handle('screenshot_tab', (p) => screenshotTab(p.tabId));
 
 const agentSessionOwners = new Map();
 const agentPanelPeers = new Set();
-peer.onNotify('connected', () => {
+
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return Math.sign(d);
+  }
+  return 0;
+}
+
+async function updateHostCompat(version) {
+  if (typeof version === 'string' && compareVersions(version, MIN_HOST_VERSION) >= 0) {
+    await chrome.action.setBadgeText({ text: '' });
+    await chrome.action.setTitle({ title: t('actionTitle') });
+    return;
+  }
+  await chrome.action.setBadgeBackgroundColor({ color: '#ef4444' });
+  await chrome.action.setBadgeText({ text: '!' });
+  chrome.action.setBadgeTextColor?.({ color: '#ffffff' });
+  await chrome.action.setTitle({ title: t('hostIncompatTitle') });
+}
+
+peer.onNotify('connected', (params) => {
   console.log('Connected to native host:', NATIVE_HOST_NAME);
+  updateHostCompat(params?.version).catch((e) => console.error('Failed to check host compat:', e));
   // A (re)connected host process knows no live sessions; panels must drop
   // their cached state.
   for (const panel of agentPanelPeers) panel.notify('host_reconnected', {});

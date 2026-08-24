@@ -233,6 +233,9 @@
   "flowHostDesc": {
     "message": "Local secure bridge"
   },
+  "hostIncompatTitle": {
+    "message": "Extension incompatible with native host, please upgrade the native host"
+  },
   "howItWorks": {
     "message": "How It Works"
   },
