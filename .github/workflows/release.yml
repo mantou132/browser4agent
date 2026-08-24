@@ -134,6 +134,15 @@ jobs:
           generate_release_notes: true
           files: artifacts/**/*
 
+  # 直接调用而不是依赖 release published 事件：
+  # Release 是 GITHUB_TOKEN 发布的，其事件不会触发其它 workflow
+  bump-packages:
+    needs: [release]
+    uses: ./.github/workflows/bump-packages.yml
+    secrets: inherit
+    with:
+      tag: ${{ github.ref_name }}
+
   publish-chrome:
     needs: build-extension
     runs-on: ubuntu-latest

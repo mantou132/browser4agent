@@ -1,8 +1,15 @@
 name: Bump Packages
 
+# 由 release.yml 在 GitHub Release 发布后调用（workflow_call）。
+# 不能依赖 `on: release` 事件触发：Release 是用 GITHUB_TOKEN 发布的，
+# GITHUB_TOKEN 制造的事件不会触发其它 workflow（GitHub 防递归规则）。
 on:
-  release:
-    types: [published]
+  workflow_call:
+    inputs:
+      tag:
+        description: Release tag, e.g. v0.2.1
+        required: true
+        type: string
 
 jobs:
   homebrew:
@@ -15,7 +22,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p dist
-          gh release download "${{ github.event.release.tag_name }}" \
+          gh release download "${{ inputs.tag }}" \
             --repo "${{ github.repository }}" \
             --dir dist \
             --pattern '*.sha256'
@@ -23,7 +30,7 @@ jobs:
       - name: Resolve substitutions
         id: vars
         run: |
-          tag="${{ github.event.release.tag_name }}"
+          tag="${{ inputs.tag }}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           echo "mac_arm=$(cat dist/browser4agent-aarch64-apple-darwin.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
@@ -65,7 +72,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p dist
-          gh release download "${{ github.event.release.tag_name }}" \
+          gh release download "${{ inputs.tag }}" \
             --repo "${{ github.repository }}" \
             --dir dist \
             --pattern '*.sha256'
@@ -73,7 +80,7 @@ jobs:
       - name: Resolve substitutions
         id: vars
         run: |
-          tag="${{ github.event.release.tag_name }}"
+          tag="${{ inputs.tag }}"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           echo "win_x86=$(cat dist/browser4agent-x86_64-pc-windows-msvc.zip.sha256)" >> "$GITHUB_OUTPUT"
