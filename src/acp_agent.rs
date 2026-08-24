@@ -2,6 +2,7 @@ use std::{
     collections::{HashMap, VecDeque},
     future,
     path::PathBuf,
+    process::Command,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -30,20 +31,52 @@ use tokio::sync::{Mutex, mpsc, oneshot, watch};
 
 use crate::{logger, peer::BoxFuture};
 
-#[cfg(windows)]
-fn claude_agent_command() -> Vec<&'static str> {
+/// Local ACP agent candidates in priority order: the underlying CLI whose
+/// presence decides availability, and the adapter command to launch for it.
+fn agent_candidates() -> Vec<(&'static str, Vec<&'static str>)> {
+    let mut npx: Vec<&'static str> = if cfg!(windows) {
+        vec!["cmd", "/C", "npx"]
+    } else {
+        vec!["npx"]
+    };
+    npx.push("-y");
+    let adapter = |package: &'static str| {
+        let mut command = npx.clone();
+        command.push(package);
+        command
+    };
     vec![
-        "cmd",
-        "/C",
-        "npx",
-        "-y",
-        "@agentclientprotocol/claude-agent-acp",
+        (
+            "claude",
+            adapter("@agentclientprotocol/claude-agent-acp"),
+        ),
+        ("codex", adapter("@agentclientprotocol/codex-acp")),
     ]
 }
 
-#[cfg(not(windows))]
-fn claude_agent_command() -> Vec<&'static str> {
-    vec!["npx", "-y", "@agentclientprotocol/claude-agent-acp"]
+fn cli_available(cli: &str) -> bool {
+    // Windows only resolves `.cmd` shims through `cmd /C`, same as the npx
+    // launch itself.
+    let output = if cfg!(windows) {
+        Command::new("cmd").args(["/C", cli, "--version"]).output()
+    } else {
+        Command::new(cli).arg("--version").output()
+    };
+    output.map(|out| out.status.success()).unwrap_or(false)
+}
+
+fn detect_agent_command() -> Result<Vec<&'static str>> {
+    let mut missing = Vec::new();
+    for (cli, command) in agent_candidates() {
+        if cli_available(cli) {
+            return Ok(command);
+        }
+        missing.push(format!("'{cli}'"));
+    }
+    anyhow::bail!(
+        "No local ACP agent found; install {} first",
+        missing.join(" or ")
+    )
 }
 
 fn resolve_cwd(cwd: Option<PathBuf>) -> Result<PathBuf> {
@@ -142,7 +175,7 @@ impl AcpRuntime {
     }
 
     async fn serve_connection(&self, generation: u64) -> Result<()> {
-        let command = claude_agent_command();
+        let command = detect_agent_command()?;
         logger::info(&format!("Starting ACP agent: {}", command.join(" ")));
         let agent =
             AcpAgent::from_args(command).context("failed to configure ACP agent command")?;
