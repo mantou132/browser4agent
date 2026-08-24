@@ -51,10 +51,12 @@
 ## 关键文件
 
 - `extension/extension.config.mjs`：扩展构建配置和 Gem SWC 插件
-- `extension/loaders/prism-local.cjs`：构建期把 dy-code-block 的 esm.sh Prism 地址改写为本地 vendor（`extension/public/vendor/prismjs/`），扩展 CSP 不允许远程脚本
+- `extension/loaders/prism-local.mjs`：构建期把 dy-code-block 的 esm.sh Prism 地址改写为本地 vendor（`extension/public/vendor/prismjs/`），扩展 CSP 不允许远程脚本
+- `extension/loaders/diff2html-local.mjs`：构建期把 `@gem-bind/diff2html` 的远程样式地址（jsdelivr 的 diff2html、cdnjs 的 highlight.js 主题）改写为本地 vendor（`extension/public/vendor/`），避免运行时远程依赖
 - `extension/theme.js`：duoyun-ui 全局主题
 - `extension/tailwind.css`：扩展全局 Tailwind 主题和基础样式
 - `extension/shared/i18n.js`：扩展侧 `t()` 翻译帮助函数和页面语言/标题同步
+- `extension/shared/diff.js`：ACP tool call 的 diff 内容项转 unified diff 文本，配合 `<gem-bind-diff2html>` 在面板渲染文件编辑
 - `extension/shared/icons.js`：通过 `extendIcons` 扩展 duoyun-ui 全局 icon store 的应用自定义图标（send/stop/file…）
 - `extension/shared/rpc.js`：对称双工 RPC 对端（`call` / `handle` / `notify`），同时用于 Native Host 链路和面板链路
 - `extension/shared/agent-api.js`：面板侧 agent 会话 async API 客户端（经 background 的 `agent-rpc` 端口转发）

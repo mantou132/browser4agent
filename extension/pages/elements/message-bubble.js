@@ -1,7 +1,10 @@
+import { GemBindDiff2htmlElement } from '@gem-bind/diff2html';
 import { GemBindMarkedElement } from '@gem-bind/marked';
 import { theme } from 'duoyun-ui/lib/theme';
+import { toolCallDiffs } from '../../shared/diff.js';
 import { t } from '../../shared/i18n.js';
 
+import '@gem-bind/diff2html';
 import 'duoyun-ui/elements/code-block';
 
 GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
@@ -80,6 +83,25 @@ GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
   }
 `);
 
+const diffColorScheme = globalThis.chrome?.devtools?.panels?.themeName === 'dark' ? 'dark' : 'light';
+
+// 工具标题已含文件路径，隐藏 d2h 文件头；
+// 元素把自己的样式表排在外来之后，特异性必须高于上游的 .d2h-file-header 才能覆盖
+GemBindDiff2htmlElement[Symbol.metadata].adoptedStyleSheets.push(css`
+  .d2h-wrapper {
+    .d2h-file-header {
+      display: none;
+    }
+    .d2h-file-wrapper {
+      margin-bottom: 0;
+      border: none;
+    }
+    .d2h-code-linenumber {
+      border-left: none;
+    }
+  }
+`);
+
 const markdownExtensions = [
   {
     gfm: true,
@@ -125,13 +147,24 @@ class AgentMessageBubbleElement extends GemElement {
 
     if (msg.type === 'tool') {
       const { title, kind, status, rawInput } = msg.data || {};
+      const diffs = toolCallDiffs(msg.data);
       return html`
         <details class="my-2 rounded border border-border bg-bg-light/60 text-xs text-describe">
-          <summary class="cursor-pointer select-none px-2.5 py-2 hover:text-text">
+          <summary class="wrap-anywhere cursor-pointer select-none px-2.5 py-2 hover:text-text">
             <span class="font-medium text-text">${title || t('devtoolsToolCall')}</span>
             <span v-if=${kind || status} class="ml-2 font-mono">${[kind, status].filter(Boolean).join(' / ')}</span>
           </summary>
-          <div v-if=${rawInput !== undefined} class="border-t border-border p-2.5">
+          <div v-if=${diffs.length} class="border-t border-border">
+            ${diffs.map(
+              ({ text }) =>
+                html`<gem-bind-diff2html
+                  class="relative block w-full overflow-x-auto"
+                  .colorScheme=${diffColorScheme}
+                  >${text}</gem-bind-diff2html
+                >`,
+            )}
+          </div>
+          <div v-if=${!diffs.length && rawInput !== undefined} class="border-t border-border p-2.5">
             <div class="mb-1.5 font-medium text-describe">${t('devtoolsToolInput')}</div>
             <pre class="m-0 overflow-auto rounded bg-bg p-2.5 font-mono leading-relaxed text-text">${JSON.stringify(
               rawInput,
