@@ -23,14 +23,14 @@ class AgentPopupPageElement extends GemElement {
     window.close();
   };
 
-  #openAgentSidebar = async () => {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (chrome.sidePanel?.open && tab?.windowId != null) {
-      await chrome.sidePanel.open({ windowId: tab.windowId });
-    } else if (chrome.sidebarAction?.open) {
-      await chrome.sidebarAction.open();
-    }
-    window.close();
+  // open() 只能在用户输入处理器的同步调用链中调用，之前不能 await
+  #openAgentSidebar = () => {
+    const { tab } = this.#s;
+    const opening =
+      chrome.sidePanel?.open && tab?.windowId != null
+        ? chrome.sidePanel.open({ windowId: tab.windowId })
+        : chrome.sidebarAction?.open?.();
+    Promise.resolve(opening).finally(() => window.close());
   };
 
   #toggleTool = (toolsetId, toolName, e) => {

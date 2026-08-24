@@ -95,7 +95,7 @@ class AgentChatPaneElement extends GemElement {
         </div>
         <div
           v-if=${!loadingSession && !canChat}
-          class="grid min-h-0 flex-1 place-items-center text-center text-describe"
+          class="grid min-h-0 flex-1 place-items-center px-8 text-center text-describe"
         >
           <dy-empty text=${t('devtoolsPanelEmpty')}></dy-empty>
         </div>
