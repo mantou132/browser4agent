@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use rmcp::transport::streamable_http_server::{
     StreamableHttpService, session::local::LocalSessionManager,
@@ -7,7 +9,7 @@ use crate::{
     browser_agent,
     constant::{BIND_ADDRESS, MCP_PATH},
     logger,
-    mcp_server::BrowserMcpServer,
+    mcp_server::{BrowserMcpServer, Capabilities, SharedCapabilities},
     native_messaging::read_native_message,
     peer::Peer,
 };
@@ -32,7 +34,17 @@ async fn native_message_loop(peer: Peer) {
 pub async fn run() -> Result<()> {
     let peer = Peer::default();
     browser_agent::register(&peer);
-    let server = BrowserMcpServer::new(peer.clone());
+
+    let caps: SharedCapabilities = Arc::default();
+    {
+        let caps = caps.clone();
+        // The extension reports this right after receiving `connected`.
+        peer.on_notify("capabilities", move |params| {
+            *caps.lock().expect("lock poisoned") = Capabilities::from_params(&params);
+        });
+    }
+
+    let server = BrowserMcpServer::new(peer.clone(), caps);
 
     let service = StreamableHttpService::new(
         move || Ok(server.clone()),

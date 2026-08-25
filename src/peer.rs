@@ -107,8 +107,6 @@ impl Peer {
     }
 
     /// Register a handler for notifications from the peer.
-    // Kept for API symmetry with the extension peer; no rust-side consumer yet.
-    #[allow(dead_code)]
     pub fn on_notify<F>(&self, method: &str, f: F)
     where
         F: Fn(Value) + Send + Sync + 'static,

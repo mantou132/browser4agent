@@ -151,6 +151,13 @@ async function updateHostCompat(version) {
 peer.onNotify('connected', (params) => {
   console.log('Connected to native host:', NATIVE_HOST_NAME);
   updateHostCompat(params?.version).catch((e) => console.error('Failed to check host compat:', e));
+  // Tell the host what this engine supports so it can hide MCP tools the
+  // browser can't serve. Firefox exposes getBrowserInfo; Chromium doesn't.
+  const isFirefox = typeof chrome.runtime.getBrowserInfo === 'function';
+  peer.notify('capabilities', {
+    browser: isFirefox ? 'firefox' : 'chromium',
+    debuggerAvailable: !isFirefox,
+  });
   // A (re)connected host process knows no live sessions; panels must drop
   // their cached state.
   for (const panel of agentPanelPeers) panel.notify('host_reconnected', {});

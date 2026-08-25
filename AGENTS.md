@@ -22,8 +22,8 @@
   3. `src/skill_setup.rs` 为检测到的 agent 安装 SKILL
   4. `src/main.rs` 在安装 Native Messaging Host 后让用户选择安装 MCP 或 Skills；
 5. MCP 模式：
-  1. `src/native_host.rs` 负责本地消息循环和 MCP HTTP 服务；连接后发送的 `connected` 通知携带 host 版本（`CARGO_PKG_VERSION`），`extension/background.js` 的 `updateHostCompat` 用它和 `MIN_HOST_VERSION` 做兼容性检查，不兼容时在 action 图标上加警告徽标
-  2. `src/mcp_server.rs` MCP 服务端
+  1. `src/native_host.rs` 负责本地消息循环和 MCP HTTP 服务；连接后发送的 `connected` 通知携带 host 版本（`CARGO_PKG_VERSION`），`extension/background.js` 的 `updateHostCompat` 用它和 `MIN_HOST_VERSION` 做兼容性检查，不兼容时在 action 图标上加警告徽标；扩展收到 `connected` 后回发 `capabilities` 通知（浏览器内核、debugger 可用性）
+  2. `src/mcp_server.rs` MCP 服务端；按上报能力过滤工具列表（`CHROMIUM_ONLY_TOOLS`，能力未上报视为不可用）
 6. 浏览器端调用 Agent：
  1. `extension/devtools/` 的 DevTools 面板通过 `extension/shared/agent-api.js` 调用 agent 会话 API
  2. `extension/background.js` 里的 `agent-rpc` 端口桥把面板的 `agent_*` 请求透传给 Native Host，并原样转发流事件和最终响应
