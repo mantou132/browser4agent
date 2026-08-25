@@ -1,5 +1,10 @@
 import { getQuickJS } from 'quickjs-emscripten';
 
+// quickjs 的 glue 是懒加载分包，Chromium MV3 只允许 SW 安装期间 importScripts；
+// 启动时预热，否则首次调用会报
+// "importScripts() of new scripts after service worker installation is not allowed"
+const QuickJSPromise = getQuickJS();
+
 async function hostChromeInvoke(path, args) {
   const parts = path.split('.');
   let target = chrome;
@@ -42,8 +47,8 @@ async function addHostInvoke(vm) {
   vm.setProp(vm.global, '__host_invoke', hostInvokeHandle);
 }
 
-export async function exec(funcStr, args) {
-  const QuickJS = await getQuickJS();
+export async function exec(funcStr, args, globals = {}) {
+  const QuickJS = await QuickJSPromise;
   using vm = QuickJS.newContext();
 
   addHostInvoke(vm);
@@ -67,6 +72,18 @@ export async function exec(funcStr, args) {
       globalThis.chrome = createChromeProxy('');
     `),
   ).dispose();
+
+  // Lazy host-data bridges: each entry exposes a `name()` global in the VM,
+  // serializing the snapshot only when the script actually calls it. The native
+  // function returns the value directly (object ownership transfers to the VM),
+  // so no extra JSON.parse wrapper is needed.
+  for (const [name, getValue] of Object.entries(globals)) {
+    using fn = vm.newFunction(name, (...argHandles) => {
+      const args = argHandles.map((handle) => vm.dump(handle));
+      return vm.unwrapResult(vm.evalCode(`(${JSON.stringify(getValue(...args))})`));
+    });
+    vm.setProp(vm.global, name, fn);
+  }
 
   const argsJson = JSON.stringify(args || []);
   using promiseHandle = vm.unwrapResult(

@@ -36,6 +36,8 @@
     "webRequest",
     "search",
 
+    "debugger",
+
     "offscreen",
 
     "pageCapture",

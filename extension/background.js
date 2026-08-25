@@ -1,3 +1,4 @@
+import { debuggerDetach, debuggerSendCommand } from './debugger.js';
 import { trackDevtoolsPort } from './shared/devtools-tracker.js';
 import { t } from './shared/i18n.js';
 import { loadToolset } from './shared/loader.js';
@@ -121,6 +122,8 @@ peer.handle('execute_tab_tool', (p) => executeTabTool(p.tabId, p.toolsetId, p.to
 peer.handle('execute_script_in_background', (p) => executeScriptInBackground(p.funcStr, p.args));
 peer.handle('get_local_storage', (p) => getLocalStorage(p.tabId));
 peer.handle('screenshot_tab', (p) => screenshotTab(p.tabId));
+peer.handle('debugger_send_command', (p) => debuggerSendCommand(p.tabId, p.method, p.params));
+peer.handle('debugger_detach', (p) => debuggerDetach(p.tabId));
 
 const agentSessionOwners = new Map();
 const agentPanelPeers = new Set();

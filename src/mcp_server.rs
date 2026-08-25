@@ -13,9 +13,10 @@ use serde_json::{Value, json};
 
 use crate::peer::Peer;
 
-/// Tools that only work on a Chromium engine; hidden from tools/list unless
-/// the extension reports `debuggerAvailable`. Keep in sync with SKILL.md.
-const CHROMIUM_ONLY_TOOLS: &[&str] = &[];
+/// Tools that only work on a Chromium engine (they need `chrome.debugger`);
+/// hidden from tools/list unless the extension reports `debuggerAvailable`.
+/// Keep in sync with SKILL.md.
+const CHROMIUM_ONLY_TOOLS: &[&str] = &["debugger_send_command", "debugger_detach"];
 
 /// Browser-reported capabilities that decide which tools are exposed.
 #[derive(Clone, Copy, Debug, Default)]
@@ -103,6 +104,25 @@ pub struct ExecuteScriptInBackgroundParams {
     )]
     #[serde(default)]
     pub args: Vec<Value>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DebuggerSendCommandParams {
+    #[schemars(
+        description = "Target tab ID (obtained from list_tabs). The debugging session attaches \
+                       automatically."
+    )]
+    pub tab_id: i64,
+    #[schemars(
+        description = "CDP method name, e.g. Network.enable, Runtime.evaluate, DOM.getDocument."
+    )]
+    pub method: String,
+    #[schemars(
+        description = "Command parameters matching the CDP method's spec; omit or pass {} for \
+                       parameterless commands like Network.enable."
+    )]
+    #[serde(default)]
+    pub params: Value,
 }
 
 #[derive(Clone)]
@@ -243,9 +263,10 @@ impl BrowserMcpServer {
                        return its result. Use this to open/close tabs and windows \
                        (chrome.tabs.create/remove, chrome.windows.create/remove), intercept \
                        network requests, control downloads, etc. Cannot quit the browser process \
-                       itself. The full chrome.* API is available — async/await. Some APIs need \
-                       optional permissions; call await chrome.permissions.request({ permissions: \
-                       ['<name>'] }) first."
+                       itself. The full chrome.* API is available — async/await. On Chromium, the \
+                       `debuggerEvents(tab_id)` global function (see debugger_send_command) \
+                       returns that tab's { attached, cursor, events: [{method, params, time, \
+                       seq}] }, or null before any debugging session."
     )]
     async fn execute_script_in_background(
         &self,
@@ -297,6 +318,43 @@ impl BrowserMcpServer {
             )]));
         }
         Ok(json_result(&resp))
+    }
+
+    #[tool(
+        description = "(Chromium-only) Send a raw Chrome DevTools Protocol command to the tab to \
+                       debug network traffic, console, DOM, etc. Attaches automatically (Chrome \
+                       then shows a yellow \"started debugging\" banner; call debugger_detach \
+                       when done; fails while DevTools is open on that tab). Events are only \
+                       recorded after enabling their domain, e.g. send Network.enable, trigger \
+                       the action, then read them via execute_script_in_background's \
+                       `debuggerEvents` global. More domains can be enabled mid-session without \
+                       re-attaching. Warning: Debugger.pause blocks the page on a breakpoint \
+                       until Debugger.resume."
+    )]
+    async fn debugger_send_command(
+        &self,
+        Parameters(p): Parameters<DebuggerSendCommandParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.call(
+            "debugger_send_command",
+            json!({
+                "tabId": p.tab_id,
+                "method": p.method,
+                "params": p.params,
+            }),
+        )
+        .await
+    }
+
+    #[tool(
+        description = "(Chromium-only) End the CDP debugging session and dismiss the yellow \
+                       banner. Idempotent."
+    )]
+    async fn debugger_detach(
+        &self,
+        Parameters(p): Parameters<TabIdParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.call("debugger_detach", json!({ "tabId": p.tab_id })).await
     }
 }
 
@@ -385,5 +443,24 @@ impl ServerHandler for BrowserMcpServer {
                  the read result; never guess)."
                     .to_string(),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BrowserMcpServer, CHROMIUM_ONLY_TOOLS};
+
+    #[test]
+    fn chromium_only_tools_exist_in_router() {
+        let names: Vec<_> = BrowserMcpServer::tool_specs()
+            .into_iter()
+            .map(|t| t.name.into_owned())
+            .collect();
+        for name in CHROMIUM_ONLY_TOOLS {
+            assert!(
+                names.contains(&name.to_string()),
+                "{name} is gated as chromium-only but missing from tool_specs"
+            );
+        }
     }
 }

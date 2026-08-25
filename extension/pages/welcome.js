@@ -146,7 +146,7 @@ class AgentWelcomePageElement extends GemElement {
   #renderStepHeader = (index, title, description) => html`
     <div class="flex items-start gap-4">
       <span
-        class="grid size-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-lg font-bold text-white shadow-lg shadow-indigo-500/25"
+        class="grid size-10 shrink-0 place-items-center rounded-full bg-linear-to-br from-indigo-500 to-violet-600 text-lg font-bold text-white shadow-lg shadow-indigo-500/25"
       >
         ${index}
       </span>
@@ -196,7 +196,7 @@ class AgentWelcomePageElement extends GemElement {
     const icon = chrome.runtime.getURL(manifest.icons['128']);
 
     return html`
-      <main class="mx-auto flex w-full max-w-[54rem] flex-col gap-8 px-5 py-10 sm:px-7 sm:py-16">
+      <main class="mx-auto flex w-full max-w-216 flex-col gap-8 px-5 py-10 sm:px-7 sm:py-16">
         <header class="text-center">
           <img
             src=${icon}

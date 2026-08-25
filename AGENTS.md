@@ -63,6 +63,7 @@
 - `extension/shared/agent-api.js`：面板侧 agent 会话 async API 客户端（经 background 的 `agent-rpc` 端口转发）
 - `extension/pages/agent-panel.js`：DevTools 双栏 Agent 面板和侧边栏单列变体的会话状态与操作逻辑（会话缓存、加载/切换、权限、错误归属）；纯视图拆在 `pages/elements/`：会话列表 `session-list.js`（`agent-session-list`）、聊天区+滚动跟随+聚焦 `chat-pane.js`（`agent-chat-pane`）、输入区 `composer.js`（`agent-composer`）
 - `extension/tools.js`：MCP 工具实现
+- `extension/debugger.js`：CDP 调试会话，per-tab 事件 ring buffer 桥接 chrome.debugger 的 push 和 MCP 的 pull；快照以惰性函数暴露为 execute_script_in_background QuickJS 里的全局 `debuggerEvents()`，脚本调用时才序列化；attach 状态经 storage.session 在 SW 重启后恢复。MCP 侧只有 `debugger_send_command`（自动 attach）和 `debugger_detach` 两个工具（Chromium only，见 `CHROMIUM_ONLY_TOOLS`）
 - `src/native_messaging.rs`：Native Messaging 基础消息读写
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
 - `src/browser_agent.rs`：浏览器侧 agent 请求协议、会话创建、流式事件转发

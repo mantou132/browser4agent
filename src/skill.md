@@ -26,6 +26,19 @@ Use `{{BIN}} --tool <name> --help` to view each tool's latest parameters, don't 
 
 {{TOOLS}}
 
+## Debugging with CDP (Chromium only)
+
+The debugger tools exist only on Chromium (Chrome/Edge/Brave); never call them on Firefox.
+Prefer `get_errors` and `execute_script` first — reach for CDP only when you need network
+bodies/headers or lower-level visibility than page errors provide.
+
+Order matters: `debugger_send_command` (`Network.enable`) → trigger the action → read
+`debuggerEvents(tab_id)` inside `execute_script_in_background` (filter in the script, return
+only what matters) → `debugger_detach`. Events are recorded only after their domain is
+enabled.
+If an error mentions DevTools or another debugger holding the tab, ask the user to close it;
+on `No target with given id found`, get a fresh id via `list_tabs`.
+
 ## Failure modes
 
 - `failed to connect to running MCP HTTP service` — the browser extension isn't running. Ask the user to open their browser with the extension installed.
