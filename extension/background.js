@@ -1,3 +1,4 @@
+import { trackDevtoolsPort } from './shared/devtools-tracker.js';
 import { t } from './shared/i18n.js';
 import { loadToolset } from './shared/loader.js';
 import { ensureAuthToken } from './shared/market-api.js';
@@ -187,6 +188,7 @@ const AGENT_METHODS = [
 ];
 
 chrome.runtime.onConnect.addListener((panelPort) => {
+  if (panelPort.name === 'devtools-alive') return trackDevtoolsPort(panelPort);
   if (panelPort.name !== 'agent-rpc') return;
   const panel = new RpcPeer((msg) => panelPort.postMessage(msg), 'p');
   panelPort.onMessage.addListener((msg) => panel.dispatch(msg));

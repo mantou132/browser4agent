@@ -1,5 +1,19 @@
 import { exec } from './execute-in-bg.js';
+import { devtoolsOpenTabs } from './shared/devtools-tracker.js';
 import { getAvailableTabTools, getSubscribedTool } from './shared/store.js';
+
+// Surfaces the DevTools-open state in read results so agents can avoid
+// debugger tools on that tab before trying them.
+function withDevtoolsFlag(result, tabId) {
+  if (devtoolsOpenTabs.has(tabId)) {
+    return {
+      ...result,
+      devtoolsOpen: true,
+      devtoolsHint: 'DevTools is open on this tab; chrome.debugger cannot attach until it is closed.',
+    };
+  }
+  return result;
+}
 
 // Pseudo toolset id used for tools that the page itself registered via
 // `navigator.modelContext.registerTool` (WebMCP). They are not stored in
@@ -65,7 +79,7 @@ export async function readTab(tabId) {
     });
     const content = scriptResult(results) || '';
     const tools = await getTabTools(tabId);
-    return { tabId, content, tools };
+    return withDevtoolsFlag({ tabId, content, tools }, tabId);
   } catch (e) {
     throw new Error(`Failed to read tab ${tabId}: ${e.message}`);
   }
@@ -86,7 +100,7 @@ export async function readActiveTab() {
     });
     const content = scriptResult(results) || '';
     const tools = await getTabTools(tab.id);
-    return { tabId: tab.id, title: tab.title, url: tab.url, content, tools };
+    return withDevtoolsFlag({ tabId: tab.id, title: tab.title, url: tab.url, content, tools }, tab.id);
   } catch (e) {
     throw new Error(`Failed to read active tab: ${e.message}`);
   }

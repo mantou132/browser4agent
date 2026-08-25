@@ -59,6 +59,7 @@
 - `extension/shared/diff.js`：ACP tool call 的 diff 内容项转 unified diff 文本，配合 `<gem-bind-diff2html>` 在面板渲染文件编辑
 - `extension/shared/icons.js`：通过 `extendIcons` 扩展 duoyun-ui 全局 icon store 的应用自定义图标（send/stop/file…）
 - `extension/shared/rpc.js`：对称双工 RPC 对端（`call` / `handle` / `notify`），同时用于 Native Host 链路和面板链路
+- `extension/shared/devtools-tracker.js`：追踪开着 DevTools 的 tab（devtools 页经 `devtools-alive` 端口上报，断开即关闭），`read_tab` 结果据此标注 `devtoolsOpen`
 - `extension/shared/agent-api.js`：面板侧 agent 会话 async API 客户端（经 background 的 `agent-rpc` 端口转发）
 - `extension/pages/agent-panel.js`：DevTools 双栏 Agent 面板和侧边栏单列变体的会话状态与操作逻辑（会话缓存、加载/切换、权限、错误归属）；纯视图拆在 `pages/elements/`：会话列表 `session-list.js`（`agent-session-list`）、聊天区+滚动跟随+聚焦 `chat-pane.js`（`agent-chat-pane`）、输入区 `composer.js`（`agent-composer`）
 - `extension/tools.js`：MCP 工具实现
