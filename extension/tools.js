@@ -1,4 +1,3 @@
-import { debuggerSnapshot } from './debugger.js';
 import { exec } from './execute-in-bg.js';
 import { devtoolsOpenTabs } from './shared/devtools-tracker.js';
 import { getAvailableTabTools, getSubscribedTool } from './shared/store.js';
@@ -271,8 +270,8 @@ export async function executeTabTool(tabId, toolsetId, toolName, args) {
 export async function executeScriptInBackground(funcStr, args) {
   if (!funcStr) throw new Error('funcStr is required');
   try {
-    const result = await exec(funcStr, args, { debuggerEvents: debuggerSnapshot });
-    return { result };
+    const { value: result, logs } = await exec(funcStr, args);
+    return { result, logs };
   } catch (e) {
     throw new Error(`Failed to execute script: ${e.message}`);
   }

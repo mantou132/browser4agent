@@ -30,10 +30,12 @@ export default {
       include: (filename) => /[\\/]@gem-bind[\\/]diff2html[\\/]dist[\\/]index\.js$/.test(filename),
       use: [{ loader: new URL('./loaders/diff2html-local.mjs', import.meta.url).pathname }],
     });
+    // sandbox-globals 会被 Function.toString() 注入 QuickJS 按原文执行，必须排除转译：
+    // 转译产物的 helper 引用模块作用域变量，进 VM 就会报 undefined
     config.module.rules.unshift({
       test: /\.js$/,
       enforce: 'pre',
-      include: (filename) => !filename.includes('node_modules'),
+      include: (filename) => !filename.includes('node_modules') && !/[\\/]sandbox-globals\.js$/.test(filename),
       use: [
         {
           loader: 'builtin:swc-loader',

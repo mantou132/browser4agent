@@ -42,8 +42,8 @@ importers:
         specifier: ^0.0.2
         version: 0.0.2
       '@gem-bind/marked':
-        specifier: ^0.0.2
-        version: 0.0.2
+        specifier: ^0.0.3
+        version: 0.0.3
       '@mantou/gem':
         specifier: ^2.2.6
         version: 2.2.6
@@ -695,8 +695,8 @@ packages:
   '@gem-bind/diff2html@0.0.2':
     resolution: {integrity: sha512-wHbpryPaXdNkAXeZtJk9MFtN1l3WZp9H19wOXiHK5qBQKv/e7EGSX7E/lQB/wL+dcHQmhCxDOBJvTaqfBYnlMg==}
 
-  '@gem-bind/marked@0.0.2':
-    resolution: {integrity: sha512-O0QeV+I03yP/TSl3K7HDK/hr+waXG/pUG8EqQhwuq/YzhR9ZuMnp3zpAgwIy5gzQxeyEaLss7JiuSJ91rfaMLg==}
+  '@gem-bind/marked@0.0.3':
+    resolution: {integrity: sha512-NeSs765jkWgWc/BCH0av7kUB8xwE8j4C9OJR6lbDFQSQIejbTP2pShDdwsH8W2QNCsoX89fsPGz4rWLP1s9X5g==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -3392,11 +3392,11 @@ snapshots:
       duoyun-ui: 2.2.3(patch_hash=c3594afe5a41399964b13e4db6d89845d2181c5825576d62e97cf8fe59e0a018)(@mantou/gem@2.2.8)
       highlight.js: 11.11.1
 
-  '@gem-bind/marked@0.0.2':
+  '@gem-bind/marked@0.0.3':
     dependencies:
-      '@mantou/gem': 2.2.6
-      '@swc/helpers': 0.5.21
-      duoyun-ui: 2.2.3(patch_hash=c3594afe5a41399964b13e4db6d89845d2181c5825576d62e97cf8fe59e0a018)(@mantou/gem@2.2.6)
+      '@mantou/gem': 2.2.8
+      '@swc/helpers': 0.5.23
+      duoyun-ui: 2.2.3(patch_hash=c3594afe5a41399964b13e4db6d89845d2181c5825576d62e97cf8fe59e0a018)(@mantou/gem@2.2.8)
       marked: 15.0.12
 
   '@img/colour@1.1.0': {}

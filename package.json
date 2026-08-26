@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "scripts": {
     "lint": "biome check --write",
+    "test": "pnpm --dir extension test",
     "prepare": "husky install"
   },
   "devDependencies": {
