@@ -263,10 +263,14 @@ impl BrowserMcpServer {
                        return its result. Use this to open/close tabs and windows \
                        (chrome.tabs.create/remove, chrome.windows.create/remove), intercept \
                        network requests, control downloads, etc. Cannot quit the browser process \
-                       itself. The full chrome.* API is available — async/await. On Chromium, the \
-                       `debuggerEvents(tab_id)` global function (see debugger_send_command) \
-                       returns that tab's { attached, cursor, events: [{method, params, time, \
-                       seq}] }, or null before any debugging session."
+                       itself. Both chrome.* and browser.* namespaces are proxied (promise-style); \
+                       setTimeout/setInterval (+clear), queueMicrotask, console output (returned \
+                       as `logs`) and basic URL parsing are available. Timers only run while the \
+                       function is still executing — once it returns, pending timers are dropped, \
+                       so await your sleeps. On Chromium, the `debuggerEvents(tab_id)` global \
+                       function (see debugger_send_command) returns that tab's { attached, \
+                       cursor, events: [{method, params, time, seq}] }, or null before any \
+                       debugging session."
     )]
     async fn execute_script_in_background(
         &self,

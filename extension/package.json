@@ -5,7 +5,8 @@
   "scripts": {
     "postinstall": "toolset-parser public/toolsets",
     "dev": "extension dev",
-    "build": "extension build"
+    "build": "extension build",
+    "test": "node --test"
   },
   "dependencies": {
     "@gem-bind/diff2html": "^0.0.2",

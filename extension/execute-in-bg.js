@@ -1,35 +1,53 @@
 import { getQuickJS } from 'quickjs-emscripten';
+import { debuggerSnapshot } from './debugger.js';
+import { installSandboxApi } from './sandbox-globals.js';
 
 // quickjs 的 glue 是懒加载分包，Chromium MV3 只允许 SW 安装期间 importScripts；
 // 启动时预热，否则首次调用会报
 // "importScripts() of new scripts after service worker installation is not allowed"
 const QuickJSPromise = getQuickJS();
 
-async function hostChromeInvoke(path, args) {
-  const parts = path.split('.');
-  let target = chrome;
-  let parent = null;
+// Pull-style APIs reachable through the single __invoke bridge besides
+// chrome.* / browser.*, keyed by the first path segment.
+const handlers = { debuggerEvents: debuggerSnapshot };
 
-  for (const part of parts) {
-    parent = target;
-    target = target?.[part];
+function invoke(path, args) {
+  const [head, ...rest] = path.split('.');
+  let parent = head === 'browser' ? (globalThis.browser ?? chrome) : head === 'chrome' ? chrome : null;
+  if (parent) {
+    let target = parent;
+    for (const part of rest) {
+      parent = target;
+      target = target?.[part];
+    }
+    if (typeof target !== 'function') return undefined;
+    return target.apply(parent, args);
   }
-
-  if (typeof target !== 'function') return undefined;
-  return await target.apply(parent, args);
+  const handler = handlers[head];
+  if (!handler) throw new Error(`Unknown sandbox API: ${path}`);
+  return handler(...args);
 }
 
-async function addHostInvoke(vm) {
-  const hostInvoke = (pathHandle, argsHandle) => {
+function serializeResult(result) {
+  return JSON.stringify(result !== undefined ? result : null);
+}
+
+function addInvokeBridge(vm) {
+  using handle = vm.newFunction('__invoke', (pathHandle, argsHandle) => {
     const path = vm.getString(pathHandle);
     const argsStr = vm.getString(argsHandle);
     const args = argsStr ? JSON.parse(argsStr) : [];
+    const result = invoke(path, args);
+    if (!result || typeof result.then !== 'function') {
+      return vm.newString(serializeResult(result));
+    }
+
     const promise = vm.newPromise();
-    hostChromeInvoke(path, args)
-      .then((result) => {
+    result
+      .then((value) => {
         if (!vm.alive) return;
-        using value = vm.newString(JSON.stringify(result !== undefined ? result : null));
-        promise.resolve(value);
+        using valueHandle = vm.newString(serializeResult(value));
+        promise.resolve(valueHandle);
       })
       .catch((err) => {
         if (!vm.alive) return;
@@ -42,56 +60,61 @@ async function addHostInvoke(vm) {
         promise.dispose();
       });
     return promise.handle;
-  };
-  using hostInvokeHandle = vm.newFunction('__host_invoke', hostInvoke);
-  vm.setProp(vm.global, '__host_invoke', hostInvokeHandle);
+  });
+  vm.setProp(vm.global, '__invoke', handle);
 }
 
-export async function exec(funcStr, args, globals = {}) {
+// Host-side wall-clock scheduling; the callback registry lives in the VM.
+function addTimers(vm) {
+  const handles = new Map();
+  let settled = false;
+  using setHandle = vm.newFunction('__timerSet', (idHandle, delayHandle, repeatHandle) => {
+    const id = vm.getNumber(idHandle);
+    const delay = Math.max(0, vm.getNumber(delayHandle));
+    const repeat = vm.dump(repeatHandle);
+    const fire = () => {
+      if (!repeat) handles.delete(id);
+      if (settled || !vm.alive) return;
+      try {
+        using fired = vm.unwrapResult(vm.evalCode(`__fireTimer(${id})`));
+        vm.runtime.executePendingJobs();
+      } catch {
+        // Nothing to propagate: the script is gone or the callback already
+        // reported its error into the captured console.
+      }
+    };
+    handles.set(id, repeat ? setInterval(fire, delay) : setTimeout(fire, delay));
+  });
+  using clearHandle = vm.newFunction('__timerClear', (idHandle) => {
+    const id = vm.getNumber(idHandle);
+    clearTimeout(handles.get(id));
+    handles.delete(id);
+  });
+  vm.setProp(vm.global, '__timerSet', setHandle);
+  vm.setProp(vm.global, '__timerClear', clearHandle);
+  return {
+    handles,
+    // Timers landing after settlement are dropped instead of racing the teardown.
+    settle() {
+      settled = true;
+    },
+  };
+}
+
+export async function exec(funcStr, args) {
   const QuickJS = await QuickJSPromise;
   using vm = QuickJS.newContext();
 
-  addHostInvoke(vm);
+  addInvokeBridge(vm);
+  const timers = addTimers(vm);
 
-  vm.unwrapResult(
-    vm.evalCode(`
-      function createChromeProxy(pathPrefix) {
-        return new Proxy(() => {}, {
-          get: function(target, prop) {
-            if (prop === 'then') return undefined;
-            const newPath = pathPrefix ? pathPrefix + '.' + prop : prop;
-            return createChromeProxy(newPath);
-          },
-          apply: async function(target, thisArg, args) {
-            const argsStr = JSON.stringify(args);
-            const resultStr = await __host_invoke(pathPrefix, argsStr);
-            return resultStr ? JSON.parse(resultStr) : undefined;
-          }
-        });
-      }
-      globalThis.chrome = createChromeProxy('');
-    `),
-  ).dispose();
+  vm.unwrapResult(vm.evalCode(`(${installSandboxApi})()`)).dispose();
 
-  // Lazy host-data bridges: each entry exposes a `name()` global in the VM,
-  // serializing the snapshot only when the script actually calls it. The native
-  // function returns the value directly (object ownership transfers to the VM),
-  // so no extra JSON.parse wrapper is needed.
-  for (const [name, getValue] of Object.entries(globals)) {
-    using fn = vm.newFunction(name, (...argHandles) => {
-      const args = argHandles.map((handle) => vm.dump(handle));
-      return vm.unwrapResult(vm.evalCode(`(${JSON.stringify(getValue(...args))})`));
-    });
-    vm.setProp(vm.global, name, fn);
-  }
-
-  const argsJson = JSON.stringify(args || []);
   using promiseHandle = vm.unwrapResult(
     vm.evalCode(`
       (async () => {
         const userFunc = ${funcStr};
-        const args = JSON.parse(${JSON.stringify(argsJson)});
-        return userFunc(...args);
+        return userFunc(...${JSON.stringify(args || [])});
       })()
     `),
   );
@@ -104,12 +127,26 @@ export async function exec(funcStr, args, globals = {}) {
     });
   });
 
+  // Pending timers die with the vm once the script settles.
+  timers.settle();
+  for (const handle of timers.handles.values()) clearTimeout(handle);
+  timers.handles.clear();
+
+  // Read even when the script failed, so agents see what it printed.
+  let logs = [];
+  {
+    using logsHandle = vm.unwrapResult(vm.evalCode('__getLogs()'));
+    logs = JSON.parse(vm.getString(logsHandle));
+  }
+
   if (resolvedResult.error) {
     using errHandle = resolvedResult.error;
     const err = vm.dump(errHandle);
-    throw new Error(typeof err === 'object' ? (err?.message ?? JSON.stringify(err)) : String(err));
+    const message = typeof err === 'object' ? (err?.message ?? JSON.stringify(err)) : String(err);
+    // Failing scripts' last console output travels with the error.
+    throw new Error(logs.length ? `${message}\n${logs.join('\n')}` : message);
   }
 
   using value = resolvedResult.value;
-  return vm.dump(value);
+  return { value: vm.dump(value), logs };
 }
