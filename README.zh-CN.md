@@ -7,33 +7,25 @@
 [![Firefox Add-ons](https://img.shields.io/badge/Firefox%20Add--ons-install-FF7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/firefox/addon/browser4agent@xianqiao.wang)
 [![GitHub Release](https://img.shields.io/github/v/release/mantou132/browser4agent?style=for-the-badge&logo=github&color=181717)](https://github.com/mantou132/browser4agent/releases/latest)
 
-一个让 AI Agent 读取浏览器标签页内容、操控浏览器的浏览器扩展。
+一个把浏览器和 AI Agent 双向连接起来的浏览器扩展。
 
-![Claude Code 通过 browser4agent 操控浏览器](./docs/preview.png)
+| **[让任意 Agent 操控你的浏览器](#让任意-agent-操控你的浏览器mcp--skill)** | **[在浏览器中使用 Agent](#在浏览器中使用-agentacp)** |
+| --- | --- |
+| ![Claude Code 通过 browser4agent 操控浏览器](./docs/preview.png) | ![在 Agent 面板中和 Claude Code 对话](./docs/agent.png) |
 
-- **读取内容** —— 页面文本、Cookie、localStorage、页面错误、截图等。
-- **操控浏览器** —— Agent 自己写后台脚本来管理标签页和窗口。
-- **在标签页中执行脚本** —— 简单脚本 Agent 现写现用；复杂流程应做成[页面工具](#页面工具)直接调用。
-- **Agent 面板** —— 在 DevTools 或浏览器侧边栏里和本地安装的编码 Agent（如 Claude Code）对话，就在它操作的页面旁边。
+## 两种用法
+
+| | **[让任意 Agent 操控你的浏览器](#让任意-agent-操控你的浏览器mcp--skill)** | **[在浏览器中使用 Agent](#在浏览器中使用-agentacp)** |
+| --- | --- | --- |
+| **谁能用** | 任何支持 MCP、或能跑 shell 命令（经 [Skill](#命令行)）的 Agent | 本地安装的、支持 [ACP][acp] 协议的编码 Agent —— 目前是 Claude Code 和 Codex |
+| **能得到什么** | Agent 可读取页面、Cookie、localStorage、报错和截图；管理标签页和窗口；执行脚本 | 在 DevTools 或浏览器侧边栏里，就在页面旁边和 Agent 聊当前页面 |
+| **怎么接入** | 欢迎页引导注册 Native Host，并自动配好 MCP 或安装 Skill | 欢迎页引导注册 Native Host；无需其他配置，打开 Agent 面板即用 |
+
+两种用法有同一个前置步骤：下载 `browser4agent` 并运行一次，将它注册为 Native Host（见[安装](#安装)）。之后区别只在 Agent 侧的接入方式：MCP/Skill 还是 [ACP][acp]。
 
 > ⚠️ **安全提示**
 > - 确保你的 AI Agent 环境不受提示词注入攻击，否则攻击者可以通过扩展读取你的浏览器数据。
 > - 只安装来源可信的页面工具，恶意工具可以在你的浏览器中执行任意脚本。
-
-## 页面工具
-
-Agent 可以调用作用于当前标签页的工具。来源有两种：
-
-- **订阅工具集** —— 在扩展内置的市场订阅（也可以在设置里粘贴任意 URL），可用工具会按标签页 URL 自动筛选。
-- **开发者提供** —— 页面作者通过 [WebMCP][webmcp] API 主动注册的工具。
-
-[webmcp]: https://webmachinelearning.github.io/webmcp/
-
-## Agent 面板
-
-在 DevTools 打开 **Agent** 面板（或作为浏览器侧边栏），即可和本地安装的编码 Agent（如 Claude Code）聊当前页面。会话实时流式输出，支持附件、权限确认，可以保留多个会话并随时切换。需要安装 Native Host，且对应 Agent 已在本地安装并登录。
-
-![在浏览器侧边栏中和 Claude Code 对话](./docs/agent.png)
 
 ## 安装
 
@@ -52,7 +44,25 @@ Agent 可以调用作用于当前标签页的工具。来源有两种：
 - **Chrome / Edge** —— 打开 `chrome://extensions`，开启「开发者模式」，点击「加载已解压的扩展程序」，选解压后的目录。
 - **Firefox** —— 打开 `about:debugging`，点击「临时加载附加组件」，选解压目录中的 `manifest.json`。
 
-## 命令行
+## 让任意 Agent 操控你的浏览器（MCP / Skill）
+
+支持 MCP 的 Agent 开箱即用；不方便配 MCP 的 Agent 也能通过 [`browser4agent` 命令行](#命令行)，以 Skill 或普通 shell 命令驱动全部能力。安装向导会检测 Codex、Claude Code、VS Code、Cursor、Zed 并引导配置。
+
+Agent 能得到：
+
+- **读取内容** —— 页面文本、Cookie、localStorage、页面错误、截图等。
+- **操控浏览器** —— Agent 自己写后台脚本来管理标签页和窗口。
+- **在标签页中执行脚本** —— 简单脚本 Agent 现写现用；复杂流程应做成[页面工具](#页面工具)直接调用。
+- **用 CDP 调试** —— 仅限 Chromium 的工具，可获取网络响应体/请求头等更底层的可见性。
+
+### 页面工具
+
+Agent 可以调用作用于当前标签页的工具。来源有两种：
+
+- **订阅工具集** —— 在扩展内置的市场订阅（也可以在设置里粘贴任意 URL），可用工具会按标签页 URL 自动筛选。
+- **开发者提供** —— 页面作者通过 [WebMCP][webmcp] API 主动注册的工具。
+
+### 命令行
 
 完成安装后，`browser4agent` 同时也是一个单次调用的 CLI，把一次工具调用转发到运行中的 Native Host —— 适合写脚本或快速验证：
 
@@ -62,6 +72,12 @@ browser4agent --tool read_tab --input '{"tab_id": 123}'
 echo '{"tab_id":123}' | browser4agent --tool read_tab --stdin
 browser4agent --tool read_tab --help   # 查看工具的入参 schema
 ```
+
+## 在浏览器中使用 Agent（ACP）
+
+在 DevTools 打开 **Agent** 面板（或作为浏览器侧边栏），即可和本地安装的编码 Agent 聊当前页面。会话实时流式输出，支持附件、权限确认，回合进行中可以排队输入，可以保留多个会话并随时切换。
+
+需要安装 Native Host，以及本地一个支持 [ACP][acp] 协议的编码 Agent：Native Host 会自动识别 `claude` 和 `codex` 命令行，并通过官方 ACP 适配器启动它们。
 
 ## 从源码构建
 
@@ -76,4 +92,7 @@ cargo run
 
 ## 隐私政策
 
-Browser for AI Agent 仅为提供 MCP 浏览器自动化能力而处理浏览器数据。根据用户请求，扩展可能访问标签页元数据、页面内容、Cookie、localStorage、页面错误、截图和工具集配置。数据只发送给本地的 Native Messaging Host 和用户配置的 MCP 客户端 / AI Agent。我们不会出售用户数据、不会用于广告或其他无关用途。请只连接你信任的 AI Agent，只安装你信任的工具集。
+Browser for AI Agent 仅为提供核心能力（MCP 浏览器自动化和浏览器内 Agent 面板）而处理浏览器数据。根据用户请求，扩展可能访问标签页元数据、页面内容、Cookie、localStorage、页面错误、截图和工具集配置。数据只发送给本地的 Native Messaging Host 和用户配置的 MCP 客户端 / AI Agent。我们不会出售用户数据、不会用于广告或其他无关用途。请只连接你信任的 AI Agent，只安装你信任的工具集。
+
+[acp]: https://agentclientprotocol.com/
+[webmcp]: https://webmachinelearning.github.io/webmcp/
