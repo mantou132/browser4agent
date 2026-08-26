@@ -118,8 +118,17 @@
   "devtoolsPanelDropToAttach": {
     "message": "松开以添加附件"
   },
+  "devtoolsPanelEditHint": {
+    "message": "正在编辑队列消息，Enter 更新该条"
+  },
+  "devtoolsPanelEditPrompt": {
+    "message": "编辑"
+  },
   "devtoolsPanelEmpty": {
     "message": "点击「新建」或从左侧选择一个会话开始对话。需要本地已安装并登录 Claude Code"
+  },
+  "devtoolsPanelEnqueue": {
+    "message": "加入队列"
   },
   "devtoolsPanelImageAttachment": {
     "message": "图片"
@@ -142,11 +151,20 @@
   "devtoolsPanelPlaceholder": {
     "message": "向 Agent 发送消息，Enter 发送，Shift+Enter 换行"
   },
+  "devtoolsPanelQueuedPrompts": {
+    "message": "等待发送"
+  },
   "devtoolsPanelRemoveAttachment": {
     "message": "移除附件"
   },
+  "devtoolsPanelRemovePrompt": {
+    "message": "删除"
+  },
   "devtoolsPanelSend": {
     "message": "发送"
+  },
+  "devtoolsPanelSendNow": {
+    "message": "立即发送"
   },
   "devtoolsPanelSessions": {
     "message": "会话"

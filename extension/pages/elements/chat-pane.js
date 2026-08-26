@@ -12,12 +12,16 @@ class AgentChatPaneElement extends GemElement {
   @property bannerError;
   @property configOptions;
   @property composerDisabled;
+  @property queue; // prompts staged while a turn is in flight
 
   @emitter send;
   @emitter cancel;
   @emitter configchange;
   @emitter decision; // detail: permission optionId (null declines)
   @emitter attacherror;
+  @emitter queuesend; // detail: queued item id
+  @emitter queueupdate; // detail: { id, prompt, attachments }
+  @emitter queueremove; // detail: queued item id
 
   #messagesRef = createRef();
   #composerRef = createRef();
@@ -72,6 +76,7 @@ class AgentChatPaneElement extends GemElement {
       bannerError,
       configOptions,
       composerDisabled,
+      queue,
     } = this;
     const canChat = Boolean(sessionId);
 
@@ -123,10 +128,14 @@ class AgentChatPaneElement extends GemElement {
             ?disabled=${composerDisabled}
             .configOptions=${configOptions}
             .sessionId=${sessionId}
+            .queue=${queue}
             @send=${(e) => this.send(e.detail)}
             @cancel=${() => this.cancel(null)}
             @configchange=${(e) => this.configchange(e.detail)}
             @attacherror=${(e) => this.attacherror(e.detail)}
+            @queuesend=${(e) => this.queuesend(e.detail)}
+            @queueupdate=${(e) => this.queueupdate(e.detail)}
+            @queueremove=${(e) => this.queueremove(e.detail)}
           ></agent-composer>
         </footer>
       </section>

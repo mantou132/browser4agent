@@ -1,6 +1,6 @@
-import { icons } from 'duoyun-ui/lib/icons';
 import { openExtensionPage } from '@/shared/tabs.js';
 import { setPageI18n, t } from '../shared/i18n.js';
+import { icons } from '../shared/icons.js';
 import { initStore, isToolEnabled, setToolEnabled, toolStore } from '../shared/store.js';
 
 setPageI18n();
@@ -68,7 +68,7 @@ class AgentPopupPageElement extends GemElement {
             <img src=${icon} class="w-6 h-6" />
             <span>${manifest.name}</span>
           </span>
-          <dy-button .icon=${icons.outward} square color="cancel" title=${t('openAgentSidebar')} @click=${this.#openAgentSidebar}></dy-button>
+          <dy-button .icon=${icons.robot} square color="cancel" title=${t('openAgentSidebar')} @click=${this.#openAgentSidebar}></dy-button>
         </header>
 
         <div class="pt-3 pb-2 px-3.5 border-b border-border">

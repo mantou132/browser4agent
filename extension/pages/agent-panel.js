@@ -54,6 +54,7 @@ class AgentPanelPageElement extends GemElement {
     sessionId: null, // current live session
     messages: [], // text messages, thought blocks, tool calls, or raw events
     configOptions: [], // current session's ACP config options (mode/model/effort/…)
+    queue: [], // prompts staged while the displayed session has one in flight
     pendingIds: [], // session ids with a prompt in flight
     booting: true, // initial sessions fetching state (whole page loader)
     loadingSession: false, // the displayed session is being created/loaded
@@ -76,6 +77,12 @@ class AgentPanelPageElement extends GemElement {
   // Loads still running: session id -> { alive }; `alive` is cleared when the
   // session dies so a settling load no longer touches the panel state.
   #pendingLoads = new Map();
+  // Turns still running: session id -> settle promise of #performTurn.
+  #runningTurns = new Map();
+  // Sessions whose settling turn was canceled: a canceled turn resolves like
+  // a normal one (ACP reports a stop), so the cancel site marks the session
+  // here to keep the queue from auto-draining over the user's stop.
+  #canceledSessions = new Set();
 
   @mounted()
   #boot = async () => {
@@ -98,7 +105,7 @@ class AgentPanelPageElement extends GemElement {
       this.#decidePermission(sessionId, null);
       // A load for the displayed session died: stop spinning, the next
       // action surfaces the dead session as an error.
-      if (sessionId === this.#s.sessionId) this.#s({ loadingSession: false });
+      if (sessionId === this.#s.sessionId) this.#s({ loadingSession: false, queue: [] });
     });
     agentApi.setHostReconnectedHandler(() => {
       // A fresh host process keeps no live sessions; every cached entry and
@@ -114,6 +121,7 @@ class AgentPanelPageElement extends GemElement {
         loadingSession: false,
         permissions: {},
         sessionErrors: {},
+        queue: [],
         ...(this.#s.sessionId && { error: t('devtoolsPanelHostReconnected') }),
       });
     });
@@ -292,11 +300,83 @@ class AgentPanelPageElement extends GemElement {
     }
   };
 
-  /** Send one turn; the composer owns the draft and clears it before this. */
-  #send = async ({ prompt, attachments }) => {
+  /** Accept a composer send: deliver it when idle, stage it otherwise.
+   * The composer owns the draft and clears it before this. */
+  #send = ({ prompt, attachments }) => {
     const sessionId = this.#s.sessionId;
-    if ((!prompt && !attachments.length) || !sessionId || this.#s.pendingIds.includes(sessionId)) return;
-    this.#chatPaneRef.value?.scrollToLatest(true);
+    if ((!prompt && !attachments.length) || !sessionId) return;
+    if (this.#s.pendingIds.includes(sessionId)) {
+      const store = this.#sessionStore(sessionId);
+      store.set({
+        queue: [...(store.get()?.queue ?? []), { id: crypto.randomUUID(), prompt, attachments }],
+      });
+      return;
+    }
+    this.#runTurn(sessionId, { prompt, attachments });
+  };
+
+  /** After a successful turn, auto-send the next staged prompt in order. */
+  #drainQueue = (sessionId) => {
+    if (this.#s.pendingIds.includes(sessionId)) return;
+    const store = this.#sessionStore(sessionId);
+    const [next, ...rest] = store.get()?.queue ?? [];
+    if (!next) return;
+    store.set({ queue: rest });
+    this.#runTurn(sessionId, next);
+  };
+
+  /** Send a staged prompt now: idle sends right away; a running turn is
+   * canceled first so this prompt goes out immediately. */
+  #flushQueued = async (sessionId, itemId) => {
+    const store = this.#sessionStore(sessionId);
+    const item = (store.get()?.queue ?? []).find((entry) => entry.id === itemId);
+    if (!item) return;
+    if (!this.#s.pendingIds.includes(sessionId)) {
+      store.set({ queue: (store.get()?.queue ?? []).filter((entry) => entry.id !== itemId) });
+      this.#runTurn(sessionId, item);
+      return;
+    }
+    await this.#abortTurn(sessionId);
+    // The turn refused to stop, or the item was deleted while canceling.
+    if (this.#s.pendingIds.includes(sessionId)) return;
+    const queue = store.get()?.queue ?? [];
+    if (!queue.some((entry) => entry.id === itemId)) return;
+    store.set({ queue: queue.filter((entry) => entry.id !== itemId) });
+    this.#runTurn(sessionId, item);
+  };
+
+  /** Drop one staged prompt. */
+  #removeQueued = (sessionId, itemId) => {
+    const store = this.#sessionStore(sessionId);
+    store.set({ queue: (store.get()?.queue ?? []).filter((entry) => entry.id !== itemId) });
+  };
+
+  /** Patch one staged prompt in place (the composer's edit flow). A stale
+   * id falls back to appending, so the edit is never silently lost. */
+  #updateQueued = (sessionId, { id, prompt, attachments }) => {
+    const store = this.#sessionStore(sessionId);
+    const queue = store.get()?.queue ?? [];
+    const next = queue.some((entry) => entry.id === id)
+      ? queue.map((entry) => (entry.id === id ? { id, prompt, attachments } : entry))
+      : [...queue, { id, prompt, attachments }];
+    store.set({ queue: next });
+  };
+
+  /** Run one turn; the settle promise is tracked so a queued prompt can
+   * cancel-and-replace it. */
+  #runTurn = (sessionId, payload) => {
+    const turn = this.#performTurn(sessionId, payload)
+      .catch(() => {})
+      .finally(() => {
+        if (this.#runningTurns.get(sessionId) === turn) this.#runningTurns.delete(sessionId);
+      });
+    this.#runningTurns.set(sessionId, turn);
+  };
+
+  /** Run one turn against the host; events stream into the session store,
+   * which keeps working when the user switches away mid-turn. */
+  #performTurn = async (sessionId, { prompt, attachments }) => {
+    if (sessionId === this.#s.sessionId) this.#chatPaneRef.value?.scrollToLatest(true);
     const store = this.#sessionStore(sessionId);
     const turnStart = (store.get()?.messages ?? []).length;
     // Wire format: images as base64 blocks; text files wrapped so the agent
@@ -327,20 +407,37 @@ class AgentPanelPageElement extends GemElement {
       }
       await this.#refreshSessions();
     } catch (e) {
+      // A failed or canceled turn stops the auto-drain; staged prompts stay
+      // editable in the queue instead of firing into a broken session.
       this.#finishThought(sessionId);
       this.#setSessionError(sessionId, e.message);
+      return;
     } finally {
       this.#setSessionPending(sessionId, false);
     }
+    // A canceled turn resolves like a successful one, so the explicit mark
+    // from #abortTurn is what stops the auto-drain.
+    if (!this.#canceledSessions.delete(sessionId)) this.#drainQueue(sessionId);
   };
 
   #cancel = () => {
     const sessionId = this.#s.sessionId;
-    // Canceling a turn also declines its awaited permission.
+    if (sessionId) this.#abortTurn(sessionId);
+  };
+
+  /** Abort the session's in-flight turn; also declines its awaited
+   * permission. Resolves once the aborted turn has fully settled. */
+  #abortTurn = async (sessionId) => {
     this.#decidePermission(sessionId, null);
-    if (sessionId) {
-      agentApi.cancelPrompt(sessionId).catch((e) => this.#setSessionError(sessionId, e.message));
+    const turn = this.#runningTurns.get(sessionId);
+    if (!turn) return;
+    this.#canceledSessions.add(sessionId);
+    try {
+      await agentApi.cancelPrompt(sessionId);
+    } catch (e) {
+      this.#setSessionError(sessionId, e.message);
     }
+    await turn;
   };
 
   #newSession = () => {
@@ -355,6 +452,7 @@ class AgentPanelPageElement extends GemElement {
       messages: this.#completeThought(this.#s.messages),
       configOptions: this.#s.configOptions,
       cwd: this.#s.cwd,
+      queue: this.#s.queue,
     });
   };
 
@@ -402,6 +500,7 @@ class AgentPanelPageElement extends GemElement {
           sessionId: created.sessionId,
           messages: [],
           configOptions: created.configOptions || [],
+          queue: [],
           cwd,
           error: '',
           loadingSession: false,
@@ -425,6 +524,7 @@ class AgentPanelPageElement extends GemElement {
         sessionId,
         messages: cached.messages,
         configOptions: cached.configOptions,
+        queue: cached.queue || [],
         cwd: cached.cwd,
         loadingSession: this.#pendingLoads.has(sessionId),
       });
@@ -438,6 +538,7 @@ class AgentPanelPageElement extends GemElement {
         loadingSession: true,
         messages: [],
         configOptions: [],
+        queue: [],
       });
       return;
     }
@@ -451,6 +552,7 @@ class AgentPanelPageElement extends GemElement {
       loadingSession: true,
       messages: [],
       configOptions: [],
+      queue: [],
     });
     this.#setSessionLoading(sessionId, true);
     const record = { alive: true };
@@ -490,6 +592,7 @@ class AgentPanelPageElement extends GemElement {
           sessionId: previous,
           messages: fallback.messages,
           configOptions: fallback.configOptions,
+          queue: fallback.queue || [],
           cwd: fallback.cwd,
           loadingSession: false,
         });
@@ -505,21 +608,37 @@ class AgentPanelPageElement extends GemElement {
   };
 
   #deleteSession = async (sessionId) => {
-    // Deleting a session with a load or prompt running would race the actor,
-    // so only settle for idle sessions.
-    if (this.#s.deleting || this.#s.pendingIds.includes(sessionId) || this.#s.loadingIds.includes(sessionId)) return;
+    if (this.#s.deleting) return;
+    // Deletion wins over an in-flight load or turn: kill the load locally
+    // (its settle path checks `alive`) and let the turn cancel first, so
+    // nothing keeps streaming into a session that no longer exists.
+    const loadRecord = this.#pendingLoads.get(sessionId);
+    if (loadRecord) {
+      loadRecord.alive = false;
+      this.#pendingLoads.delete(sessionId);
+      this.#setSessionLoading(sessionId, false);
+    }
+    if (this.#s.pendingIds.includes(sessionId)) await this.#abortTurn(sessionId);
     const isCurrent = this.#s.sessionId === sessionId;
     // Optimistic removal from the list; restored if the host rejects it.
     const previousSessions = this.#s.sessions;
     this.#s({
       deleting: sessionId,
       sessions: previousSessions.filter((session) => session.sessionId !== sessionId),
-      ...(isCurrent && { sessionId: null, messages: [], configOptions: [], cwd: '' }),
+      ...(isCurrent && {
+        sessionId: null,
+        messages: [],
+        configOptions: [],
+        queue: [],
+        cwd: '',
+        loadingSession: false,
+      }),
     });
     try {
-      // Live sessions (the current one or kept-alive ones) must disconnect
-      // before removing the record
-      if (isCurrent || this.#sessionCache.has(sessionId)) await agentApi.closeSession(sessionId).catch(() => {});
+      // Live sessions (the current one, kept-alive ones, or one whose load
+      // just got killed) must disconnect before removing the record.
+      if (isCurrent || loadRecord || this.#sessionCache.has(sessionId))
+        await agentApi.closeSession(sessionId).catch(() => {});
       await agentApi.deleteSession(sessionId);
       this.#sessionCache.delete(sessionId);
       this.#clearSessionError(sessionId);
@@ -618,6 +737,7 @@ class AgentPanelPageElement extends GemElement {
       permissions,
       cwdPicker,
       home,
+      queue,
     } = this.#s;
 
     if (booting) {
@@ -662,11 +782,15 @@ class AgentPanelPageElement extends GemElement {
           .bannerError=${bannerError}
           .configOptions=${this.#configSelects}
           .composerDisabled=${pendingIds.includes(sessionId) || loadingIds.includes(sessionId)}
+          .queue=${queue}
           @send=${(e) => this.#send(e.detail)}
           @cancel=${this.#cancel}
           @configchange=${(e) => this.#changeConfig(e.detail.configId, e.detail.value)}
           @decision=${(e) => this.#decidePermission(sessionId, e.detail)}
           @attacherror=${(e) => this.#setSessionError(sessionId, e.detail)}
+          @queuesend=${(e) => this.#flushQueued(sessionId, e.detail)}
+          @queueupdate=${(e) => this.#updateQueued(sessionId, e.detail)}
+          @queueremove=${(e) => this.#removeQueued(sessionId, e.detail)}
         ></agent-chat-pane>
         <agent-cwd-modal
           v-if=${cwdPicker}

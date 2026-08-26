@@ -118,8 +118,17 @@
   "devtoolsPanelDropToAttach": {
     "message": "Drop to attach"
   },
+  "devtoolsPanelEditHint": {
+    "message": "Editing a queued prompt — Enter updates it"
+  },
+  "devtoolsPanelEditPrompt": {
+    "message": "Edit"
+  },
   "devtoolsPanelEmpty": {
     "message": "Click “New” or pick a session on the left to start chatting. Requires Claude Code installed and logged in locally"
+  },
+  "devtoolsPanelEnqueue": {
+    "message": "Add to queue"
   },
   "devtoolsPanelImageAttachment": {
     "message": "Image"
@@ -142,11 +151,20 @@
   "devtoolsPanelPlaceholder": {
     "message": "Message the agent — Enter to send, Shift+Enter for a new line"
   },
+  "devtoolsPanelQueuedPrompts": {
+    "message": "Queued prompts"
+  },
   "devtoolsPanelRemoveAttachment": {
     "message": "Remove attachment"
   },
+  "devtoolsPanelRemovePrompt": {
+    "message": "Delete"
+  },
   "devtoolsPanelSend": {
     "message": "Send"
+  },
+  "devtoolsPanelSendNow": {
+    "message": "Send now"
   },
   "devtoolsPanelSessions": {
     "message": "Sessions"
