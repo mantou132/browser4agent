@@ -810,8 +810,9 @@ async fn run_session_actor_inner(
             drain_replay(&mut session, replay_tx).await?;
         }
         let _ = ready_tx.send(Ok(init));
-        // Commands arriving while a prompt turn runs come back deferred
-        // and are processed after the turn settles.
+        // Commands arriving while a prompt turn runs are deferred here and
+        // processed after the turn settles — except config/mode changes, which
+        // `run_prompt_turn` applies to the live query immediately.
         let mut deferred: VecDeque<SessionCommand> = VecDeque::new();
         loop {
             let command = match deferred.pop_front() {
@@ -858,37 +859,14 @@ async fn run_session_actor_inner(
                     // No prompt running, nothing to cancel.
                 }
                 SessionCommand::SetMode { mode_id, reply } => {
-                    let request = SetSessionModeRequest::new(
-                        session.session_id().clone(),
-                        SessionModeId::from(mode_id),
-                    );
-                    let result = session
-                        .connection()
-                        .send_request_to(Agent, request)
-                        .block_task()
-                        .await
-                        .map(|_| ())
-                        .map_err(|err| err.to_string());
-                    let _ = reply.send(result);
+                    send_set_mode(&session, mode_id, reply).await;
                 }
                 SessionCommand::SetConfig {
                     config_id,
                     value,
                     reply,
                 } => {
-                    let request = SetSessionConfigOptionRequest::new(
-                        session.session_id().clone(),
-                        SessionConfigId::from(config_id),
-                        SessionConfigValueId::from(value),
-                    );
-                    let result = session
-                        .connection()
-                        .send_request_to(Agent, request)
-                        .block_task()
-                        .await
-                        .map(to_json)
-                        .map_err(|err| err.to_string());
-                    let _ = reply.send(result);
+                    send_set_config_option(&session, config_id, value, reply).await;
                 }
                 SessionCommand::Close => {
                     close_session_gracefully(&session).await;
@@ -964,9 +942,53 @@ async fn drain_replay(
     Ok(())
 }
 
+/// Send `session/set_mode` to the live session and settle the caller's reply.
+/// Safe mid-turn: claude-agent-acp applies it to the running query
+/// (`setPermissionMode`), so the in-flight turn switches immediately.
+async fn send_set_mode(
+    session: &ActiveSession<'_, Agent>,
+    mode_id: String,
+    reply: oneshot::Sender<Result<(), String>>,
+) {
+    let request =
+        SetSessionModeRequest::new(session.session_id().clone(), SessionModeId::from(mode_id));
+    let result = session
+        .connection()
+        .send_request_to(Agent, request)
+        .block_task()
+        .await
+        .map(|_| ())
+        .map_err(|err| err.to_string());
+    let _ = reply.send(result);
+}
+
+/// Send `session/set_config_option` to the live session; see `send_set_mode`
+/// for why this is safe mid-turn.
+async fn send_set_config_option(
+    session: &ActiveSession<'_, Agent>,
+    config_id: String,
+    value: String,
+    reply: oneshot::Sender<Result<serde_json::Value, String>>,
+) {
+    let request = SetSessionConfigOptionRequest::new(
+        session.session_id().clone(),
+        SessionConfigId::from(config_id),
+        SessionConfigValueId::from(value),
+    );
+    let result = session
+        .connection()
+        .send_request_to(Agent, request)
+        .block_task()
+        .await
+        .map(to_json)
+        .map_err(|err| err.to_string());
+    let _ = reply.send(result);
+}
+
 /// Run one prompt turn. While the turn runs, keeps draining `incoming` (when
 /// given) so Cancel and Close stay actionable instead of queueing behind the
-/// turn; other commands are returned deferred.
+/// turn; config/mode changes go out live (see `send_set_mode`), other commands
+/// are returned deferred.
 async fn run_prompt_turn(
     session: &mut ActiveSession<'_, Agent>,
     prompt: String,
@@ -1047,6 +1069,16 @@ async fn run_prompt_turn(
             TurnInput::Command(SessionCommand::Close) => {
                 cancel_prompt(session, cancel_flag);
                 deferred.push(SessionCommand::Close);
+            }
+            TurnInput::Command(SessionCommand::SetMode { mode_id, reply }) => {
+                send_set_mode(session, mode_id, reply).await;
+            }
+            TurnInput::Command(SessionCommand::SetConfig {
+                config_id,
+                value,
+                reply,
+            }) => {
+                send_set_config_option(session, config_id, value, reply).await;
             }
             TurnInput::Command(command) => deferred.push(command),
         }

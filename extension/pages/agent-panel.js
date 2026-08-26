@@ -552,8 +552,7 @@ class AgentPanelPageElement extends GemElement {
     const sessionId = this.#s.sessionId;
     if (!sessionId) return;
     const store = this.#sessionStore(sessionId);
-    // Reflect the pick right away: while a turn runs the host defers the
-    // change until it finishes, so waiting for the reply would look broken.
+    // Show the pick immediately instead of waiting for the host round-trip.
     const previous = store.get()?.configOptions ?? [];
     this.#clearSessionError(sessionId);
     store.set({ configOptions: withConfigValue(previous, configId, value) });
