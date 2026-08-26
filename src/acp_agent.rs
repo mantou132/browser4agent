@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
-    future,
+    env, ffi::OsString, future,
     path::PathBuf,
     process::Command,
     sync::{
@@ -54,22 +54,63 @@ fn agent_candidates() -> Vec<(&'static str, Vec<&'static str>)> {
     ]
 }
 
+/// Browsers launched from Finder/Dock only inherit macOS' minimal PATH, which
+/// hides CLIs installed under Homebrew or user-local tool managers. Extend the
+/// inherited PATH with the usual install locations before probing/launching;
+/// `None` when there is nothing to add (or on Windows).
+fn augmented_path() -> Option<OsString> {
+    if cfg!(windows) {
+        return None;
+    }
+    let mut paths: Vec<PathBuf> = env::split_paths(&env::var_os("PATH")?).collect();
+    let mut extras = vec![
+        PathBuf::from("/opt/homebrew/bin"), // Homebrew on Apple Silicon
+        PathBuf::from("/opt/homebrew/sbin"),
+        PathBuf::from("/usr/local/bin"), // Homebrew on Intel, npm global
+    ];
+    if let Some(home) = env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        extras.push(home.join(".local/bin")); // uv/pipx style user installs
+        extras.push(home.join(".cargo/bin"));
+        extras.push(home.join(".volta/bin"));
+        extras.push(home.join("Library/pnpm"));
+    }
+    let mut added = false;
+    for dir in extras {
+        if dir.is_dir() && !paths.contains(&dir) {
+            paths.push(dir);
+            added = true;
+        }
+    }
+    if !added {
+        return None;
+    }
+    env::join_paths(&paths).ok()
+}
+
 fn cli_available(cli: &str) -> bool {
     // Windows only resolves `.cmd` shims through `cmd /C`, same as the npx
     // launch itself.
-    let output = if cfg!(windows) {
-        Command::new("cmd").args(["/C", cli, "--version"]).output()
+    let mut cmd = if cfg!(windows) {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", cli, "--version"]);
+        cmd
     } else {
-        Command::new(cli).arg("--version").output()
+        let mut cmd = Command::new(cli);
+        cmd.arg("--version");
+        cmd
     };
-    output.map(|out| out.status.success()).unwrap_or(false)
+    if let Some(path) = augmented_path() {
+        cmd.env("PATH", path);
+    }
+    cmd.output().map(|out| out.status.success()).unwrap_or(false)
 }
 
-fn detect_agent_command() -> Result<Vec<&'static str>> {
+fn detect_agent_command() -> Result<Vec<String>> {
     let mut missing = Vec::new();
     for (cli, command) in agent_candidates() {
         if cli_available(cli) {
-            return Ok(command);
+            return Ok(command.into_iter().map(String::from).collect());
         }
         missing.push(format!("'{cli}'"));
     }
@@ -175,8 +216,13 @@ impl AcpRuntime {
     }
 
     async fn serve_connection(&self, generation: u64) -> Result<()> {
-        let command = detect_agent_command()?;
+        let mut command = detect_agent_command()?;
         logger::info(&format!("Starting ACP agent: {}", command.join(" ")));
+        // `from_args` treats leading `NAME=value` args as env overrides for the
+        // spawned subprocess.
+        if let Some(path) = augmented_path() {
+            command.insert(0, format!("PATH={}", path.to_string_lossy()));
+        }
         let agent =
             AcpAgent::from_args(command).context("failed to configure ACP agent command")?;
         let resolver = self.resolver.clone();
