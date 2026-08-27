@@ -77,7 +77,7 @@ browser4agent --tool read_tab --help   # 查看工具的入参 schema
 
 在 DevTools 打开 **Agent** 面板（或作为浏览器侧边栏），即可和本地安装的编码 Agent 聊当前页面。会话实时流式输出，支持附件、权限确认，回合进行中可以排队输入，可以保留多个会话并随时切换。
 
-需要安装 Native Host，以及本地一个支持 [ACP][acp] 协议的编码 Agent：Native Host 会自动识别 `claude` 和 `codex` 命令行，并通过官方 ACP 适配器启动它们。
+需要安装 Native Host，以及本地一个支持 [ACP][acp] 协议的编码 Agent。Agent 面板会识别已安装的 `claude` 和 `codex` 命令行，让你在新建会话时选择其一，再通过对应的 ACP 适配器启动。
 
 ## 从源码构建
 

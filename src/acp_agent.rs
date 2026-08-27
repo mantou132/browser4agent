@@ -1,6 +1,8 @@
 use std::{
     collections::{HashMap, VecDeque},
-    env, ffi::OsString, future,
+    env,
+    ffi::OsString,
+    future,
     path::PathBuf,
     process::Command,
     sync::{
@@ -15,9 +17,9 @@ use agent_client_protocol::{
         ProtocolVersion,
         v1::{
             CancelNotification, CloseSessionRequest, ContentBlock, ContentChunk,
-            DeleteSessionRequest, ImageContent, InitializeRequest, ListSessionsRequest,
-            LoadSessionRequest, NewSessionRequest, NewSessionResponse, PermissionOptionId,
-            PromptRequest, PromptResponse, RequestPermissionOutcome, RequestPermissionRequest,
+            DeleteSessionRequest, ImageContent, InitializeRequest, LoadSessionRequest,
+            NewSessionRequest, NewSessionResponse, PermissionOptionId, PromptRequest,
+            PromptResponse, RequestPermissionOutcome, RequestPermissionRequest,
             RequestPermissionResponse, ResourceLink, SelectedPermissionOutcome, SessionConfigId,
             SessionConfigValueId, SessionId, SessionModeId, SessionNotification, SessionUpdate,
             SetSessionConfigOptionRequest, SetSessionModeRequest, TextContent,
@@ -31,9 +33,16 @@ use tokio::sync::{Mutex, mpsc, oneshot, watch};
 
 use crate::{logger, peer::BoxFuture};
 
-/// Local ACP agent candidates in priority order: the underlying CLI whose
-/// presence decides availability, and the adapter command to launch for it.
-fn agent_candidates() -> Vec<(&'static str, Vec<&'static str>)> {
+/// A local ACP agent and the adapter command used to launch it.
+struct AgentCandidate {
+    id: &'static str,
+    name: &'static str,
+    cli: &'static str,
+    command: Vec<String>,
+}
+
+/// Local ACP agents in display order.
+fn agent_candidates() -> Vec<AgentCandidate> {
     let mut npx: Vec<&'static str> = if cfg!(windows) {
         vec!["cmd", "/C", "npx"]
     } else {
@@ -46,12 +55,43 @@ fn agent_candidates() -> Vec<(&'static str, Vec<&'static str>)> {
         command
     };
     vec![
-        (
-            "claude",
-            adapter("@agentclientprotocol/claude-agent-acp"),
-        ),
-        ("codex", adapter("@agentclientprotocol/codex-acp")),
+        AgentCandidate {
+            id: "claude",
+            name: "Claude Code",
+            cli: "claude",
+            command: adapter("@agentclientprotocol/claude-agent-acp")
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        },
+        AgentCandidate {
+            id: "codex",
+            name: "Codex",
+            cli: "codex",
+            command: adapter("@agentclientprotocol/codex-acp")
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        },
     ]
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AvailableAgent {
+    pub id: &'static str,
+    pub name: &'static str,
+}
+
+pub fn available_agents() -> Vec<AvailableAgent> {
+    agent_candidates()
+        .into_iter()
+        .filter(|candidate| cli_available(candidate.cli))
+        .map(|candidate| AvailableAgent {
+            id: candidate.id,
+            name: candidate.name,
+        })
+        .collect()
 }
 
 /// Browsers launched from Finder/Dock only inherit macOS' minimal PATH, which
@@ -103,21 +143,9 @@ fn cli_available(cli: &str) -> bool {
     if let Some(path) = augmented_path() {
         cmd.env("PATH", path);
     }
-    cmd.output().map(|out| out.status.success()).unwrap_or(false)
-}
-
-fn detect_agent_command() -> Result<Vec<String>> {
-    let mut missing = Vec::new();
-    for (cli, command) in agent_candidates() {
-        if cli_available(cli) {
-            return Ok(command.into_iter().map(String::from).collect());
-        }
-        missing.push(format!("'{cli}'"));
-    }
-    anyhow::bail!(
-        "No local ACP agent found; install {} first",
-        missing.join(" or ")
-    )
+    cmd.output()
+        .map(|out| out.status.success())
+        .unwrap_or(false)
 }
 
 fn resolve_cwd(cwd: Option<PathBuf>) -> Result<PathBuf> {
@@ -133,9 +161,13 @@ fn resolve_cwd(cwd: Option<PathBuf>) -> Result<PathBuf> {
 pub type PermissionResolver =
     Arc<dyn Fn(serde_json::Value) -> BoxFuture<'static, Option<String>> + Send + Sync>;
 
-/// Session metadata captured at creation/load time.
-pub struct SessionInit {
-    pub acp_session_id: String,
+/// Snapshot returned after an ACP session actor is ready.
+pub struct SessionReady {
+    pub session_id: String,
+    /// Human-readable title reported while creating/loading the session.
+    pub title: Option<String>,
+    /// ISO timestamp reported while creating/loading the session.
+    pub updated_at: Option<String>,
     /// Modes the agent supports for this session (for `set_mode`).
     pub modes: Option<serde_json::Value>,
     /// Config options the agent supports for this session (for
@@ -154,6 +186,8 @@ struct RuntimeState {
 
 #[derive(Clone)]
 struct AcpRuntime {
+    agent: String,
+    command: Vec<String>,
     state: Arc<Mutex<RuntimeState>>,
     resolver: Option<PermissionResolver>,
     permission_cancels: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
@@ -161,9 +195,11 @@ struct AcpRuntime {
 }
 
 impl AcpRuntime {
-    fn new(resolver: Option<PermissionResolver>) -> Self {
+    fn new(agent: String, command: Vec<String>, resolver: Option<PermissionResolver>) -> Self {
         let (disconnects, _) = watch::channel(0);
         Self {
+            agent,
+            command,
             state: Arc::new(Mutex::new(RuntimeState {
                 connection: None,
                 connecting: false,
@@ -216,18 +252,23 @@ impl AcpRuntime {
     }
 
     async fn serve_connection(&self, generation: u64) -> Result<()> {
-        let mut command = detect_agent_command()?;
-        logger::info(&format!("Starting ACP agent: {}", command.join(" ")));
+        let mut command = self.command.clone();
+        logger::info(&format!(
+            "Starting {} ACP agent: {}",
+            self.agent,
+            command.join(" ")
+        ));
         // `from_args` treats leading `NAME=value` args as env overrides for the
         // spawned subprocess.
         if let Some(path) = augmented_path() {
             command.insert(0, format!("PATH={}", path.to_string_lossy()));
         }
-        let agent =
+        let acp_agent =
             AcpAgent::from_args(command).context("failed to configure ACP agent command")?;
         let resolver = self.resolver.clone();
         let permission_cancels = self.permission_cancels.clone();
         let runtime = self.clone();
+        let agent_id = self.agent.clone();
 
         Client
             .builder()
@@ -236,9 +277,11 @@ impl AcpRuntime {
                 async move |request: RequestPermissionRequest, responder, connection| {
                     let resolver = resolver.clone();
                     let permission_cancels = permission_cancels.clone();
+                    let agent_id = agent_id.clone();
                     connection.spawn(async move {
                         let session_id = request.session_id.to_string();
                         let payload = serde_json::json!({
+                            "agent": agent_id,
                             "sessionId": session_id,
                             "toolCall": to_json(request.tool_call),
                             "options": to_json(request.options),
@@ -273,7 +316,7 @@ impl AcpRuntime {
                 },
                 agent_client_protocol::on_receive_request!(),
             )
-            .connect_with(agent, |connection: ConnectionTo<Agent>| async move {
+            .connect_with(acp_agent, |connection: ConnectionTo<Agent>| async move {
                 let response = connection
                     .send_request(InitializeRequest::new(ProtocolVersion::V1))
                     .block_task()
@@ -326,14 +369,14 @@ impl AcpRuntime {
         system_prompt: Option<String>,
     ) -> Result<(
         ActiveSession<'static, Agent>,
-        SessionInit,
+        SessionReady,
         watch::Sender<bool>,
         watch::Receiver<u64>,
         u64,
     )> {
         let connection = self.connection().await?;
         let generation = self.state.lock().await.generation;
-        let (session, init): (ActiveSession<'static, Agent>, SessionInit) = match load {
+        let (session, ready): (ActiveSession<'static, Agent>, SessionReady) = match load {
             Some(session_id) => {
                 let mut request = LoadSessionRequest::new(session_id.clone(), cwd);
                 if let Some(system_prompt) = &system_prompt {
@@ -343,14 +386,17 @@ impl AcpRuntime {
                     .send_request_to(Agent, request)
                     .block_task()
                     .await?;
-                let init = SessionInit {
-                    acp_session_id: session_id.to_string(),
+                let (title, updated_at) = session_metadata_from_meta(response.meta.as_ref());
+                let ready = SessionReady {
+                    session_id: session_id.to_string(),
+                    title,
+                    updated_at,
                     modes: response.modes.as_ref().map(to_json),
                     config_options: response.config_options.as_ref().map(to_json),
                 };
                 let session = connection
                     .attach_session(NewSessionResponse::new(session_id), Default::default())?;
-                (session, init)
+                (session, ready)
             }
             None => {
                 let mut request = NewSessionRequest::new(cwd);
@@ -361,27 +407,27 @@ impl AcpRuntime {
                     .send_request_to(Agent, request)
                     .block_task()
                     .await?;
-                let init = SessionInit {
-                    acp_session_id: response.session_id.to_string(),
+                let (title, updated_at) = session_metadata_from_meta(response.meta.as_ref());
+                let ready = SessionReady {
+                    session_id: response.session_id.to_string(),
+                    title,
+                    updated_at,
                     modes: response.modes.as_ref().map(to_json),
                     config_options: response.config_options.as_ref().map(to_json),
                 };
                 let session = connection.attach_session(response, Default::default())?;
-                (session, init)
+                (session, ready)
             }
         };
         let (cancel, _) = watch::channel(false);
         let mut permission_cancels = self.permission_cancels.lock().await;
-        if permission_cancels.contains_key(&init.acp_session_id) {
-            anyhow::bail!(
-                "ACP agent session is already active: {}",
-                init.acp_session_id
-            );
+        if permission_cancels.contains_key(&ready.session_id) {
+            anyhow::bail!("ACP agent session is already active: {}", ready.session_id);
         }
-        permission_cancels.insert(init.acp_session_id.clone(), cancel.clone());
+        permission_cancels.insert(ready.session_id.clone(), cancel.clone());
         Ok((
             session,
-            init,
+            ready,
             cancel,
             self.disconnects.subscribe(),
             generation,
@@ -391,6 +437,18 @@ impl AcpRuntime {
     async fn unregister_session(&self, session_id: &str) {
         self.permission_cancels.lock().await.remove(session_id);
     }
+}
+
+fn session_metadata_from_meta(
+    meta: Option<&serde_json::Map<String, serde_json::Value>>,
+) -> (Option<String>, Option<String>) {
+    let string = |key| {
+        meta.and_then(|meta| meta.get(key))
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
+    (string("title"), string("updatedAt"))
 }
 
 fn system_prompt_meta(prompt: &str) -> serde_json::Map<String, serde_json::Value> {
@@ -445,25 +503,14 @@ pub enum AgentEvent {
     Stop { stop_reason: serde_json::Value },
 }
 
-pub type SessionEndCallback = Arc<dyn Fn(&str) + Send + Sync>;
-
-/// Handle returned when a session starts.
-pub struct CreatedSession {
-    /// The ACP session id; addresses the live session and persists for
-    /// [`AgentSessionManager::load_session`].
-    pub session_id: String,
-    /// Modes the agent reported for this session, if any.
-    pub modes: Option<serde_json::Value>,
-    /// Config options the agent reported for this session, if any.
-    pub config_options: Option<serde_json::Value>,
-}
+pub type SessionEndCallback = Arc<dyn Fn(&str, &str) + Send + Sync>;
 
 #[derive(Clone)]
 pub struct AgentSessionManager {
-    sessions: Arc<Mutex<HashMap<String, AgentSession>>>,
-    runtime: AcpRuntime,
-    /// Invoked with the session id whenever a session actor exits, whether
-    /// closed on purpose, cancelled, or died with the subprocess.
+    sessions: Arc<Mutex<HashMap<AgentSessionKey, AgentSession>>>,
+    runtimes: Arc<HashMap<String, AcpRuntime>>,
+    /// Invoked with the agent and session id whenever a session actor exits,
+    /// whether closed on purpose, cancelled, or died with the subprocess.
     on_end: Option<SessionEndCallback>,
 }
 
@@ -471,6 +518,21 @@ pub struct AgentSessionManager {
 struct AgentSession {
     tx: mpsc::Sender<SessionCommand>,
     busy: Arc<AtomicBool>,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct AgentSessionKey {
+    agent: String,
+    session_id: String,
+}
+
+impl AgentSessionKey {
+    fn new(agent: &str, session_id: &str) -> Self {
+        Self {
+            agent: agent.to_string(),
+            session_id: session_id.to_string(),
+        }
+    }
 }
 
 struct BusyGuard(Arc<AtomicBool>);
@@ -503,19 +565,38 @@ enum SessionCommand {
 
 impl AgentSessionManager {
     pub fn new(on_end: Option<SessionEndCallback>, resolver: Option<PermissionResolver>) -> Self {
+        let runtimes = agent_candidates()
+            .into_iter()
+            .map(|candidate| {
+                let agent = candidate.id.to_string();
+                (
+                    agent.clone(),
+                    AcpRuntime::new(agent, candidate.command, resolver.clone()),
+                )
+            })
+            .collect();
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            runtime: AcpRuntime::new(resolver),
+            runtimes: Arc::new(runtimes),
             on_end,
         }
     }
 
+    fn runtime(&self, agent: &str) -> Result<AcpRuntime> {
+        self.runtimes
+            .get(agent)
+            .cloned()
+            .with_context(|| format!("Unknown ACP agent: {agent}"))
+    }
+
     pub async fn create_session(
         &self,
+        agent: &str,
         cwd: Option<PathBuf>,
         system_prompt: Option<String>,
-    ) -> Result<CreatedSession> {
-        self.start_session(cwd, None, system_prompt, None).await
+    ) -> Result<SessionReady> {
+        self.start_session(agent, cwd, None, system_prompt, None)
+            .await
     }
 
     /// Resume a persisted session by its ACP session id (requires the agent to
@@ -524,14 +605,16 @@ impl AgentSessionManager {
     /// there before the session reports ready.
     pub async fn load_session(
         &self,
-        acp_session_id: &str,
+        agent: &str,
+        session_id: &str,
         cwd: Option<PathBuf>,
         system_prompt: Option<String>,
         replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
-    ) -> Result<CreatedSession> {
+    ) -> Result<SessionReady> {
         self.start_session(
+            agent,
             cwd,
-            Some(SessionId::from(acp_session_id.to_string())),
+            Some(SessionId::from(session_id.to_string())),
             system_prompt,
             replay_tx,
         )
@@ -540,16 +623,18 @@ impl AgentSessionManager {
 
     async fn start_session(
         &self,
+        agent: &str,
         cwd: Option<PathBuf>,
         load: Option<SessionId>,
         system_prompt: Option<String>,
         replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
-    ) -> Result<CreatedSession> {
+    ) -> Result<SessionReady> {
         let cwd = resolve_cwd(cwd)?;
         let (tx, rx) = mpsc::channel(8);
         let (ready_tx, ready_rx) = oneshot::channel();
         let (ended_tx, ended_rx) = oneshot::channel::<()>();
-        let runtime = self.runtime.clone();
+        let runtime = self.runtime(agent)?;
+        let agent = agent.to_string();
         tokio::spawn(async move {
             // ended_tx drops when the actor exits, triggering cleanup.
             run_session_actor(
@@ -568,16 +653,17 @@ impl AgentSessionManager {
         // Readiness is bounded by the caller's timeout, not here. The
         // session id is assigned by the agent.
         match ready_rx.await {
-            Ok(Ok(init)) => {
-                let session_id = init.acp_session_id;
+            Ok(Ok(ready)) => {
+                let session_id = ready.session_id.clone();
+                let session_key = AgentSessionKey::new(&agent, &session_id);
                 {
                     let mut sessions = self.sessions.lock().await;
-                    if sessions.contains_key(&session_id) {
+                    if sessions.contains_key(&session_key) {
                         // Dropping tx ends the duplicate actor.
-                        anyhow::bail!("ACP agent session is already active: {session_id}");
+                        anyhow::bail!("{agent} ACP session is already active: {session_id}");
                     }
                     sessions.insert(
-                        session_id.clone(),
+                        session_key.clone(),
                         AgentSession {
                             tx,
                             busy: Arc::new(AtomicBool::new(false)),
@@ -586,22 +672,18 @@ impl AgentSessionManager {
                 }
                 let sessions = self.sessions.clone();
                 let on_end = self.on_end.clone();
-                let ended_session_id = session_id.clone();
+                let ended_session_key = session_key;
                 tokio::spawn(async move {
                     let _ = ended_rx.await;
                     // Only report sessions that were actually registered
                     // (actors that died before readiness never were).
-                    if sessions.lock().await.remove(&ended_session_id).is_some() {
+                    if sessions.lock().await.remove(&ended_session_key).is_some() {
                         if let Some(on_end) = on_end {
-                            on_end(&ended_session_id);
+                            on_end(&ended_session_key.agent, &ended_session_key.session_id);
                         }
                     }
                 });
-                Ok(CreatedSession {
-                    session_id,
-                    modes: init.modes,
-                    config_options: init.config_options,
-                })
+                Ok(ready)
             }
             Ok(Err(err)) => anyhow::bail!(err),
             Err(_) => anyhow::bail!("ACP agent session stopped before it was ready"),
@@ -610,19 +692,14 @@ impl AgentSessionManager {
 
     pub async fn prompt(
         &self,
+        agent: &str,
         session_id: &str,
         prompt: String,
         attachments: Vec<Attachment>,
         timeout_secs: u64,
         event_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     ) -> Result<String> {
-        let session = self
-            .sessions
-            .lock()
-            .await
-            .get(session_id)
-            .cloned()
-            .with_context(|| format!("Unknown agent session: {session_id}"))?;
+        let session = self.session(agent, session_id).await?;
         if session.busy.swap(true, Ordering::AcqRel) {
             anyhow::bail!("ACP agent session already has a prompt in progress");
         }
@@ -707,17 +784,19 @@ impl AgentSessionManager {
 
     /// Cancel the in-flight prompt of a session. The prompt settles with the
     /// partial answer and a `stop` event carrying the cancel reason.
-    pub async fn cancel(&self, session_id: &str) -> bool {
-        let Some(session) = self.sessions.lock().await.get(session_id).cloned() else {
+    pub async fn cancel(&self, agent: &str, session_id: &str) -> bool {
+        let key = AgentSessionKey::new(agent, session_id);
+        let Some(session) = self.sessions.lock().await.get(&key).cloned() else {
             return false;
         };
         session.tx.send(SessionCommand::Cancel).await.is_ok()
     }
 
     /// Switch the session mode (`session/set_mode`), e.g. plan mode.
-    pub async fn set_mode(&self, session_id: &str, mode_id: &str) -> Result<()> {
+    pub async fn set_mode(&self, agent: &str, session_id: &str, mode_id: &str) -> Result<()> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.send_command(
+            agent,
             session_id,
             SessionCommand::SetMode {
                 mode_id: mode_id.to_string(),
@@ -736,12 +815,14 @@ impl AgentSessionManager {
     /// refreshed config options reported by the agent.
     pub async fn set_config_option(
         &self,
+        agent: &str,
         session_id: &str,
         config_id: &str,
         value: &str,
     ) -> Result<serde_json::Value> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.send_command(
+            agent,
             session_id,
             SessionCommand::SetConfig {
                 config_id: config_id.to_string(),
@@ -757,14 +838,23 @@ impl AgentSessionManager {
         }
     }
 
-    async fn send_command(&self, session_id: &str, command: SessionCommand) -> Result<()> {
-        let session = self
-            .sessions
+    async fn session(&self, agent: &str, session_id: &str) -> Result<AgentSession> {
+        let key = AgentSessionKey::new(agent, session_id);
+        self.sessions
             .lock()
             .await
-            .get(session_id)
+            .get(&key)
             .cloned()
-            .with_context(|| format!("Unknown agent session: {session_id}"))?;
+            .with_context(|| format!("Unknown {agent} ACP session: {session_id}"))
+    }
+
+    async fn send_command(
+        &self,
+        agent: &str,
+        session_id: &str,
+        command: SessionCommand,
+    ) -> Result<()> {
+        let session = self.session(agent, session_id).await?;
         session
             .tx
             .send(command)
@@ -772,40 +862,21 @@ impl AgentSessionManager {
             .context("ACP agent session is closed")
     }
 
-    pub async fn close_session(&self, session_id: &str) -> bool {
-        let Some(session) = self.sessions.lock().await.remove(session_id) else {
+    pub async fn close_session(&self, agent: &str, session_id: &str) -> bool {
+        let key = AgentSessionKey::new(agent, session_id);
+        let Some(session) = self.sessions.lock().await.remove(&key) else {
             return false;
         };
         let _ = session.tx.send(SessionCommand::Close).await;
         true
     }
 
-    pub async fn list_sessions(
-        &self,
-        cwd: Option<PathBuf>,
-        cursor: Option<String>,
-    ) -> Result<serde_json::Value> {
-        let connection = self.runtime.connection().await?;
-        let mut request = ListSessionsRequest::new();
-        if let Some(cwd) = cwd {
-            request = request.cwd(cwd);
-        }
-        if let Some(cursor) = cursor {
-            request = request.cursor(cursor);
-        }
-        let response = connection
-            .send_request_to(Agent, request)
-            .block_task()
-            .await?;
-        Ok(to_json(response))
-    }
-
-    pub async fn delete_session(&self, acp_session_id: &str) -> Result<()> {
-        let connection = self.runtime.connection().await?;
+    pub async fn delete_session(&self, agent: &str, session_id: &str) -> Result<()> {
+        let connection = self.runtime(agent)?.connection().await?;
         connection
             .send_request_to(
                 Agent,
-                DeleteSessionRequest::new(SessionId::from(acp_session_id.to_string())),
+                DeleteSessionRequest::new(SessionId::from(session_id.to_string())),
             )
             .block_task()
             .await?;
@@ -820,7 +891,7 @@ async fn run_session_actor(
     runtime: AcpRuntime,
     replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     rx: mpsc::Receiver<SessionCommand>,
-    ready_tx: oneshot::Sender<Result<SessionInit, String>>,
+    ready_tx: oneshot::Sender<Result<SessionReady, String>>,
     _ended_tx: oneshot::Sender<()>,
 ) {
     if let Err(err) =
@@ -837,9 +908,9 @@ async fn run_session_actor_inner(
     runtime: AcpRuntime,
     replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     mut rx: mpsc::Receiver<SessionCommand>,
-    ready_tx: oneshot::Sender<Result<SessionInit, String>>,
+    ready_tx: oneshot::Sender<Result<SessionReady, String>>,
 ) -> Result<()> {
-    let (mut session, init, cancel_flag, mut disconnects, connection_generation) =
+    let (mut session, mut ready, cancel_flag, mut disconnects, connection_generation) =
         match runtime.start_session(cwd, load, system_prompt).await {
             Ok(session) => session,
             Err(err) => {
@@ -847,15 +918,17 @@ async fn run_session_actor_inner(
                 return Err(err);
             }
         };
-    let session_id = init.acp_session_id.clone();
+    let session_id = ready.session_id.clone();
     let result: Result<(), agent_client_protocol::Error> = async {
         // The load-time history replay is queued before attach; forward it
         // before reporting ready so the client sees the events before the
         // load call resolves.
         if let Some(replay_tx) = &replay_tx {
-            drain_replay(&mut session, replay_tx).await?;
+            let metadata = drain_replay(&mut session, replay_tx).await?;
+            ready.title = metadata.title.or(ready.title);
+            ready.updated_at = metadata.updated_at.or(ready.updated_at);
         }
-        let _ = ready_tx.send(Ok(init));
+        let _ = ready_tx.send(Ok(ready));
         // Commands arriving while a prompt turn runs are deferred here and
         // processed after the turn settles — except config/mode changes, which
         // `run_prompt_turn` applies to the live query immediately.
@@ -959,22 +1032,52 @@ async fn close_session_gracefully(session: &ActiveSession<'_, Agent>) {
 /// `session/load` history replay) to `event_tx`. The replay is complete by the
 /// time the load response arrives, so once the queue is quiet for a moment the
 /// drain is done; dropping the pending `read_update` on timeout loses nothing.
+#[derive(Default)]
+struct SessionReplayMetadata {
+    title: Option<String>,
+    updated_at: Option<String>,
+}
+
+impl SessionReplayMetadata {
+    fn apply(&mut self, update: &serde_json::Value) {
+        if update
+            .get("sessionUpdate")
+            .and_then(serde_json::Value::as_str)
+            != Some("session_info_update")
+        {
+            return;
+        }
+        if let Some(title) = update
+            .get("title")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+        {
+            self.title = Some(title.to_string());
+        }
+        if let Some(updated_at) = update
+            .get("updatedAt")
+            .and_then(serde_json::Value::as_str)
+            .filter(|value| !value.is_empty())
+        {
+            self.updated_at = Some(updated_at.to_string());
+        }
+    }
+}
+
 async fn drain_replay(
     session: &mut ActiveSession<'_, Agent>,
     event_tx: &mpsc::UnboundedSender<AgentEvent>,
-) -> Result<(), agent_client_protocol::Error> {
+) -> Result<SessionReplayMetadata, agent_client_protocol::Error> {
     const REPLAY_IDLE: std::time::Duration = std::time::Duration::from_millis(200);
+    let mut metadata = SessionReplayMetadata::default();
     loop {
         match tokio::time::timeout(REPLAY_IDLE, session.read_update()).await {
             Ok(Ok(SessionMessage::SessionMessage(dispatch))) => {
                 MatchDispatch::new(dispatch)
                     .if_notification(async |notif: SessionNotification| {
-                        send_agent_event(
-                            Some(event_tx),
-                            AgentEvent::SessionUpdate {
-                                update: to_json(notif.update),
-                            },
-                        );
+                        let update = to_json(notif.update);
+                        metadata.apply(&update);
+                        send_agent_event(Some(event_tx), AgentEvent::SessionUpdate { update });
                         Ok(())
                     })
                     .await
@@ -985,7 +1088,7 @@ async fn drain_replay(
             Err(_) => break,
         }
     }
-    Ok(())
+    Ok(metadata)
 }
 
 /// Send `session/set_mode` to the live session and settle the caller's reply.
@@ -1166,4 +1269,44 @@ fn to_json(value: impl Serialize) -> serde_json::Value {
             "serializationError": err.to_string()
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AgentSessionKey, SessionReplayMetadata, session_metadata_from_meta};
+
+    #[test]
+    fn namespaces_identical_session_ids_by_agent() {
+        assert_ne!(
+            AgentSessionKey::new("claude", "same"),
+            AgentSessionKey::new("codex", "same")
+        );
+    }
+
+    #[test]
+    fn reads_session_metadata_from_load_meta_and_replay() {
+        let meta = serde_json::Map::from_iter([
+            ("title".to_string(), serde_json::json!("Loaded title")),
+            (
+                "updatedAt".to_string(),
+                serde_json::json!("2026-08-27T00:00:00Z"),
+            ),
+        ]);
+        assert_eq!(
+            session_metadata_from_meta(Some(&meta)),
+            (
+                Some("Loaded title".to_string()),
+                Some("2026-08-27T00:00:00Z".to_string())
+            )
+        );
+
+        let mut replay = SessionReplayMetadata::default();
+        replay.apply(&serde_json::json!({
+            "sessionUpdate": "session_info_update",
+            "title": "Replay title",
+            "updatedAt": "2026-08-27T01:00:00Z"
+        }));
+        assert_eq!(replay.title.as_deref(), Some("Replay title"));
+        assert_eq!(replay.updated_at.as_deref(), Some("2026-08-27T01:00:00Z"));
+    }
 }

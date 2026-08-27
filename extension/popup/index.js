@@ -1,7 +1,7 @@
 import { openExtensionPage } from '@/shared/tabs.js';
 import { setPageI18n, t } from '../shared/i18n.js';
 import { icons } from '../shared/icons.js';
-import { initStore, isToolEnabled, setToolEnabled, toolStore } from '../shared/store.js';
+import { initStore, isToolEnabled, setToolEnabled, toolStore } from '../shared/tool-store.js';
 
 setPageI18n();
 

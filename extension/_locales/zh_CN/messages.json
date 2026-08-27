@@ -125,7 +125,7 @@
     "message": "编辑"
   },
   "devtoolsPanelEmpty": {
-    "message": "点击「新建」或从左侧选择一个会话开始对话。需要本地已安装并登录 Claude Code"
+    "message": "点击「新建」或从左侧选择一个会话开始对话。需要本地已安装并登录 Claude Code 或 Codex"
   },
   "devtoolsPanelEnqueue": {
     "message": "加入队列"
@@ -168,6 +168,15 @@
   },
   "devtoolsPanelSessions": {
     "message": "会话"
+  },
+  "devtoolsAgentLabel": {
+    "message": "Agent"
+  },
+  "devtoolsNewSessionTitle": {
+    "message": "新建会话"
+  },
+  "devtoolsNoAgents": {
+    "message": "未检测到可用的 Claude Code 或 Codex"
   },
   "devtoolsThought": {
     "message": "思考"

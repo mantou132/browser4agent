@@ -5,8 +5,8 @@ import { createForm } from 'duoyun-ui/patterns/form';
 import { setPageI18n, t } from '../shared/i18n.js';
 import { installToolset, loadToolset } from '../shared/loader.js';
 import { MARKET_API, marketApi } from '../shared/market-api.js';
-import { addToolset, initStore, toolStore } from '../shared/store.js';
 import { openExtensionPage } from '../shared/tabs.js';
+import { addToolset, initStore, toolStore } from '../shared/tool-store.js';
 import { getToolsetId } from '../shared/toolsets.js';
 
 setPageI18n('marketTitle');

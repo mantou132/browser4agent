@@ -77,7 +77,7 @@ browser4agent --tool read_tab --help   # inspect a tool's input schema
 
 Open the **Agent** panel in DevTools — or as the browser's side panel — to chat with a locally installed coding agent about the page you're on. Sessions stream live, support attachments and permission prompts, can queue follow-up prompts while a turn is running, and you can keep several sessions and switch between them.
 
-You need the Native Host plus a local coding agent that speaks the [ACP][acp] protocol: the Native Host auto-detects the `claude` and `codex` CLIs and launches them through their official ACP adapters.
+You need the Native Host plus a local coding agent that speaks the [ACP][acp] protocol. The Agent panel detects installed `claude` and `codex` CLIs, lets you choose one for each new session, and launches it through the corresponding ACP adapter.
 
 ## Build from source
 

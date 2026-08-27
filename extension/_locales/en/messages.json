@@ -125,7 +125,7 @@
     "message": "Edit"
   },
   "devtoolsPanelEmpty": {
-    "message": "Click “New” or pick a session on the left to start chatting. Requires Claude Code installed and logged in locally"
+    "message": "Click “New” or pick a session on the left to start chatting. Requires Claude Code or Codex installed and logged in locally"
   },
   "devtoolsPanelEnqueue": {
     "message": "Add to queue"
@@ -168,6 +168,15 @@
   },
   "devtoolsPanelSessions": {
     "message": "Sessions"
+  },
+  "devtoolsAgentLabel": {
+    "message": "Agent"
+  },
+  "devtoolsNewSessionTitle": {
+    "message": "New session"
+  },
+  "devtoolsNoAgents": {
+    "message": "No available Claude Code or Codex installation was detected"
   },
   "devtoolsThought": {
     "message": "Thought"

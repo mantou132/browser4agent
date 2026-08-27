@@ -1,6 +1,6 @@
 import { exec } from './execute-in-bg.js';
 import { devtoolsOpenTabs } from './shared/devtools-tracker.js';
-import { getAvailableTabTools, getSubscribedTool } from './shared/store.js';
+import { getAvailableTabTools, getSubscribedTool } from './shared/tool-store.js';
 
 // Surfaces the DevTools-open state in read results so agents can avoid
 // debugger tools on that tab before trying them.

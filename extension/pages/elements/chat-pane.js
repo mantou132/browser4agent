@@ -4,7 +4,7 @@ import { t } from '../../shared/i18n.js';
 class AgentChatPaneElement extends GemElement {
   @boolattribute compact;
   @boolattribute loadingSession;
-  @property sessionId;
+  @property sessionKey;
   @property title;
   @property cwd;
   @property messages;
@@ -33,10 +33,10 @@ class AgentChatPaneElement extends GemElement {
 
   /** A new session view starts pinned to the bottom, and the prompt gets
    * focus once it becomes chattable. */
-  @effect((element) => [element.sessionId, element.loadingSession])
+  @effect((i) => [i.sessionKey, i.loadingSession])
   #onSessionViewChange = () => {
     this.#followMessages = true;
-    if (!this.sessionId || this.loadingSession) return;
+    if (!this.sessionKey || this.loadingSession) return;
     this.#composerRef.value?.focus();
   };
 
@@ -58,7 +58,7 @@ class AgentChatPaneElement extends GemElement {
     });
   };
 
-  @effect((element) => [element.messages, element.loadingSession, element.permissionRequest])
+  @effect((i) => [i.messages, i.loadingSession, i.permissionRequest])
   #followLatestMessage = () => {
     if (!this.loadingSession) this.scrollToLatest();
   };
@@ -67,7 +67,7 @@ class AgentChatPaneElement extends GemElement {
   #content = () => {
     const {
       compact,
-      sessionId,
+      sessionKey,
       title,
       cwd,
       messages,
@@ -78,12 +78,12 @@ class AgentChatPaneElement extends GemElement {
       composerDisabled,
       queue,
     } = this;
-    const canChat = Boolean(sessionId);
+    const canChat = Boolean(sessionKey);
 
     return html`
       <section class="relative flex min-h-0 min-w-0 flex-1 flex-col bg-bg">
         <header v-if=${!compact && !loadingSession && canChat} class="border-b border-border px-4 py-2.5 bg-bg">
-          <span class="block truncate text-sm font-medium text-highlight" title=${sessionId || ''}>${title}</span>
+          <span class="block truncate text-sm font-medium text-highlight" title=${sessionKey || ''}>${title}</span>
           <span
             v-if=${!!cwd}
             class="mt-0.5 block truncate font-mono text-xs text-describe"
@@ -127,7 +127,7 @@ class AgentChatPaneElement extends GemElement {
             class="block"
             ?disabled=${composerDisabled}
             .configOptions=${configOptions}
-            .sessionId=${sessionId}
+            .sessionKey=${sessionKey}
             .queue=${queue}
             @send=${(e) => this.send(e.detail)}
             @cancel=${() => this.cancel(null)}

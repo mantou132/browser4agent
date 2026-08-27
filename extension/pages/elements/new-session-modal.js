@@ -11,6 +11,6 @@ const style = css`
   }
 `;
 
-@customElement('agent-cwd-modal')
+@customElement('agent-new-session-modal')
 @adoptedStyle(style)
-class AgentCwdModalElement extends DuoyunModalElement {}
+class AgentNewSessionModalElement extends DuoyunModalElement {}

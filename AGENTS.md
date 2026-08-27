@@ -30,7 +30,7 @@
  3. `src/native_messaging.rs` 负责 Native Messaging 基础读写
  4. `src/peer.rs` 负责与扩展的双工 RPC 协议（请求/响应、流事件、通知），两端 API 对称
  5. `src/browser_agent.rs` 负责浏览器 agent 协议消息、流式事件转发
- 6. `src/acp_agent.rs` 负责 ACP 会话管理；Native Host 内复用一个可重连的长生命周期 `claude-agent-acp` connection，每个 ACP session 仍由独立 actor 串行处理
+  6. `src/acp_agent.rs` 负责 ACP 会话管理；Native Host 为用户选择的 Claude/Codex 分别复用可重连的长生命周期 ACP connection，每个 ACP session 仍由独立 actor 串行处理
 7. CLI 模式：
   1. `src/cli.rs` 解析 `--tool` / `--input`（或 stdin JSON）
   2. 转发单次工具调用到后台 MCP HTTP 服务 `127.0.0.1:39271/mcp`，打印结果后退出
@@ -61,7 +61,10 @@
 - `extension/shared/rpc.js`：对称双工 RPC 对端（`call` / `handle` / `notify`），同时用于 Native Host 链路和面板链路
 - `extension/shared/devtools-tracker.js`：追踪开着 DevTools 的 tab（devtools 页经 `devtools-alive` 端口上报，断开即关闭），`read_tab` 结果据此标注 `devtoolsOpen`
 - `extension/shared/agent-api.js`：面板侧 agent 会话 async API 客户端（经 background 的 `agent-rpc` 端口转发）
-- `extension/pages/agent-panel.js`：DevTools 双栏 Agent 面板和侧边栏单列变体的会话状态与操作逻辑（会话缓存、加载/切换、权限、错误归属、回合等待中的输入队列）；纯视图拆在 `pages/elements/`：会话列表 `session-list.js`（`agent-session-list`）、聊天区+滚动跟随+聚焦 `chat-pane.js`（`agent-chat-pane`）、输入区+队列展示 `composer.js`（`agent-composer`）
+- `extension/shared/storage-keys.js`：扩展全部 `chrome.storage.local` 键的集中注册表；显式列出旧工具键与带功能前缀/schema 版本的新键，并检查重复 value，禁止在功能模块中散落裸字符串键
+- `extension/shared/tool-store.js`：工具集、工具启用状态和收藏状态的共享 Store，并负责与 `chrome.storage.local` 双向同步
+- `extension/shared/agent-session-store.js`：Agent 面板的 `chrome.storage.local` 会话索引与按 Agent 隔离的 composer 默认配置；本地 session key 由 Agent 和 ACP session id 的 JSON 元组生成，避免跨 Agent 重名
+- `extension/pages/agent-panel.js`：DevTools 双栏 Agent 面板和侧边栏单列变体的会话状态与操作逻辑（本地会话索引、Agent/配置默认值、会话缓存、加载/切换、权限、错误归属、回合等待中的输入队列）；纯视图拆在 `pages/elements/`：新会话弹窗/选择器 `new-session-modal.js`（`agent-new-session-modal`）和 `new-session-picker.js`（`agent-new-session-picker`）、会话列表 `session-list.js`（`agent-session-list`）、聊天区+滚动跟随+聚焦 `chat-pane.js`（`agent-chat-pane`）、输入区+队列展示 `composer.js`（`agent-composer`）
 - `extension/tools.js`：MCP 工具实现
 - `extension/sandbox-globals.js`：execute_script_in_background 沙箱的全局安装函数（经 Function.toString() 注入 QuickJS，必须保持自包含，且在 extension.config.mjs 中排除 swc 转译）：`chrome`/`browser`/`debuggerEvents` 统一经单一 `__invoke` 桥、定时器（主函数返回即丢弃未触发的）、console 捕获（随结果以 `logs` 返回）、queueMicrotask、基础 URL/URLSearchParams
 - `extension/debugger.js`：CDP 调试会话，per-tab 事件 ring buffer 桥接 chrome.debugger 的 push 和 MCP 的 pull；快照以惰性函数暴露为 execute_script_in_background QuickJS 里的全局 `debuggerEvents()`，脚本调用时才序列化；attach 状态经 storage.session 在 SW 重启后恢复。MCP 侧只有 `debugger_send_command`（自动 attach）和 `debugger_detach` 两个工具（Chromium only，见 `CHROMIUM_ONLY_TOOLS`）

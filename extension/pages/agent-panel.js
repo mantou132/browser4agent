@@ -1,12 +1,21 @@
 import { addListener } from '@mantou/gem/lib/utils';
-import { polling } from 'duoyun-ui/lib/timer';
 import { createAgentApi } from '../shared/agent-api.js';
+import {
+  agentSessionKey,
+  observeAgentPanelState,
+  readAgentPanelState,
+  removeStoredSession,
+  sessionTitleFromPrompt,
+  updateAgentPanelState,
+  upsertStoredSession,
+} from '../shared/agent-session-store.js';
 import { setPageI18n, t } from '../shared/i18n.js';
 import { displayHomePath } from '../shared/path.js';
 
 setPageI18n();
 
 const agentApi = createAgentApi();
+const DRAFT_SESSION_KEY = 'draft';
 
 function getPanelContext() {
   const tabId = globalThis.chrome?.devtools?.inspectedWindow?.tabId;
@@ -21,6 +30,19 @@ function withCurrentMode(configOptions, currentModeId) {
 /** Keep one config option in sync with a locally staged change. */
 function withConfigValue(configOptions, configId, value) {
   return configOptions.map((option) => (option.id === configId ? { ...option, currentValue: value } : option));
+}
+
+function withAgentConfigOptions(state, agent, configOptions) {
+  return {
+    ...state,
+    defaults: {
+      ...state.defaults,
+      configOptionsByAgent: {
+        ...state.defaults.configOptionsByAgent,
+        [agent]: configOptions,
+      },
+    },
+  };
 }
 
 /** Append a streaming chunk to the last matching message, else start a new one. */
@@ -50,44 +72,50 @@ class AgentPanelPageElement extends GemElement {
 
   #s = createState({
     compact: false,
-    sessions: [], // persisted sessions: { sessionId, title?, cwd?, updatedAt? }
-    sessionId: null, // current live session
+    sessions: [], // persisted local records: { key, agent, sessionId, title?, cwd?, updatedAt? }
+    draftSession: null, // at most one local session without an ACP session id; never persisted
+    defaults: { agent: '', configOptionsByAgent: {} },
+    agents: [], // locally available ACP agents
+    sessionKey: null, // unique local key of the displayed session
     messages: [], // text messages, thought blocks, tool calls, or raw events
-    configOptions: [], // current session's ACP config options (mode/model/effort/…)
+    configOptions: [], // draft composer settings, or a live session's applied ACP options
     queue: [], // prompts staged while the displayed session has one in flight
-    pendingIds: [], // session ids with a prompt in flight
-    booting: true, // initial sessions fetching state (whole page loader)
-    loadingSession: false, // the displayed session is being created/loaded
-    loadingIds: [], // session ids with a load running in the background
-    deleting: null, // session id being deleted
-    error: '', // global errors (list/delete/create), transient
+    pendingIds: [], // local session keys with a prompt in flight
+    booting: true, // initial local state loading (whole page loader)
+    loadingIds: [], // local session keys being created or loaded
+    deleting: null, // local session key being deleted
+    error: '', // global errors (storage/delete/create), transient
     sessionErrors: {}, // per-session last error, shown when that session displays
     cwd: '',
     home: '',
-    cwdPicker: false,
-    permissions: {}, // per-session outstanding permission request: sessionId -> request
+    newSessionOpen: false,
+    permissions: {}, // per-session outstanding permission request: local key -> request
   });
 
-  #permissionResolves = new Map(); // sessionId -> resolve of the awaited ask
+  #permissionResolves = new Map(); // local session key -> resolve of the awaited ask
   #chatPaneRef = createRef();
-  // Live sessions opened by this panel: id -> { messages, configOptions, cwd }.
-  // Switching keeps sessions alive on the host; the cache restores them
-  // instantly, and entries are dropped when the host reports a session end.
+  // Pane state by local session key: { messages, configOptions, cwd, queue }.
+  // Switching keeps live ACP sessions running and restores their UI instantly.
   #sessionCache = new Map();
-  // Loads still running: session id -> { alive }; `alive` is cleared when the
+  // Loads still running: local session key -> { alive }; `alive` is cleared when the
   // session dies so a settling load no longer touches the panel state.
   #pendingLoads = new Map();
-  // Turns still running: session id -> settle promise of #performTurn.
+  // Turns still running: local session key -> settle promise of #performTurn.
   #runningTurns = new Map();
   // Sessions whose settling turn was canceled: a canceled turn resolves like
   // a normal one (ACP reports a stop), so the cancel site marks the session
   // here to keep the queue from auto-draining over the user's stop.
   #canceledSessions = new Set();
-
   @mounted()
   #boot = async () => {
     try {
-      await this.#loadHome();
+      try {
+        const stored = await readAgentPanelState();
+        this.#s({ sessions: stored.sessions, defaults: stored.defaults });
+      } catch (e) {
+        this.#s({ error: e.message });
+      }
+      await Promise.all([this.#loadHome(), this.#loadAgents()]);
     } finally {
       this.#s({ booting: false });
     }
@@ -98,41 +126,67 @@ class AgentPanelPageElement extends GemElement {
     const compactMediaQuery = matchMedia('(width <= 1280px)');
     this.#s({ compact: compactMediaQuery.matches });
     agentApi.setPermissionHandler(this.#requestPermission);
-    agentApi.setSessionEndedHandler((sessionId) => {
-      const record = this.#pendingLoads.get(sessionId);
-      if (record) record.alive = false;
-      this.#sessionCache.delete(sessionId);
-      this.#decidePermission(sessionId, null);
-      // A load for the displayed session died: stop spinning, the next
-      // action surfaces the dead session as an error.
-      if (sessionId === this.#s.sessionId) this.#s({ loadingSession: false, queue: [] });
+    agentApi.setSessionEndedHandler(({ agent, sessionId }) => {
+      const sessionKey = agentSessionKey(agent, sessionId);
+      const record = this.#pendingLoads.get(sessionKey);
+      if (record) {
+        record.alive = false;
+        this.#pendingLoads.delete(sessionKey);
+        this.#setSessionLoading(sessionKey, false);
+      }
+      this.#sessionCache.delete(sessionKey);
+      this.#decidePermission(sessionKey, null);
+      if (sessionKey === this.#s.sessionKey) {
+        this.#s({
+          sessionKey: null,
+          messages: [],
+          configOptions: [],
+          queue: [],
+          cwd: '',
+        });
+      }
     });
     agentApi.setHostReconnectedHandler(() => {
-      // A fresh host process keeps no live sessions; every cached entry and
-      // in-flight load is stale. Keep the visible transcript readable, but
-      // force a fresh create/load before chatting again.
-      for (const sessionId of [...this.#permissionResolves.keys()]) {
-        this.#decidePermission(sessionId, null);
+      // A fresh host process keeps no live ACP sessions. Preserve the purely
+      // local draft; every live-session cache entry and in-flight load is stale.
+      for (const sessionKey of [...this.#permissionResolves.keys()]) {
+        this.#decidePermission(sessionKey, null);
       }
       for (const record of this.#pendingLoads.values()) record.alive = false;
       this.#pendingLoads.clear();
+      const draftCache = this.#s.draftSession && this.#sessionCache.get(this.#s.draftSession.key);
+      const draftLoading = Boolean(draftCache && this.#s.loadingIds.includes(DRAFT_SESSION_KEY));
       this.#sessionCache.clear();
+      if (draftCache) this.#sessionCache.set(DRAFT_SESSION_KEY, draftCache);
+      const currentSessionKey = this.#s.sessionKey;
+      const currentIsDraft = this.#s.draftSession?.key === currentSessionKey;
+      this.#canceledSessions.clear();
       this.#s({
-        loadingSession: false,
+        loadingIds: draftLoading ? [DRAFT_SESSION_KEY] : [],
+        pendingIds: [],
         permissions: {},
         sessionErrors: {},
-        queue: [],
-        ...(this.#s.sessionId && { error: t('devtoolsPanelHostReconnected') }),
+        ...(!currentIsDraft &&
+          currentSessionKey && {
+            sessionKey: null,
+            messages: [],
+            configOptions: [],
+            queue: [],
+            cwd: '',
+            error: t('devtoolsPanelHostReconnected'),
+          }),
       });
     });
     const removeMediaQueryListener = addListener(compactMediaQuery, 'change', this.#updateCompactMode);
-    const stopRefreshingSessions = polling(this.#refreshSessions, 5000);
+    const stopObservingStorage = observeAgentPanelState(({ sessions, defaults }) => {
+      this.#s({ sessions, defaults });
+    });
     return () => {
       removeMediaQueryListener();
-      stopRefreshingSessions();
+      stopObservingStorage();
       // Decline every awaited permission: the panel cannot answer anymore.
-      for (const sessionId of [...this.#permissionResolves.keys()]) {
-        this.#decidePermission(sessionId, null);
+      for (const sessionKey of [...this.#permissionResolves.keys()]) {
+        this.#decidePermission(sessionKey, null);
       }
       agentApi.setPermissionHandler(null);
       agentApi.setSessionEndedHandler(null);
@@ -147,34 +201,35 @@ class AgentPanelPageElement extends GemElement {
   /** Await the user's pick for one permission request; keyed by session so
    * requests survive switching and are answered when their session shows. */
   #requestPermission = (request) => {
-    const sessionId = request?.sessionId;
-    if (typeof sessionId !== 'string' || !sessionId) {
-      return Promise.reject(new Error('Permission request without sessionId'));
+    const { agent, sessionId } = request || {};
+    if (typeof agent !== 'string' || !agent || typeof sessionId !== 'string' || !sessionId) {
+      return Promise.reject(new Error('Permission request without agent session'));
     }
+    const sessionKey = agentSessionKey(agent, sessionId);
     // At most one outstanding request per session: decline a stray old one.
-    this.#decidePermission(sessionId, null);
+    this.#decidePermission(sessionKey, null);
     return new Promise((resolve) => {
-      this.#permissionResolves.set(sessionId, resolve);
-      this.#s({ permissions: { ...this.#s.permissions, [sessionId]: request } });
+      this.#permissionResolves.set(sessionKey, resolve);
+      this.#s({ permissions: { ...this.#s.permissions, [sessionKey]: request } });
     });
   };
 
   /** Resolve the awaited permission of one session; `null` declines it. */
-  #decidePermission = (sessionId, optionId) => {
-    if (!sessionId) return;
-    const resolve = this.#permissionResolves.get(sessionId);
-    if (!resolve && !this.#s.permissions[sessionId]) return;
-    this.#permissionResolves.delete(sessionId);
+  #decidePermission = (sessionKey, optionId) => {
+    if (!sessionKey) return;
+    const resolve = this.#permissionResolves.get(sessionKey);
+    if (!resolve && !this.#s.permissions[sessionKey]) return;
+    this.#permissionResolves.delete(sessionKey);
     const permissions = { ...this.#s.permissions };
-    delete permissions[sessionId];
+    delete permissions[sessionKey];
     this.#s({ permissions });
     resolve?.(optionId);
   };
 
-  #refreshSessions = async () => {
+  #loadAgents = async () => {
     try {
-      const { sessions } = await agentApi.listSessions();
-      this.#s({ sessions: sessions || [], error: '' });
+      const { agents } = await agentApi.listAgents();
+      this.#s({ agents: agents || [] });
     } catch (e) {
       this.#s({ error: e.message });
     }
@@ -189,6 +244,43 @@ class AgentPanelPageElement extends GemElement {
     }
   };
 
+  #sessionRecord = (sessionKey) =>
+    this.#s.draftSession?.key === sessionKey
+      ? this.#s.draftSession
+      : this.#s.sessions.find((session) => session.key === sessionKey);
+
+  get #sessionList() {
+    const { draftSession, sessions } = this.#s;
+    return draftSession ? [draftSession, ...sessions] : sessions;
+  }
+
+  #sessionTarget = (sessionKey) => {
+    const session = this.#sessionRecord(sessionKey);
+    return session?.sessionId ? { agent: session.agent, sessionId: session.sessionId } : null;
+  };
+
+  #mutateStoredState = async (update) => {
+    const local = update({ sessions: this.#s.sessions, defaults: this.#s.defaults });
+    this.#s({ sessions: local.sessions, defaults: local.defaults });
+    try {
+      const stored = await updateAgentPanelState(update);
+      this.#s({ sessions: stored.sessions, defaults: stored.defaults });
+    } catch (e) {
+      this.#s({ error: e.message });
+    }
+  };
+
+  #patchSession = (sessionKey, patch) => {
+    const current = this.#s.sessions.find((session) => session.key === sessionKey);
+    if (!current) return Promise.resolve();
+    return this.#mutateStoredState((state) => {
+      const stored = state.sessions.find((session) => session.key === sessionKey);
+      return stored ? upsertStoredSession(state, { ...stored, ...patch }) : state;
+    });
+  };
+
+  #removeSessionRecord = (sessionKey) => this.#mutateStoredState((state) => removeStoredSession(state, sessionKey));
+
   #completeThought = (messages) => {
     const last = messages.at(-1);
     if (last?.type !== 'thought' || !last.pending) return messages;
@@ -199,30 +291,30 @@ class AgentPanelPageElement extends GemElement {
 
   /** Read/write access to one session's chat state: the live pane when it is
    * the displayed session, otherwise its kept-alive cache entry. */
-  #sessionStore = (sessionId) => ({
-    get: () => (sessionId === this.#s.sessionId ? this.#s : this.#sessionCache.get(sessionId)),
+  #sessionStore = (sessionKey) => ({
+    get: () => (sessionKey === this.#s.sessionKey ? this.#s : this.#sessionCache.get(sessionKey)),
     set: (patch) => {
-      if (sessionId === this.#s.sessionId) {
+      if (sessionKey === this.#s.sessionKey) {
         this.#s(patch);
-      } else if (this.#sessionCache.has(sessionId)) {
-        this.#sessionCache.set(sessionId, { ...this.#sessionCache.get(sessionId), ...patch });
+      } else if (this.#sessionCache.has(sessionKey)) {
+        this.#sessionCache.set(sessionKey, { ...this.#sessionCache.get(sessionKey), ...patch });
       }
     },
   });
 
-  #finishThought = (sessionId) => {
-    const store = this.#sessionStore(sessionId);
+  #finishThought = (sessionKey) => {
+    const store = this.#sessionStore(sessionKey);
     const messages = this.#completeThought(store.get()?.messages ?? []);
     if (messages !== store.get()?.messages) store.set({ messages });
   };
 
   /** Apply one ACP event to the session it belongs to. */
-  #applyEvent = (sessionId, event) => {
+  #applyEvent = (sessionKey, event) => {
     if (event.event !== 'session_update') {
-      if (event.event === 'stop') this.#finishThought(sessionId);
+      if (event.event === 'stop') this.#finishThought(sessionKey);
       return;
     }
-    const store = this.#sessionStore(sessionId);
+    const store = this.#sessionStore(sessionKey);
     const state = store.get();
     const { update } = event;
     const thoughtChunk = update.sessionUpdate === 'agent_thought_chunk' && update.content?.type === 'text';
@@ -294,6 +386,11 @@ class AgentPanelPageElement extends GemElement {
       store.set({ configOptions: withCurrentMode(state?.configOptions ?? [], update.currentModeId) });
     } else if (update.sessionUpdate === 'config_option_update') {
       store.set({ configOptions: Array.isArray(update.configOptions) ? update.configOptions : [] });
+    } else if (update.sessionUpdate === 'session_info_update') {
+      const patch = {};
+      if (typeof update.title === 'string' && update.title) patch.title = update.title;
+      if (typeof update.updatedAt === 'string' && update.updatedAt) patch.updatedAt = update.updatedAt;
+      if (Object.keys(patch).length) this.#patchSession(sessionKey, patch);
     } else {
       // Surface other ACP session updates (tool calls, plans, …) for inspection
       store.set({ messages: [...currentMessages, { type: 'event', data: update }] });
@@ -301,60 +398,65 @@ class AgentPanelPageElement extends GemElement {
   };
 
   /** Accept a composer send: deliver it when idle, stage it otherwise.
-   * The composer owns the draft and clears it before this. */
+   * The composer clears its text input before this. */
   #send = ({ prompt, attachments }) => {
-    const sessionId = this.#s.sessionId;
-    if ((!prompt && !attachments.length) || !sessionId) return;
-    if (this.#s.pendingIds.includes(sessionId)) {
-      const store = this.#sessionStore(sessionId);
+    const sessionKey = this.#s.sessionKey;
+    if ((!prompt && !attachments.length) || !sessionKey) return;
+    if (this.#s.loadingIds.includes(sessionKey)) return;
+    if (this.#s.pendingIds.includes(sessionKey)) {
+      const store = this.#sessionStore(sessionKey);
       store.set({
         queue: [...(store.get()?.queue ?? []), { id: crypto.randomUUID(), prompt, attachments }],
       });
       return;
     }
-    this.#runTurn(sessionId, { prompt, attachments });
+    if (this.#sessionRecord(sessionKey)?.draft) {
+      this.#startDraftTurn(sessionKey, { prompt, attachments });
+      return;
+    }
+    this.#runTurn(sessionKey, { prompt, attachments });
   };
 
   /** After a successful turn, auto-send the next staged prompt in order. */
-  #drainQueue = (sessionId) => {
-    if (this.#s.pendingIds.includes(sessionId)) return;
-    const store = this.#sessionStore(sessionId);
+  #drainQueue = (sessionKey) => {
+    if (this.#s.pendingIds.includes(sessionKey)) return;
+    const store = this.#sessionStore(sessionKey);
     const [next, ...rest] = store.get()?.queue ?? [];
     if (!next) return;
     store.set({ queue: rest });
-    this.#runTurn(sessionId, next);
+    this.#runTurn(sessionKey, next);
   };
 
   /** Send a staged prompt now: idle sends right away; a running turn is
    * canceled first so this prompt goes out immediately. */
-  #flushQueued = async (sessionId, itemId) => {
-    const store = this.#sessionStore(sessionId);
+  #flushQueued = async (sessionKey, itemId) => {
+    const store = this.#sessionStore(sessionKey);
     const item = (store.get()?.queue ?? []).find((entry) => entry.id === itemId);
     if (!item) return;
-    if (!this.#s.pendingIds.includes(sessionId)) {
+    if (!this.#s.pendingIds.includes(sessionKey)) {
       store.set({ queue: (store.get()?.queue ?? []).filter((entry) => entry.id !== itemId) });
-      this.#runTurn(sessionId, item);
+      this.#runTurn(sessionKey, item);
       return;
     }
-    await this.#abortTurn(sessionId);
+    await this.#abortTurn(sessionKey);
     // The turn refused to stop, or the item was deleted while canceling.
-    if (this.#s.pendingIds.includes(sessionId)) return;
+    if (this.#s.pendingIds.includes(sessionKey)) return;
     const queue = store.get()?.queue ?? [];
     if (!queue.some((entry) => entry.id === itemId)) return;
     store.set({ queue: queue.filter((entry) => entry.id !== itemId) });
-    this.#runTurn(sessionId, item);
+    this.#runTurn(sessionKey, item);
   };
 
   /** Drop one staged prompt. */
-  #removeQueued = (sessionId, itemId) => {
-    const store = this.#sessionStore(sessionId);
+  #removeQueued = (sessionKey, itemId) => {
+    const store = this.#sessionStore(sessionKey);
     store.set({ queue: (store.get()?.queue ?? []).filter((entry) => entry.id !== itemId) });
   };
 
   /** Patch one staged prompt in place (the composer's edit flow). A stale
    * id falls back to appending, so the edit is never silently lost. */
-  #updateQueued = (sessionId, { id, prompt, attachments }) => {
-    const store = this.#sessionStore(sessionId);
+  #updateQueued = (sessionKey, { id, prompt, attachments }) => {
+    const store = this.#sessionStore(sessionKey);
     const queue = store.get()?.queue ?? [];
     const next = queue.some((entry) => entry.id === id)
       ? queue.map((entry) => (entry.id === id ? { id, prompt, attachments } : entry))
@@ -364,20 +466,22 @@ class AgentPanelPageElement extends GemElement {
 
   /** Run one turn; the settle promise is tracked so a queued prompt can
    * cancel-and-replace it. */
-  #runTurn = (sessionId, payload) => {
-    const turn = this.#performTurn(sessionId, payload)
+  #runTurn = (sessionKey, payload) => {
+    const turn = this.#performTurn(sessionKey, payload)
       .catch(() => {})
       .finally(() => {
-        if (this.#runningTurns.get(sessionId) === turn) this.#runningTurns.delete(sessionId);
+        if (this.#runningTurns.get(sessionKey) === turn) this.#runningTurns.delete(sessionKey);
       });
-    this.#runningTurns.set(sessionId, turn);
+    this.#runningTurns.set(sessionKey, turn);
   };
 
   /** Run one turn against the host; events stream into the session store,
    * which keeps working when the user switches away mid-turn. */
-  #performTurn = async (sessionId, { prompt, attachments }) => {
-    if (sessionId === this.#s.sessionId) this.#chatPaneRef.value?.scrollToLatest(true);
-    const store = this.#sessionStore(sessionId);
+  #performTurn = async (sessionKey, { prompt, attachments }) => {
+    if (sessionKey === this.#s.sessionKey) this.#chatPaneRef.value?.scrollToLatest(true);
+    const target = this.#sessionTarget(sessionKey);
+    if (!target) return;
+    const store = this.#sessionStore(sessionKey);
     const turnStart = (store.get()?.messages ?? []).length;
     // Wire format: images as base64 blocks; text files wrapped so the agent
     // can tell them apart from the user's own words.
@@ -386,69 +490,78 @@ class AgentPanelPageElement extends GemElement {
         ? { type: 'image', data: item.data, mimeType: item.mimeType }
         : { type: 'text', text: `<attachment name="${item.name}">\n${item.text}\n</attachment>` },
     );
-    this.#clearSessionError(sessionId);
-    this.#setSessionPending(sessionId, true);
+    this.#clearSessionError(sessionKey);
+    this.#setSessionPending(sessionKey, true);
     store.set({
       messages: [...(store.get()?.messages ?? []), { role: 'user', text: prompt, attachments }],
+    });
+    const current = this.#sessionRecord(sessionKey);
+    const title = current?.title ? '' : sessionTitleFromPrompt(prompt);
+    this.#patchSession(sessionKey, {
+      ...(title && { title }),
+      updatedAt: new Date().toISOString(),
     });
     try {
       // The turn keeps running when the user switches away; its events and
       // the final answer follow the session via the store.
       const answer = await agentApi.ask(prompt, {
-        sessionId,
-        onEvent: (event) => this.#applyEvent(sessionId, event),
+        ...target,
+        onEvent: (event) => this.#applyEvent(sessionKey, event),
         attachments: wireAttachments,
       });
-      this.#finishThought(sessionId);
+      this.#finishThought(sessionKey);
       const messages = store.get()?.messages ?? [];
       const receivedAgentText = messages.slice(turnStart).some((message) => message.role === 'agent' && message.text);
       if (answer && !receivedAgentText) {
         store.set({ messages: [...messages, { role: 'agent', text: answer }] });
       }
-      await this.#refreshSessions();
     } catch (e) {
       // A failed or canceled turn stops the auto-drain; staged prompts stay
       // editable in the queue instead of firing into a broken session.
-      this.#finishThought(sessionId);
-      this.#setSessionError(sessionId, e.message);
+      this.#canceledSessions.delete(sessionKey);
+      this.#finishThought(sessionKey);
+      this.#setSessionError(sessionKey, e.message);
       return;
     } finally {
-      this.#setSessionPending(sessionId, false);
+      this.#setSessionPending(sessionKey, false);
     }
     // A canceled turn resolves like a successful one, so the explicit mark
     // from #abortTurn is what stops the auto-drain.
-    if (!this.#canceledSessions.delete(sessionId)) this.#drainQueue(sessionId);
+    if (!this.#canceledSessions.delete(sessionKey)) this.#drainQueue(sessionKey);
   };
 
   #cancel = () => {
-    const sessionId = this.#s.sessionId;
-    if (sessionId) this.#abortTurn(sessionId);
+    const sessionKey = this.#s.sessionKey;
+    if (sessionKey) this.#abortTurn(sessionKey);
   };
 
   /** Abort the session's in-flight turn; also declines its awaited
    * permission. Resolves once the aborted turn has fully settled. */
-  #abortTurn = async (sessionId) => {
-    this.#decidePermission(sessionId, null);
-    const turn = this.#runningTurns.get(sessionId);
+  #abortTurn = async (sessionKey) => {
+    this.#decidePermission(sessionKey, null);
+    const turn = this.#runningTurns.get(sessionKey);
     if (!turn) return;
-    this.#canceledSessions.add(sessionId);
+    const target = this.#sessionTarget(sessionKey);
+    if (!target) return;
+    this.#canceledSessions.add(sessionKey);
     try {
-      await agentApi.cancelPrompt(sessionId);
+      await agentApi.cancelPrompt(target.sessionId, { agent: target.agent });
     } catch (e) {
-      this.#setSessionError(sessionId, e.message);
+      this.#setSessionError(sessionKey, e.message);
     }
     await turn;
   };
 
   #newSession = () => {
-    this.#s({ cwdPicker: true, error: '' });
+    if (this.#s.loadingIds.includes(DRAFT_SESSION_KEY)) return;
+    this.#s({ newSessionOpen: true, error: '' });
   };
 
   /** Stash the right-pane state of the current session for later reuse. */
   #snapshotSession = () => {
-    const sessionId = this.#s.sessionId;
-    if (!sessionId) return;
-    this.#sessionCache.set(sessionId, {
+    const sessionKey = this.#s.sessionKey;
+    if (!sessionKey) return;
+    this.#sessionCache.set(sessionKey, {
       messages: this.#completeThought(this.#s.messages),
       configOptions: this.#s.configOptions,
       cwd: this.#s.cwd,
@@ -456,125 +569,212 @@ class AgentPanelPageElement extends GemElement {
     });
   };
 
-  #setSessionLoading = (sessionId, loading) => {
-    const loadingIds = this.#s.loadingIds.filter((id) => id !== sessionId);
-    if (loading) loadingIds.push(sessionId);
+  #setSessionLoading = (sessionKey, loading) => {
+    const loadingIds = this.#s.loadingIds.filter((key) => key !== sessionKey);
+    if (loading) loadingIds.push(sessionKey);
     this.#s({ loadingIds });
   };
 
-  #setSessionPending = (sessionId, pending) => {
-    const pendingIds = this.#s.pendingIds.filter((id) => id !== sessionId);
-    if (pending) pendingIds.push(sessionId);
+  #setSessionPending = (sessionKey, pending) => {
+    const pendingIds = this.#s.pendingIds.filter((key) => key !== sessionKey);
+    if (pending) pendingIds.push(sessionKey);
     this.#s({ pendingIds });
   };
 
   /** Record an error against its session; without one, fall back to global. */
-  #setSessionError = (sessionId, message) => {
-    if (!sessionId) {
+  #setSessionError = (sessionKey, message) => {
+    if (!sessionKey) {
       this.#s({ error: message });
       return;
     }
-    this.#s({ sessionErrors: { ...this.#s.sessionErrors, [sessionId]: message } });
+    this.#s({ sessionErrors: { ...this.#s.sessionErrors, [sessionKey]: message } });
   };
 
-  #clearSessionError = (sessionId) => {
-    if (!sessionId || !this.#s.sessionErrors[sessionId]) return;
+  #clearSessionError = (sessionKey) => {
+    if (!sessionKey || !this.#s.sessionErrors[sessionKey]) return;
     const sessionErrors = { ...this.#s.sessionErrors };
-    delete sessionErrors[sessionId];
+    delete sessionErrors[sessionKey];
     this.#s({ sessionErrors });
   };
 
-  #confirmNewSession = async (cwd) => {
-    // Create the ACP session right away so its real config options
-    // (mode/model/effort) are selectable before the first message.
-    this.#snapshotSession();
-    const viewAtStart = this.#s.sessionId;
-    this.#s({ loadingSession: true, cwdPicker: false, error: '' });
+  #persistAgentDefault = (agent) =>
+    this.#mutateStoredState((state) => ({
+      ...state,
+      defaults: { ...state.defaults, agent },
+    }));
+
+  #persistConfigOptions = (agent, configOptions) =>
+    this.#mutateStoredState((state) => withAgentConfigOptions(state, agent, configOptions));
+
+  #applyComposerConfig = async (target, configOptions, composerConfigOptions) => {
+    let current = configOptions;
+    for (const selected of composerConfigOptions) {
+      const option = current.find((item) => item.id === selected.id);
+      const value = selected.currentValue;
+      const supported = option?.options?.some((item) => item.value === value);
+      if (!value || !supported || option.currentValue === value) continue;
+      const result = await agentApi.setSessionConfigOption(target.sessionId, option.id, value, {
+        agent: target.agent,
+      });
+      current = Array.isArray(result.configOptions) ? result.configOptions : withConfigValue(current, option.id, value);
+    }
+    return current;
+  };
+
+  #startDraftTurn = async (sessionKey, payload) => {
+    const draft = this.#sessionRecord(sessionKey);
+    const draftState = this.#sessionStore(sessionKey).get();
+    if (!draft?.draft || !draftState) return;
+    const { configOptions: composerConfigOptions, messages: draftMessages } = draftState;
+    let createdTarget;
+    this.#clearSessionError(sessionKey);
+    this.#setSessionLoading(sessionKey, true);
     try {
-      const created = await agentApi.createSession({ cwd, panelContext: getPanelContext() });
-      // Previous sessions stay live on the host; switching back reuses them.
-      this.#sessionCache.set(created.sessionId, { messages: [], configOptions: created.configOptions || [], cwd });
-      // Take over the pane only when the user hasn't switched away meanwhile.
-      if (this.#s.sessionId === viewAtStart) {
+      const created = await agentApi.createSession({
+        agent: draft.agent,
+        cwd: draft.cwd,
+        panelContext: getPanelContext(),
+      });
+      createdTarget = { agent: draft.agent, sessionId: created.sessionId };
+      const configOptions = await this.#applyComposerConfig(
+        createdTarget,
+        created.configOptions || [],
+        composerConfigOptions,
+      );
+      const liveSessionKey = agentSessionKey(draft.agent, created.sessionId);
+      const now = new Date().toISOString();
+      const session = {
+        key: liveSessionKey,
+        agent: draft.agent,
+        sessionId: created.sessionId,
+        title: created.title || sessionTitleFromPrompt(payload.prompt),
+        cwd: draft.cwd,
+        createdAt: now,
+        updatedAt: created.updatedAt || now,
+      };
+      const cache = {
+        messages: draftMessages,
+        configOptions,
+        cwd: draft.cwd,
+        queue: [],
+      };
+      const isCurrent = this.#s.sessionKey === sessionKey;
+      this.#sessionCache.delete(sessionKey);
+      this.#sessionCache.set(liveSessionKey, cache);
+      this.#s({ draftSession: null });
+      if (isCurrent) {
         this.#s({
-          sessionId: created.sessionId,
-          messages: [],
-          configOptions: created.configOptions || [],
-          queue: [],
-          cwd,
+          sessionKey: liveSessionKey,
+          messages: cache.messages,
+          configOptions,
+          queue: cache.queue,
+          cwd: cache.cwd,
           error: '',
-          loadingSession: false,
         });
       }
+      this.#setSessionLoading(sessionKey, false);
+      const persistence = this.#mutateStoredState((state) =>
+        upsertStoredSession(withAgentConfigOptions(state, draft.agent, configOptions), session),
+      );
+      createdTarget = null;
+      this.#runTurn(liveSessionKey, payload);
+      await persistence;
     } catch (e) {
-      this.#s({ error: e.message, ...(this.#s.sessionId === viewAtStart && { loadingSession: false }) });
+      if (createdTarget) agentApi.closeSession(createdTarget.sessionId, { agent: createdTarget.agent }).catch(() => {});
+      this.#setSessionError(sessionKey, e.message);
+      this.#setSessionLoading(sessionKey, false);
     }
   };
 
-  #openSession = async (sessionId) => {
-    if (sessionId === this.#s.sessionId) return;
-    const previous = this.#s.sessionId;
+  #confirmNewSession = ({ agent, cwd }) => {
     this.#snapshotSession();
-    const selected = this.#s.sessions.find((session) => session.sessionId === sessionId);
+    const now = new Date().toISOString();
+    const draftSession = {
+      key: DRAFT_SESSION_KEY,
+      agent,
+      title: '',
+      cwd,
+      createdAt: now,
+      updatedAt: now,
+      draft: true,
+    };
+    const configOptions = this.#s.defaults.configOptionsByAgent[agent] || [];
+    this.#sessionCache.set(DRAFT_SESSION_KEY, { messages: [], configOptions, cwd, queue: [] });
+    this.#s({
+      draftSession,
+      sessionKey: DRAFT_SESSION_KEY,
+      messages: [],
+      configOptions,
+      queue: [],
+      cwd,
+      newSessionOpen: false,
+      error: '',
+    });
+    this.#persistAgentDefault(agent);
+  };
+
+  #openSession = async (sessionKey) => {
+    const isCurrent = sessionKey === this.#s.sessionKey;
+    if (isCurrent && (this.#sessionCache.has(sessionKey) || this.#pendingLoads.has(sessionKey))) return;
+    const previous = isCurrent ? null : this.#s.sessionKey;
+    if (!isCurrent) this.#snapshotSession();
+    const selected = this.#sessionRecord(sessionKey);
+    if (!selected) return;
+    this.#s({ error: '' });
     // Still live in this panel: swap in the cached state without a host call.
     // A load still running for it keeps streaming into the pane.
-    const cached = this.#sessionCache.get(sessionId);
+    const cached = this.#sessionCache.get(sessionKey);
     if (cached) {
       this.#s({
-        sessionId,
+        sessionKey,
         messages: cached.messages,
         configOptions: cached.configOptions,
-        queue: cached.queue || [],
+        queue: cached.queue,
         cwd: cached.cwd,
-        loadingSession: this.#pendingLoads.has(sessionId),
       });
       return;
     }
-    // Its load is already running elsewhere: just aim the pane at it.
-    if (this.#pendingLoads.has(sessionId)) {
-      this.#s({
-        sessionId,
-        cwd: selected?.cwd || '',
-        loadingSession: true,
-        messages: [],
-        configOptions: [],
-        queue: [],
-      });
-      return;
-    }
-    this.#clearSessionError(sessionId);
+    this.#clearSessionError(sessionKey);
     // Clear before load: the replayed history rebuilds via #applyEvent. The
     // load keeps running when the user switches away midway — its events
     // follow the session into the cache.
     this.#s({
-      sessionId,
-      cwd: selected?.cwd || '',
-      loadingSession: true,
+      sessionKey,
+      cwd: selected.cwd || '',
       messages: [],
       configOptions: [],
       queue: [],
     });
-    this.#setSessionLoading(sessionId, true);
+    this.#setSessionLoading(sessionKey, true);
     const record = { alive: true };
-    this.#pendingLoads.set(sessionId, record);
+    this.#pendingLoads.set(sessionKey, record);
     try {
-      const { sessionId: liveId, configOptions } = await agentApi.loadSession(sessionId, {
-        onEvent: (event) => this.#applyEvent(sessionId, event),
+      const { configOptions, title, updatedAt } = await agentApi.loadSession(selected.sessionId, {
+        agent: selected.agent,
+        cwd: selected.cwd,
+        onEvent: (event) => this.#applyEvent(sessionKey, event),
         panelContext: getPanelContext(),
       });
       if (!record.alive) return;
-      this.#finishThought(liveId);
-      if (this.#s.sessionId === liveId) {
-        this.#sessionCache.set(liveId, {
+      this.#finishThought(sessionKey);
+      if (title || updatedAt) {
+        this.#patchSession(sessionKey, {
+          ...(title && { title }),
+          ...(updatedAt && { updatedAt }),
+        });
+      }
+      if (this.#s.sessionKey === sessionKey) {
+        this.#sessionCache.set(sessionKey, {
           messages: this.#s.messages,
           configOptions: configOptions || [],
           cwd: this.#s.cwd,
+          queue: [],
         });
-        this.#s({ configOptions: configOptions || [], loadingSession: false });
-      } else if (this.#sessionCache.has(liveId)) {
+        this.#s({ configOptions: configOptions || [] });
+      } else if (this.#sessionCache.has(sessionKey)) {
         // Settled in the background: fold the result into the cached entry.
-        const entry = this.#sessionCache.get(liveId);
-        this.#sessionCache.set(liveId, {
+        const entry = this.#sessionCache.get(sessionKey);
+        this.#sessionCache.set(sessionKey, {
           ...entry,
           messages: this.#completeThought(entry.messages),
           configOptions: configOptions || [],
@@ -583,159 +783,161 @@ class AgentPanelPageElement extends GemElement {
     } catch (e) {
       if (!record.alive) return;
       // The error belongs to this session; it shows when the session does.
-      this.#setSessionError(sessionId, e.message);
-      if (this.#s.sessionId !== sessionId) return;
+      this.#setSessionError(sessionKey, e.message);
+      if (this.#s.sessionKey !== sessionKey) return;
       // Revert to the previous session when it is still available.
       const fallback = previous ? this.#sessionCache.get(previous) : null;
       if (fallback) {
         this.#s({
-          sessionId: previous,
+          sessionKey: previous,
           messages: fallback.messages,
           configOptions: fallback.configOptions,
-          queue: fallback.queue || [],
+          queue: fallback.queue,
           cwd: fallback.cwd,
-          loadingSession: false,
         });
-      } else {
-        this.#s({ loadingSession: false });
       }
     } finally {
-      if (this.#pendingLoads.get(sessionId) === record) {
-        this.#pendingLoads.delete(sessionId);
-        this.#setSessionLoading(sessionId, false);
+      if (this.#pendingLoads.get(sessionKey) === record) {
+        this.#pendingLoads.delete(sessionKey);
+        this.#setSessionLoading(sessionKey, false);
       }
     }
   };
 
-  #deleteSession = async (sessionId) => {
+  #deleteSession = async (sessionKey) => {
     if (this.#s.deleting) return;
+    let selected = this.#sessionRecord(sessionKey);
+    if (!selected) return;
     // Deletion wins over an in-flight load or turn: kill the load locally
     // (its settle path checks `alive`) and let the turn cancel first, so
     // nothing keeps streaming into a session that no longer exists.
-    const loadRecord = this.#pendingLoads.get(sessionId);
+    const loadRecord = this.#pendingLoads.get(sessionKey);
     if (loadRecord) {
       loadRecord.alive = false;
-      this.#pendingLoads.delete(sessionId);
-      this.#setSessionLoading(sessionId, false);
+      this.#pendingLoads.delete(sessionKey);
+      this.#setSessionLoading(sessionKey, false);
     }
-    if (this.#s.pendingIds.includes(sessionId)) await this.#abortTurn(sessionId);
-    const isCurrent = this.#s.sessionId === sessionId;
+    if (this.#s.pendingIds.includes(sessionKey)) await this.#abortTurn(sessionKey);
+    selected = this.#sessionRecord(sessionKey) || selected;
+    const isDraft = selected.draft === true && this.#s.draftSession?.key === sessionKey;
+    const isCurrent = this.#s.sessionKey === sessionKey;
     // Optimistic removal from the list; restored if the host rejects it.
     const previousSessions = this.#s.sessions;
+    const previousDraft = this.#s.draftSession;
     this.#s({
-      deleting: sessionId,
-      sessions: previousSessions.filter((session) => session.sessionId !== sessionId),
+      deleting: sessionKey,
+      sessions: previousSessions.filter((session) => session.key !== sessionKey),
+      ...(isDraft && { draftSession: null }),
       ...(isCurrent && {
-        sessionId: null,
+        sessionKey: null,
         messages: [],
         configOptions: [],
         queue: [],
         cwd: '',
-        loadingSession: false,
       }),
     });
     try {
       // Live sessions (the current one, kept-alive ones, or one whose load
       // just got killed) must disconnect before removing the record.
-      if (isCurrent || loadRecord || this.#sessionCache.has(sessionId))
-        await agentApi.closeSession(sessionId).catch(() => {});
-      await agentApi.deleteSession(sessionId);
-      this.#sessionCache.delete(sessionId);
-      this.#clearSessionError(sessionId);
+      if (!isDraft && (isCurrent || loadRecord || this.#sessionCache.has(sessionKey)))
+        await agentApi.closeSession(selected.sessionId, { agent: selected.agent }).catch(() => {});
+      if (!isDraft) {
+        await agentApi.deleteSession(selected.sessionId, { agent: selected.agent });
+        await this.#removeSessionRecord(sessionKey);
+      }
+      this.#sessionCache.delete(sessionKey);
+      this.#clearSessionError(sessionKey);
     } catch (err) {
-      this.#s({ sessions: previousSessions, error: err.message });
+      this.#s({ sessions: previousSessions, draftSession: previousDraft, error: err.message });
       return;
     } finally {
       this.#s({ deleting: null });
     }
-    await this.#refreshSessions();
   };
 
   #onSessionSelect = (e) => {
-    const sessionId = e.detail;
-    if (sessionId === '__new__') {
-      this.#newSession();
-    } else if (sessionId) {
-      this.#openSession(sessionId);
-    }
+    const sessionKey = e.detail;
+    if (sessionKey) this.#openSession(sessionKey);
   };
 
   /** Selectable session config options (mode/model/effort/…) for the composer. */
   get #configSelects() {
+    const agent = this.#sessionRecord(this.#s.sessionKey)?.agent;
     return (this.#s.configOptions || []).filter(
-      (option) => option.type === 'select' && Array.isArray(option.options) && option.options.length,
+      (option) =>
+        option.type === 'select' &&
+        Array.isArray(option.options) &&
+        option.options.length &&
+        !(agent === 'codex' && option.id === 'fast-mode'),
     );
   }
 
   #changeConfig = async (configId, value) => {
-    const sessionId = this.#s.sessionId;
-    if (!sessionId) return;
-    const store = this.#sessionStore(sessionId);
+    const sessionKey = this.#s.sessionKey;
+    if (!sessionKey) return;
+    const session = this.#sessionRecord(sessionKey);
+    if (!session) return;
+    const store = this.#sessionStore(sessionKey);
     // Show the pick immediately instead of waiting for the host round-trip.
     const previous = store.get()?.configOptions ?? [];
-    this.#clearSessionError(sessionId);
-    store.set({ configOptions: withConfigValue(previous, configId, value) });
+    this.#clearSessionError(sessionKey);
+    const staged = withConfigValue(previous, configId, value);
+    store.set({ configOptions: staged });
+    if (session.draft) {
+      await this.#persistConfigOptions(session.agent, staged);
+      return;
+    }
+    const target = this.#sessionTarget(sessionKey);
+    if (!target) return;
     try {
-      const { configOptions } = await agentApi.setSessionConfigOption(sessionId, configId, value);
-      if (Array.isArray(configOptions)) store.set({ configOptions });
+      const { configOptions } = await agentApi.setSessionConfigOption(target.sessionId, configId, value, {
+        agent: target.agent,
+      });
+      const applied = Array.isArray(configOptions) ? configOptions : staged;
+      store.set({ configOptions: applied });
+      await this.#persistConfigOptions(target.agent, applied);
     } catch (e) {
-      this.#setSessionError(sessionId, e.message);
+      this.#setSessionError(sessionKey, e.message);
       // Roll back unless a concurrent update replaced the list meanwhile.
-      if (store.get()?.configOptions === withConfigValue(previous, configId, value)) {
+      if (store.get()?.configOptions === staged) {
         store.set({ configOptions: previous });
       }
     }
   };
 
-  /** Session shown in the right header: prefer the persisted title; a
+  /** Session shown in the right header: prefer its current title; a
    * just-created session has neither title nor messages yet. */
   get #currentTitle() {
-    const current = this.#s.sessions.find((session) => session.sessionId === this.#s.sessionId);
-    return current?.title || (this.#s.messages.length ? this.#s.sessionId : t('devtoolsPanelNewSession'));
-  }
-
-  get #currentCwd() {
-    const current = this.#s.sessions.find((session) => session.sessionId === this.#s.sessionId);
-    return current?.cwd || this.#s.cwd;
+    return this.#sessionRecord(this.#s.sessionKey)?.title || t('devtoolsPanelNewSession');
   }
 
   get #recentCwd() {
     const timestamp = (session) => Date.parse(session.updatedAt || '') || 0;
     return (
-      this.#s.sessions
+      this.#sessionList
         .filter((session) => session.cwd)
         .reduce((recent, session) => (!recent || timestamp(session) > timestamp(recent) ? session : recent), null)
         ?.cwd || this.#s.cwd
     );
   }
 
-  /**
-   * Temporary entry pinned to the top of the list: a just-created or loaded
-   * session that is not persisted in the list yet.
-   */
-  get #tempSession() {
-    const { sessionId, sessions, cwd, messages, loadingIds } = this.#s;
-    if (!sessionId || loadingIds.includes(sessionId) || sessions.some((session) => session.sessionId === sessionId))
-      return null;
-    return { sessionId, title: messages.length ? sessionId : t('devtoolsPanelNewSession'), cwd, temp: true };
-  }
-
   @template()
   #content = () => {
     const {
       compact,
-      sessions,
-      sessionId,
+      sessionKey,
+      cwd,
+      agents,
+      defaults,
       messages,
       booting,
-      loadingSession,
       loadingIds,
       deleting,
       error,
       sessionErrors,
       pendingIds,
       permissions,
-      cwdPicker,
+      newSessionOpen,
       home,
       queue,
     } = this.#s;
@@ -748,10 +950,12 @@ class AgentPanelPageElement extends GemElement {
       `;
     }
 
-    const tempSession = this.#tempSession;
     const visibleMessages = this.showEvents ? messages : messages.filter((message) => message.type !== 'event');
+    const sessions = this.#sessionList;
+    const loadingSession = loadingIds.includes(sessionKey);
     // Session errors follow their session; a fresh global one wins the banner.
-    const bannerError = error || (sessionId ? sessionErrors[sessionId] : '') || '';
+    const bannerError = error || (sessionKey ? sessionErrors[sessionKey] : '') || '';
+    const initialAgent = agents.some((agent) => agent.id === defaults.agent) ? defaults.agent : agents[0]?.id;
 
     return html`
       <div class=${compact ? 'flex h-full flex-col' : 'flex h-full'}>
@@ -759,11 +963,9 @@ class AgentPanelPageElement extends GemElement {
           class="contents"
           ?compact=${compact}
           .sessions=${sessions}
-          .sessionId=${sessionId}
-          .tempSession=${tempSession}
+          .sessionKey=${sessionKey}
           .home=${home}
           .loadingIds=${loadingIds}
-          .pendingIds=${pendingIds}
           .deleting=${deleting}
           @select=${this.#onSessionSelect}
           @create=${() => this.#newSession()}
@@ -774,39 +976,41 @@ class AgentPanelPageElement extends GemElement {
           class="contents"
           ?compact=${compact}
           ?loading-session=${loadingSession}
-          .sessionId=${sessionId}
+          .sessionKey=${sessionKey}
           .title=${this.#currentTitle}
-          .cwd=${displayHomePath(this.#currentCwd, home)}
+          .cwd=${displayHomePath(cwd, home)}
           .messages=${visibleMessages}
-          .permissionRequest=${sessionId ? permissions[sessionId] : null}
+          .permissionRequest=${sessionKey ? permissions[sessionKey] : null}
           .bannerError=${bannerError}
           .configOptions=${this.#configSelects}
-          .composerDisabled=${pendingIds.includes(sessionId) || loadingIds.includes(sessionId)}
+          .composerDisabled=${pendingIds.includes(sessionKey)}
           .queue=${queue}
           @send=${(e) => this.#send(e.detail)}
           @cancel=${this.#cancel}
           @configchange=${(e) => this.#changeConfig(e.detail.configId, e.detail.value)}
-          @decision=${(e) => this.#decidePermission(sessionId, e.detail)}
-          @attacherror=${(e) => this.#setSessionError(sessionId, e.detail)}
-          @queuesend=${(e) => this.#flushQueued(sessionId, e.detail)}
-          @queueupdate=${(e) => this.#updateQueued(sessionId, e.detail)}
-          @queueremove=${(e) => this.#removeQueued(sessionId, e.detail)}
+          @decision=${(e) => this.#decidePermission(sessionKey, e.detail)}
+          @attacherror=${(e) => this.#setSessionError(sessionKey, e.detail)}
+          @queuesend=${(e) => this.#flushQueued(sessionKey, e.detail)}
+          @queueupdate=${(e) => this.#updateQueued(sessionKey, e.detail)}
+          @queueremove=${(e) => this.#removeQueued(sessionKey, e.detail)}
         ></agent-chat-pane>
-        <agent-cwd-modal
-          v-if=${cwdPicker}
+        <agent-new-session-modal
+          v-if=${newSessionOpen}
           .open=${true}
           .customize=${true}
           .maskClosable=${true}
-          @close=${() => this.#s({ cwdPicker: false })}
+          @close=${() => this.#s({ newSessionOpen: false })}
         >
-          <agent-cwd-picker
+          <agent-new-session-picker
             class="block w-[calc(100vw-2rem)] max-w-2xl"
             .complete=${(value) => agentApi.completeCwd(value)}
             .initialValue=${displayHomePath(this.#recentCwd, home)}
             .home=${home}
+            .agents=${agents}
+            .initialAgent=${initialAgent}
             @confirm=${(event) => this.#confirmNewSession(event.detail)}
-          ></agent-cwd-picker>
-        </agent-cwd-modal>
+          ></agent-new-session-picker>
+        </agent-new-session-modal>
       </div>
     `;
   };

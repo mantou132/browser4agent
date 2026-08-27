@@ -5,8 +5,8 @@ import { theme } from 'duoyun-ui/lib/theme';
 import { createForm } from 'duoyun-ui/patterns/form';
 import { setPageI18n, t } from '../shared/i18n.js';
 import { loadToolset } from '../shared/loader.js';
-import { addToolset, initStore, toolStore } from '../shared/store.js';
 import { openExtensionPage } from '../shared/tabs.js';
+import { addToolset, initStore, toolStore } from '../shared/tool-store.js';
 import { getToolsetId } from '../shared/toolsets.js';
 
 const toolsets = require.context('../public/toolsets', false, /\.json$/);

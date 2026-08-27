@@ -10,7 +10,7 @@ import {
   setToolsetEnabled,
   toolStore,
   unlikeToolset,
-} from '../../shared/store.js';
+} from '../../shared/tool-store.js';
 import { isToolsetLiked } from '../../shared/toolsets.js';
 
 @customElement('options-toolset-card')

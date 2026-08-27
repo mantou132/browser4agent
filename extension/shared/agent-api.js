@@ -19,7 +19,9 @@ export function createAgentApi() {
     port = chrome.runtime.connect({ name: 'agent-rpc' });
     peer = new RpcPeer((msg) => port.postMessage(msg), 'p');
     peer.onNotify('agent_session_ended', (params) => {
-      if (typeof params?.sessionId === 'string') sessionEndedHandler?.(params.sessionId);
+      if (typeof params?.agent === 'string' && typeof params?.sessionId === 'string') {
+        sessionEndedHandler?.(params);
+      }
     });
     peer.onNotify('host_reconnected', () => hostReconnectedHandler?.());
     peer.handle('agent_permission_request', async (request) => {
@@ -35,6 +37,8 @@ export function createAgentApi() {
       peer.rejectAll(new Error(chrome.runtime.lastError?.message || 'Background disconnected'));
       peer = null;
       port = null;
+      // A restarted service worker cannot notify peers attached to its old port.
+      hostReconnectedHandler?.();
     });
     return peer;
   }
@@ -46,7 +50,7 @@ export function createAgentApi() {
     },
 
     /** Register a callback for host-side session termination (agent crash or
-     * ACP connection reconnect). Receives the ACP session id. */
+     * ACP connection reconnect). Receives `{ agent, sessionId }`. */
     setSessionEndedHandler(handler) {
       sessionEndedHandler = typeof handler === 'function' ? handler : null;
     },
@@ -62,11 +66,20 @@ export function createAgentApi() {
       return rpc().call('agent_cwd_complete', params, options);
     },
 
-    /** Create a persistent agent session. Returns `{ sessionId, modes,
-     * configOptions }`: `sessionId` is the agent-side ACP session id — use
-     * it for `ask` now, and persist it for `loadSession` later. */
+    /** List locally installed ACP agents available for explicit selection. */
+    listAgents(options = {}) {
+      return rpc().call('agent_list', {}, options);
+    },
+
+    /** Create a persistent agent session. `options.agent` is required.
+     * Returns `{ agent, sessionId, title?, updatedAt?, modes, configOptions }`;
+     * `sessionId` is the agent-side ACP session id. */
     createSession(options = {}) {
+      if (typeof options.agent !== 'string' || !options.agent) {
+        return Promise.reject(new Error('createSession requires an agent'));
+      }
       const params = {
+        agent: options.agent,
         cwd: options.cwd,
         panelContext: options.panelContext,
         timeoutSeconds: options.timeoutSeconds,
@@ -91,8 +104,12 @@ export function createAgentApi() {
       if (typeof options.sessionId !== 'string' || !options.sessionId) {
         return Promise.reject(new Error('ask requires a sessionId'));
       }
+      if (typeof options.agent !== 'string' || !options.agent) {
+        return Promise.reject(new Error('ask requires an agent'));
+      }
       const params = {
         prompt,
+        agent: options.agent,
         sessionId: options.sessionId,
         timeoutSeconds: options.timeoutSeconds,
         stream: Boolean(options.onEvent),
@@ -110,7 +127,10 @@ export function createAgentApi() {
       if (typeof sessionId !== 'string' || !sessionId) {
         return Promise.reject(new Error('cancelPrompt requires a sessionId'));
       }
-      const result = await rpc().call('agent_prompt_cancel', { sessionId }, options);
+      if (typeof options.agent !== 'string' || !options.agent) {
+        return Promise.reject(new Error('cancelPrompt requires an agent'));
+      }
+      const result = await rpc().call('agent_prompt_cancel', { agent: options.agent, sessionId }, options);
       return result.cancelled;
     },
 
@@ -123,7 +143,10 @@ export function createAgentApi() {
       if (typeof modeId !== 'string' || !modeId) {
         return Promise.reject(new Error('setSessionMode requires a modeId'));
       }
-      return rpc().call('agent_session_set_mode', { sessionId, modeId }, options);
+      if (typeof options.agent !== 'string' || !options.agent) {
+        return Promise.reject(new Error('setSessionMode requires an agent'));
+      }
+      return rpc().call('agent_session_set_mode', { agent: options.agent, sessionId, modeId }, options);
     },
 
     /** Set a live session config option (`session/set_config_option`), e.g.
@@ -139,25 +162,26 @@ export function createAgentApi() {
       if (typeof value !== 'string' || !value) {
         return Promise.reject(new Error('setSessionConfigOption requires a string value'));
       }
-      return rpc().call('agent_session_set_config_option', { sessionId, configId, value }, options);
+      if (typeof options.agent !== 'string' || !options.agent) {
+        return Promise.reject(new Error('setSessionConfigOption requires an agent'));
+      }
+      return rpc().call(
+        'agent_session_set_config_option',
+        { agent: options.agent, sessionId, configId, value },
+        options,
+      );
     },
 
     async closeSession(sessionId, options = {}) {
       if (typeof sessionId !== 'string' || !sessionId) {
         return Promise.reject(new Error('closeSession requires a sessionId'));
       }
-      const params = { sessionId, timeoutSeconds: options.timeoutSeconds };
+      if (typeof options.agent !== 'string' || !options.agent) {
+        return Promise.reject(new Error('closeSession requires an agent'));
+      }
+      const params = { agent: options.agent, sessionId, timeoutSeconds: options.timeoutSeconds };
       const result = await rpc().call('agent_session_close', params, options);
       return result.closed;
-    },
-
-    // Sessions persisted by the agent are addressed by their ACP session id,
-    // not the live handle id.
-
-    /** List the first page of agent-persisted sessions. */
-    listSessions(options = {}) {
-      const params = { cwd: options.cwd, timeoutSeconds: options.timeoutSeconds };
-      return rpc().call('agent_session_list', params, options);
     },
 
     /** Resume an agent-persisted session by its ACP session id. Returns the
@@ -168,7 +192,11 @@ export function createAgentApi() {
       if (typeof sessionId !== 'string' || !sessionId) {
         return Promise.reject(new Error('loadSession requires a sessionId'));
       }
+      if (typeof options.agent !== 'string' || !options.agent) {
+        return Promise.reject(new Error('loadSession requires an agent'));
+      }
       const params = {
+        agent: options.agent,
         sessionId,
         cwd: options.cwd,
         panelContext: options.panelContext,
@@ -183,7 +211,10 @@ export function createAgentApi() {
       if (typeof sessionId !== 'string' || !sessionId) {
         return Promise.reject(new Error('deleteSession requires a sessionId'));
       }
-      const params = { sessionId, timeoutSeconds: options.timeoutSeconds };
+      if (typeof options.agent !== 'string' || !options.agent) {
+        return Promise.reject(new Error('deleteSession requires an agent'));
+      }
+      const params = { agent: options.agent, sessionId, timeoutSeconds: options.timeoutSeconds };
       const result = await rpc().call('agent_session_delete', params, options);
       return result.deleted;
     },

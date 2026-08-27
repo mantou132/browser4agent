@@ -1,6 +1,13 @@
 import { createStore } from '@mantou/gem/lib/store';
 import { marketApi } from './market-api.js';
+import { localStorageKeys } from './storage-keys.js';
 import { isToolEnabled as isToolEnabledFromState, isToolsetLiked, toolKey } from './toolsets.js';
+
+const toolStorageKeys = Object.freeze({
+  toolsets: localStorageKeys.toolsets,
+  toolStates: localStorageKeys.toolStates,
+  likedToolsets: localStorageKeys.likedToolsets,
+});
 
 export const toolStore = createStore({
   toolsets: [],
@@ -16,9 +23,10 @@ export async function initStore() {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
       const patch = {};
-      if (changes.toolsets) patch.toolsets = changes.toolsets.newValue ?? [];
-      if (changes.toolStates) patch.toolStates = changes.toolStates.newValue ?? {};
-      if (changes.likedToolsets) patch.likedToolsets = changes.likedToolsets.newValue ?? {};
+      if (changes[toolStorageKeys.toolsets]) patch.toolsets = changes[toolStorageKeys.toolsets].newValue ?? [];
+      if (changes[toolStorageKeys.toolStates]) patch.toolStates = changes[toolStorageKeys.toolStates].newValue ?? {};
+      if (changes[toolStorageKeys.likedToolsets])
+        patch.likedToolsets = changes[toolStorageKeys.likedToolsets].newValue ?? {};
       if (Object.keys(patch).length) toolStore(patch);
     });
   }
@@ -26,8 +34,14 @@ export async function initStore() {
 }
 
 export async function persist(patch) {
+  const storagePatch = {};
+  for (const [field, value] of Object.entries(patch)) {
+    const key = toolStorageKeys[field];
+    if (!key) throw new TypeError(`Unknown tool storage field: ${field}`);
+    storagePatch[key] = value;
+  }
   toolStore(patch);
-  await chrome.storage.local.set(patch);
+  await chrome.storage.local.set(storagePatch);
 }
 
 export async function addToolset(toolset) {
@@ -76,11 +90,17 @@ export async function likeToolset(toolsetId, name) {
 }
 
 export async function getToolConfig() {
-  const data = await chrome.storage.local.get(['toolsets', 'toolStates', 'likedToolsets']);
+  const data = await chrome.storage.local.get(Object.values(toolStorageKeys));
   return {
-    toolsets: Array.isArray(data.toolsets) ? data.toolsets : [],
-    toolStates: data.toolStates && typeof data.toolStates === 'object' ? data.toolStates : {},
-    likedToolsets: data.likedToolsets && typeof data.likedToolsets === 'object' ? data.likedToolsets : {},
+    toolsets: Array.isArray(data[toolStorageKeys.toolsets]) ? data[toolStorageKeys.toolsets] : [],
+    toolStates:
+      data[toolStorageKeys.toolStates] && typeof data[toolStorageKeys.toolStates] === 'object'
+        ? data[toolStorageKeys.toolStates]
+        : {},
+    likedToolsets:
+      data[toolStorageKeys.likedToolsets] && typeof data[toolStorageKeys.likedToolsets] === 'object'
+        ? data[toolStorageKeys.likedToolsets]
+        : {},
   };
 }
 

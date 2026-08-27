@@ -79,11 +79,21 @@ pub fn register(peer: &Peer) {
         })
     });
     let sessions = AgentSessionManager::new(
-        Some(Arc::new(move |session_id| {
-            notify_peer.notify("agent_session_ended", json!({ "sessionId": session_id }));
+        Some(Arc::new(move |agent, session_id| {
+            notify_peer.notify(
+                "agent_session_ended",
+                json!({ "agent": agent, "sessionId": session_id }),
+            );
         })),
         Some(resolver.clone()),
     );
+
+    peer.handle("agent_list", move |_params, _ctx| async move {
+        let agents = tokio::task::spawn_blocking(acp_agent::available_agents)
+            .await
+            .map_err(|err| format!("Agent detection task failed: {err}"))?;
+        Ok(json!({ "agents": agents }))
+    });
 
     peer.handle("agent_cwd_complete", move |params, _ctx| async move {
         let input = params
@@ -105,17 +115,21 @@ pub fn register(peer: &Peer) {
     peer.handle("agent_session_create", move |params, _ctx| {
         let sessions = create_sessions.clone();
         async move {
+            let agent = required_agent(&params, "agent_session_create")?;
             let cwd = message_cwd(&params);
             let system_prompt = message_panel_system_prompt(&params)?;
             let timeout_secs = message_timeout_secs(&params);
             match tokio::time::timeout(
                 Duration::from_secs(timeout_secs),
-                sessions.create_session(cwd, system_prompt),
+                sessions.create_session(agent, cwd, system_prompt),
             )
             .await
             {
                 Ok(Ok(created)) => Ok(json!({
+                    "agent": agent,
                     "sessionId": created.session_id,
+                    "title": created.title,
+                    "updatedAt": created.updated_at,
                     "modes": created.modes,
                     "configOptions": created.config_options,
                 })),
@@ -129,11 +143,7 @@ pub fn register(peer: &Peer) {
     peer.handle("agent_session_load", move |params, ctx| {
         let sessions = load_sessions.clone();
         async move {
-            let acp_session_id = params
-                .get("sessionId")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| "agent_session_load requires a string sessionId".to_string())?;
+            let (agent, session_id) = required_agent_session(&params, "agent_session_load")?;
             let cwd = message_cwd(&params);
             let system_prompt = message_panel_system_prompt(&params)?;
             let timeout_secs = message_timeout_secs(&params);
@@ -151,12 +161,15 @@ pub fn register(peer: &Peer) {
 
             let result = match tokio::time::timeout(
                 Duration::from_secs(timeout_secs),
-                sessions.load_session(acp_session_id, cwd, system_prompt, replay_tx),
+                sessions.load_session(agent, session_id, cwd, system_prompt, replay_tx),
             )
             .await
             {
                 Ok(Ok(created)) => Ok(json!({
+                    "agent": agent,
                     "sessionId": created.session_id,
+                    "title": created.title,
+                    "updatedAt": created.updated_at,
                     "modes": created.modes,
                     "configOptions": created.config_options,
                 })),
@@ -175,47 +188,21 @@ pub fn register(peer: &Peer) {
         }
     });
 
-    let list_sessions = sessions.clone();
-    peer.handle("agent_session_list", move |params, _ctx| {
-        let sessions = list_sessions.clone();
-        async move {
-            let cwd = message_cwd(&params);
-            let cursor = params
-                .get("cursor")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .map(str::to_string);
-            let timeout_secs = message_timeout_secs(&params);
-            match tokio::time::timeout(
-                Duration::from_secs(timeout_secs),
-                sessions.list_sessions(cwd, cursor),
-            )
-            .await
-            {
-                Ok(Ok(list)) => Ok(list),
-                Ok(Err(err)) => Err(err.to_string()),
-                Err(_) => Err("Timeout listing ACP agent sessions".to_string()),
-            }
-        }
-    });
-
     let delete_sessions = sessions.clone();
     peer.handle("agent_session_delete", move |params, _ctx| {
         let sessions = delete_sessions.clone();
         async move {
-            let session_id = params
-                .get("sessionId")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| "agent_session_delete requires a string sessionId".to_string())?;
+            let (agent, session_id) = required_agent_session(&params, "agent_session_delete")?;
             let timeout_secs = message_timeout_secs(&params);
             match tokio::time::timeout(
                 Duration::from_secs(timeout_secs),
-                sessions.delete_session(session_id),
+                sessions.delete_session(agent, session_id),
             )
             .await
             {
-                Ok(Ok(())) => Ok(json!({ "sessionId": session_id, "deleted": true })),
+                Ok(Ok(())) => {
+                    Ok(json!({ "agent": agent, "sessionId": session_id, "deleted": true }))
+                }
                 Ok(Err(err)) => Err(err.to_string()),
                 Err(_) => Err("Timeout deleting ACP agent session".to_string()),
             }
@@ -226,13 +213,9 @@ pub fn register(peer: &Peer) {
     peer.handle("agent_session_close", move |params, _ctx| {
         let sessions = close_sessions.clone();
         async move {
-            let session_id = params
-                .get("sessionId")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| "agent_session_close requires a string sessionId".to_string())?;
-            let closed = sessions.close_session(session_id).await;
-            Ok(json!({ "sessionId": session_id, "closed": closed }))
+            let (agent, session_id) = required_agent_session(&params, "agent_session_close")?;
+            let closed = sessions.close_session(agent, session_id).await;
+            Ok(json!({ "agent": agent, "sessionId": session_id, "closed": closed }))
         }
     });
 
@@ -240,13 +223,9 @@ pub fn register(peer: &Peer) {
     peer.handle("agent_prompt_cancel", move |params, _ctx| {
         let sessions = cancel_sessions.clone();
         async move {
-            let session_id = params
-                .get("sessionId")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| "agent_prompt_cancel requires a string sessionId".to_string())?;
-            let cancelled = sessions.cancel(session_id).await;
-            Ok(json!({ "sessionId": session_id, "cancelled": cancelled }))
+            let (agent, session_id) = required_agent_session(&params, "agent_prompt_cancel")?;
+            let cancelled = sessions.cancel(agent, session_id).await;
+            Ok(json!({ "agent": agent, "sessionId": session_id, "cancelled": cancelled }))
         }
     });
 
@@ -254,6 +233,7 @@ pub fn register(peer: &Peer) {
     peer.handle("agent_prompt", move |params, ctx| {
         let sessions = prompt_sessions.clone();
         async move {
+            let agent = required_agent(&params, "agent_prompt")?;
             // The prompt may be empty when the content lives in attachments.
             let prompt = params
                 .get("prompt")
@@ -265,12 +245,7 @@ pub fn register(peer: &Peer) {
             if prompt.is_empty() && attachments.is_empty() {
                 return Err("agent_prompt requires a non-empty prompt or attachments".to_string());
             }
-            let session_id = params
-                .get("sessionId")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| "agent_prompt requires a string sessionId".to_string())?;
-
+            let session_id = required_session_id(&params, "agent_prompt")?;
             // Stream agent events as `{ id, event }` frames while the prompt
             // runs; the forwarder is drained before the final result so no
             // event overtakes the response.
@@ -278,13 +253,20 @@ pub fn register(peer: &Peer) {
             let event_tx = forwarder.as_ref().map(|(tx, _)| tx.clone());
 
             let result = sessions
-                .prompt(session_id, prompt, attachments, timeout_secs, event_tx)
+                .prompt(
+                    agent,
+                    session_id,
+                    prompt,
+                    attachments,
+                    timeout_secs,
+                    event_tx,
+                )
                 .await;
 
             settle_forwarder(forwarder, result.is_ok()).await;
 
             result
-                .map(|answer| json!({ "answer": answer, "sessionId": session_id }))
+                .map(|answer| json!({ "answer": answer, "agent": agent, "sessionId": session_id }))
                 .map_err(|err| err.to_string())
         }
     });
@@ -293,14 +275,10 @@ pub fn register(peer: &Peer) {
     peer.handle("agent_session_set_mode", move |params, _ctx| {
         let sessions = mode_sessions.clone();
         async move {
-            let session_id = required_session_id(&params, "agent_session_set_mode")?;
-            let mode_id = params
-                .get("modeId")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| "agent_session_set_mode requires a string modeId".to_string())?;
+            let (agent, session_id) = required_agent_session(&params, "agent_session_set_mode")?;
+            let mode_id = required_str(&params, "modeId", "agent_session_set_mode")?;
             sessions
-                .set_mode(session_id, mode_id)
+                .set_mode(agent, session_id, mode_id)
                 .await
                 .map(|_| json!({}))
                 .map_err(|err| err.to_string())
@@ -311,23 +289,12 @@ pub fn register(peer: &Peer) {
     peer.handle("agent_session_set_config_option", move |params, _ctx| {
         let sessions = config_sessions.clone();
         async move {
-            let session_id = required_session_id(&params, "agent_session_set_config_option")?;
-            let config_id = params
-                .get("configId")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| {
-                    "agent_session_set_config_option requires a string configId".to_string()
-                })?;
-            let value = params
-                .get("value")
-                .and_then(|v| v.as_str())
-                .filter(|v| !v.is_empty())
-                .ok_or_else(|| {
-                    "agent_session_set_config_option requires a string value".to_string()
-                })?;
+            let method = "agent_session_set_config_option";
+            let (agent, session_id) = required_agent_session(&params, method)?;
+            let config_id = required_str(&params, "configId", method)?;
+            let value = required_str(&params, "value", method)?;
             sessions
-                .set_config_option(session_id, config_id, value)
+                .set_config_option(agent, session_id, config_id, value)
                 .await
                 .map_err(|err| err.to_string())
         }
@@ -399,20 +366,37 @@ fn resolve_directory_path(input: &str, base_dir: &Path) -> PathBuf {
     }
 }
 
+fn non_empty_str<'a>(value: &'a Value, field: &str) -> Option<&'a str> {
+    value
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+}
+
+fn required_str<'a>(params: &'a Value, field: &str, method: &str) -> Result<&'a str, String> {
+    non_empty_str(params, field).ok_or_else(|| format!("{method} requires a string {field}"))
+}
+
+fn required_agent<'a>(params: &'a Value, method: &str) -> Result<&'a str, String> {
+    required_str(params, "agent", method)
+}
+
 fn required_session_id<'a>(params: &'a Value, method: &str) -> Result<&'a str, String> {
-    params
-        .get("sessionId")
-        .and_then(|v| v.as_str())
-        .filter(|v| !v.is_empty())
-        .ok_or_else(|| format!("{method} requires a string sessionId"))
+    required_str(params, "sessionId", method)
+}
+
+fn required_agent_session<'a>(
+    params: &'a Value,
+    method: &str,
+) -> Result<(&'a str, &'a str), String> {
+    Ok((
+        required_agent(params, method)?,
+        required_session_id(params, method)?,
+    ))
 }
 
 fn message_cwd(params: &Value) -> Option<PathBuf> {
-    params
-        .get("cwd")
-        .and_then(|v| v.as_str())
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
+    non_empty_str(params, "cwd").map(PathBuf::from)
 }
 
 fn message_panel_system_prompt(params: &Value) -> Result<Option<String>, String> {
@@ -473,47 +457,27 @@ fn message_attachments(params: &Value) -> Result<Vec<acp_agent::Attachment>, Str
         .iter()
         .map(|item| match item.get("type").and_then(|v| v.as_str()) {
             Some("text") => {
-                let text = item
-                    .get("text")
-                    .and_then(|v| v.as_str())
-                    .filter(|v| !v.is_empty())
+                let text = non_empty_str(item, "text")
                     .ok_or_else(|| "text attachment requires non-empty text".to_string())?;
                 Ok(acp_agent::Attachment::Text {
                     text: text.to_string(),
                 })
             }
             Some("image") => {
-                let data = item
-                    .get("data")
-                    .and_then(|v| v.as_str())
-                    .filter(|v| !v.is_empty())
+                let data = non_empty_str(item, "data")
                     .ok_or_else(|| "image attachment requires base64 data".to_string())?;
-                let mime_type = item
-                    .get("mimeType")
-                    .and_then(|v| v.as_str())
-                    .filter(|v| !v.is_empty())
-                    .unwrap_or("image/png");
+                let mime_type = non_empty_str(item, "mimeType").unwrap_or("image/png");
                 Ok(acp_agent::Attachment::Image {
                     data: data.to_string(),
                     mime_type: mime_type.to_string(),
                 })
             }
             Some("resource") => {
-                let uri = item
-                    .get("uri")
-                    .and_then(|v| v.as_str())
-                    .filter(|v| !v.is_empty())
+                let uri = non_empty_str(item, "uri")
                     .ok_or_else(|| "resource attachment requires a uri".to_string())?;
-                let name = item
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .filter(|v| !v.is_empty())
+                let name = non_empty_str(item, "name")
                     .ok_or_else(|| "resource attachment requires a name".to_string())?;
-                let mime_type = item
-                    .get("mimeType")
-                    .and_then(|v| v.as_str())
-                    .filter(|v| !v.is_empty())
-                    .map(str::to_string);
+                let mime_type = non_empty_str(item, "mimeType").map(str::to_string);
                 Ok(acp_agent::Attachment::Resource {
                     uri: uri.to_string(),
                     name: name.to_string(),

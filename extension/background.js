@@ -1,10 +1,11 @@
 import { debuggerDetach, debuggerSendCommand } from './debugger.js';
+import { agentSessionKey } from './shared/agent-session-store.js';
 import { trackDevtoolsPort } from './shared/devtools-tracker.js';
 import { t } from './shared/i18n.js';
 import { loadToolset } from './shared/loader.js';
 import { ensureAuthToken } from './shared/market-api.js';
 import { RpcPeer } from './shared/rpc.js';
-import { getToolConfig, persist } from './shared/store.js';
+import { getToolConfig, persist } from './shared/tool-store.js';
 import {
   executeScript,
   executeScriptInBackground,
@@ -23,7 +24,7 @@ const WELCOME_URL = chrome.runtime.getURL('pages/welcome.html');
 const MARKET_URL = chrome.runtime.getURL('pages/market.html');
 // Raise when the extension starts relying on host capabilities that older
 // native hosts don't have; hosts below this version get flagged incompatible.
-const MIN_HOST_VERSION = '0.2.0';
+const MIN_HOST_VERSION = '0.2.4';
 
 chrome.runtime.onInstalled.addListener((details) => {
   ensureAuthToken();
@@ -128,6 +129,12 @@ peer.handle('debugger_detach', (p) => debuggerDetach(p.tabId));
 const agentSessionOwners = new Map();
 const agentPanelPeers = new Set();
 
+function agentTargetKey(target) {
+  return typeof target?.agent === 'string' && typeof target?.sessionId === 'string'
+    ? agentSessionKey(target.agent, target.sessionId)
+    : '';
+}
+
 function compareVersions(a, b) {
   const pa = a.split('.').map(Number);
   const pb = b.split('.').map(Number);
@@ -163,17 +170,19 @@ peer.onNotify('connected', (params) => {
   });
   // A (re)connected host process knows no live sessions; panels must drop
   // their cached state.
+  agentSessionOwners.clear();
   for (const panel of agentPanelPeers) panel.notify('host_reconnected', {});
 });
 peer.onNotify('agent_session_ended', (params) => {
-  console.log('Agent session ended:', params?.sessionId);
-  agentSessionOwners.delete(params?.sessionId);
+  const key = agentTargetKey(params);
+  console.log('Agent session ended:', params?.agent, params?.sessionId);
+  if (key) agentSessionOwners.delete(key);
   // Panels keep per-session state for live sessions; let them drop dead ones.
   for (const panel of agentPanelPeers) panel.notify('agent_session_ended', params);
 });
 
 peer.handle('agent_permission_request', async (params) => {
-  const owner = agentSessionOwners.get(params?.sessionId);
+  const owner = agentSessionOwners.get(agentTargetKey(params));
   if (!owner) throw new Error('No Agent panel owns this session');
   return owner.call('agent_permission_request', params);
 });
@@ -185,10 +194,10 @@ peer.handle('agent_permission_request', async (params) => {
  * frames and final responses back unchanged.
  */
 const AGENT_METHODS = [
+  'agent_list',
   'agent_cwd_complete',
   'agent_session_create',
   'agent_session_load',
-  'agent_session_list',
   'agent_session_delete',
   'agent_session_close',
   'agent_prompt',
@@ -205,15 +214,15 @@ chrome.runtime.onConnect.addListener((panelPort) => {
   agentPanelPeers.add(panel);
   // Live sessions opened by this panel instance; closed when the panel
   // disconnects (devtools closed) so the agent subprocesses don't leak.
-  const liveSessions = new Set();
+  const liveSessions = new Map();
   let disconnected = false;
   panelPort.onDisconnect.addListener(() => {
     disconnected = true;
     agentPanelPeers.delete(panel);
     panel.rejectAll(new Error('Agent panel disconnected'));
-    for (const sessionId of liveSessions) {
-      if (agentSessionOwners.get(sessionId) === panel) agentSessionOwners.delete(sessionId);
-      peer.call('agent_session_close', { sessionId }).catch(() => {});
+    for (const [key, target] of liveSessions) {
+      if (agentSessionOwners.get(key) === panel) agentSessionOwners.delete(key);
+      peer.call('agent_session_close', target).catch(() => {});
     }
   });
   for (const method of AGENT_METHODS) {
@@ -223,16 +232,19 @@ chrome.runtime.onConnect.addListener((panelPort) => {
         timeoutSeconds: params.timeoutSeconds,
       });
       if (method === 'agent_session_create' || method === 'agent_session_load') {
+        const target = { agent: result.agent, sessionId: result.sessionId };
+        const key = agentTargetKey(target);
         // A create/load settling after disconnect would leak the session.
         if (disconnected) {
-          peer.call('agent_session_close', { sessionId: result.sessionId }).catch(() => {});
+          peer.call('agent_session_close', target).catch(() => {});
         } else {
-          liveSessions.add(result.sessionId);
-          agentSessionOwners.set(result.sessionId, panel);
+          liveSessions.set(key, target);
+          agentSessionOwners.set(key, panel);
         }
       } else if (method === 'agent_session_close') {
-        liveSessions.delete(params.sessionId);
-        if (agentSessionOwners.get(params.sessionId) === panel) agentSessionOwners.delete(params.sessionId);
+        const key = agentTargetKey(params);
+        liveSessions.delete(key);
+        if (agentSessionOwners.get(key) === panel) agentSessionOwners.delete(key);
       }
       return result;
     });

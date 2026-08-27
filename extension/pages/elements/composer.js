@@ -35,7 +35,7 @@ const stopButtonClass =
 class AgentComposerElement extends GemElement {
   @boolattribute disabled; // prompt in flight
   @property configOptions;
-  @property sessionId;
+  @property sessionKey;
   @property queue; // staged prompts while one is in flight
 
   @emitter send;
@@ -72,7 +72,7 @@ class AgentComposerElement extends GemElement {
     this.#setInput('');
   };
 
-  @effect((element) => [element.sessionId])
+  @effect((i) => [i.sessionKey])
   #resetOnSessionChange = () => {
     this.#clearDraft();
   };

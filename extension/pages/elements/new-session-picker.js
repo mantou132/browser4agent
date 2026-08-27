@@ -1,14 +1,17 @@
 import { hotkeys } from 'duoyun-ui/lib/hotkeys';
 import { t } from '../../shared/i18n.js';
+import { getAgentIcon } from '../../shared/icons.js';
 import { displayHomePath } from '../../shared/path.js';
 
-@customElement('agent-cwd-picker')
-class AgentCwdPickerElement extends GemElement {
+@customElement('agent-new-session-picker')
+class AgentNewSessionPickerElement extends GemElement {
   @property complete;
   @property initialValue;
   @property home;
+  @property agents;
+  @property initialAgent;
 
-  @emitter confirm;
+  @emitter confirm; // detail: { agent, cwd }
 
   #s = createState({
     value: '',
@@ -16,20 +19,24 @@ class AgentCwdPickerElement extends GemElement {
     loading: true,
     error: '',
     activeIndex: 0,
+    agent: '',
   });
+  #activeDirectoryRef = createRef();
 
-  #requestId = 0;
+  @willMount()
+  #init = () => {
+    const agents = this.agents || [];
+    const agent = agents.some((item) => item.id === this.initialAgent) ? this.initialAgent : agents[0]?.id || '';
+    this.#s({ agent });
+    this.#update(this.#directoryInput(this.initialValue));
+  };
 
-  @mounted()
-  #init = () => this.#update(this.#directoryInput(this.initialValue));
-
-  @effect((element) => [element.#s.activeIndex, element.#s.directories])
+  @effect((i) => [i.#s.activeIndex, i.#s.directories])
   #scrollActive = () => {
-    this.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest' });
+    this.#activeDirectoryRef.value?.scrollIntoView({ block: 'nearest' });
   };
 
   #update = async (value) => {
-    const requestId = ++this.#requestId;
     this.#s({
       value,
       directories: [],
@@ -39,7 +46,6 @@ class AgentCwdPickerElement extends GemElement {
     });
     try {
       const result = await this.complete?.(value);
-      if (requestId !== this.#requestId) return;
       const directories = [...(result.directories || [])];
       if (result.isDirectory && result.value) directories.unshift(result.value);
       this.#s({
@@ -48,7 +54,6 @@ class AgentCwdPickerElement extends GemElement {
         loading: false,
       });
     } catch (err) {
-      if (requestId !== this.#requestId) return;
       this.#s({ directories: [], loading: false, error: err.message });
     }
   };
@@ -61,6 +66,10 @@ class AgentCwdPickerElement extends GemElement {
 
   #select = (value) => {
     this.#update(this.#directoryInput(value));
+  };
+
+  #confirm = (cwd) => {
+    if (this.#s.agent) this.confirm({ agent: this.#s.agent, cwd });
   };
 
   #onKeydown = hotkeys(
@@ -79,7 +88,7 @@ class AgentCwdPickerElement extends GemElement {
       },
       enter: () => {
         const { directories, activeIndex } = this.#s;
-        if (directories[activeIndex]) this.confirm(directories[activeIndex]);
+        if (directories[activeIndex]) this.#confirm(directories[activeIndex]);
       },
     },
     { stopPropagation: true },
@@ -87,14 +96,44 @@ class AgentCwdPickerElement extends GemElement {
 
   @template()
   #content = () => {
-    const { value, directories, loading, error, activeIndex } = this.#s;
+    const { value, directories, loading, error, activeIndex, agent } = this.#s;
+    const agents = this.agents || [];
     return html`
       <section class="w-full rounded-lg border border-border bg-bg shadow-lg">
         <header class="border-b border-border px-4 py-3">
-          <h2 class="m-0 text-sm font-semibold text-highlight">${t('devtoolsCwdTitle')}</h2>
+          <h2 class="m-0 text-sm font-semibold text-highlight">${t('devtoolsNewSessionTitle')}</h2>
         </header>
         <div class="px-4 py-3">
+          <fieldset class="m-0 mb-3 border-0 p-0">
+            <legend class="mb-1.5 p-0 text-xs font-medium text-describe">${t('devtoolsAgentLabel')}</legend>
+            <div v-if=${agents.length} class="flex gap-2">
+              ${agents.map(
+                (item) => html`
+                  <button
+                    type="button"
+                    aria-pressed=${agent === item.id}
+                    class=${classMap({
+                      'flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus': true,
+                      'border-primary bg-primary/10 text-highlight': agent === item.id,
+                      'border-border bg-bg-light/40 text-text hover:bg-bg-hover': agent !== item.id,
+                    })}
+                    @click=${() => this.#s({ agent: item.id })}
+                  >
+                    <dy-use class="size-4 shrink-0" .element=${getAgentIcon(item.id)}></dy-use>
+                    <span class="truncate font-medium">${item.name}</span>
+                  </button>
+                `,
+              )}
+            </div>
+            <div v-else class="rounded border border-border bg-bg-light/40 px-3 py-2 text-xs text-negative">
+              ${t('devtoolsNoAgents')}
+            </div>
+          </fieldset>
+          <label class="mb-1.5 block text-xs font-medium text-describe" for="agent-new-session-cwd-input">
+            ${t('devtoolsCwdTitle')}
+          </label>
           <dy-input
+            id="agent-new-session-cwd-input"
             autofocus
             class="w-full font-mono"
             placeholder=${t('devtoolsCwdPlaceholder')}
@@ -110,6 +149,7 @@ class AgentCwdPickerElement extends GemElement {
             ${directories.map(
               (directory, index) => html`
                 <button
+                  ${index === activeIndex ? this.#activeDirectoryRef : undefined}
                   type="button"
                   aria-current=${index === activeIndex}
                   class=${classMap({
@@ -119,7 +159,7 @@ class AgentCwdPickerElement extends GemElement {
                     'cursor-pointer hover:bg-bg-hover': true,
                   })}
                   title=${directory}
-                  @click=${() => this.confirm(directory)}
+                  @click=${() => this.#confirm(directory)}
                 >
                   ${displayHomePath(directory, this.home)}
                 </button>
