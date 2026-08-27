@@ -20,7 +20,10 @@ use crate::{
 #[command(
     name = "browser4agent",
     about = "Forward a single browser4agent tool call to the running MCP HTTP service.",
-    after_help = "Pass --help with --tool to print that tool's input schema.\n\nExamples:\n  \
+    after_help = "This CLI connects to a user-local loopback service. In sandboxed agent \
+                  shells, request outside-sandbox execution on the first attempt; an \
+                  in-sandbox connection failure does not mean the browser extension is \
+                  stopped.\n\nPass --help with --tool to print that tool's input schema.\n\nExamples:\n  \
                   browser4agent --tool list_tabs\n  browser4agent --tool read_tab --input \
                   '{\"tab_id\": 123}'\n  echo '{\"tab_id\":123}' | browser4agent --tool read_tab \
                   --stdin\n  browser4agent --tool read_tab --help",
@@ -71,7 +74,10 @@ async fn call_tool(name: &str, inline: Option<&str>, from_stdin: bool) -> Result
         .await
         .with_context(|| {
             format!(
-                "failed to connect to running MCP HTTP service at http://{BIND_ADDRESS}{MCP_PATH}"
+                "failed to connect to running MCP HTTP service at \
+                 http://{BIND_ADDRESS}{MCP_PATH}. If this command ran in a sandboxed agent \
+                 shell, retry it outside the sandbox before concluding that the browser \
+                 extension is not running"
             )
         })?;
     let result = client
