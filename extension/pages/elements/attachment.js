@@ -30,7 +30,7 @@ class AgentAttachmentElement extends GemElement {
     const chip = html`
       <span
         class=${classMap({
-          'flex items-center text-xs': true,
+          'cursor-default flex items-center text-xs': true,
           'h-9 gap-1.5 rounded-md border border-border bg-bg-light pl-1 pr-1.5 text-text': !this.inverted,
           'h-5 gap-1 rounded-xs bg-white/25 px-1 text-white': this.inverted,
         })}

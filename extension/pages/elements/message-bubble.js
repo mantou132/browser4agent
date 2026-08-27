@@ -137,6 +137,12 @@ GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
     color: ${theme.primaryColor};
     text-decoration: underline;
   }
+  :host(.user) {
+    a,
+    a:visited {
+      color: inherit;
+    }
+  }
 `);
 
 const defaultMarkdownRenderer = new Renderer();
@@ -182,6 +188,17 @@ const markdownExtensions = [
     },
   },
 ];
+
+const dataImageLinkPattern = /\[([^\]\n]*)\]\((data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+)\)/gi;
+
+const extractDataImageAttachments = (text) => {
+  const attachments = [];
+  const markdown = text.replace(dataImageLinkPattern, (_, name, previewUrl) => {
+    attachments.push({ kind: 'image', name: name || 'image', previewUrl });
+    return '';
+  });
+  return { attachments, markdown };
+};
 
 @customElement('agent-message-bubble')
 class AgentMessageBubbleElement extends GemElement {
@@ -257,6 +274,8 @@ class AgentMessageBubbleElement extends GemElement {
     }
 
     const isUser = msg.role === 'user';
+    const { attachments: linkedAttachments, markdown } = extractDataImageAttachments(msg.text || '');
+    const attachments = [...(msg.attachments || []), ...linkedAttachments];
     return html`
       <div class=${`my-3 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
         <div
@@ -266,16 +285,17 @@ class AgentMessageBubbleElement extends GemElement {
             'w-full bg-bg-light text-text border border-border rounded-bl-xs': !isUser,
           })}
         >
-          <div v-if=${isUser && msg.attachments?.length} class="mb-1.5 flex flex-wrap justify-end gap-1">
-            ${msg.attachments?.map(
-              (item) => html`<agent-attachment inverted small .attachment=${item}></agent-attachment>`,
+          <div v-if=${attachments.length} class=${`mb-1.5 flex flex-wrap gap-1 ${isUser ? 'justify-end' : ''}`}>
+            ${attachments.map(
+              (item) => html`
+                <agent-attachment ?inverted=${isUser} small .attachment=${item}></agent-attachment>
+              `,
             )}
           </div>
-          ${
-            isUser
-              ? msg.text
-              : html`<gem-bind-marked .extensions=${markdownExtensions}>${msg.text || ''}</gem-bind-marked>`
-          }</div>
+          <gem-bind-marked class=${isUser ? 'user' : ''} .extensions=${markdownExtensions}
+            >${markdown}</gem-bind-marked
+          >
+        </div>
       </div>
     `;
   };
