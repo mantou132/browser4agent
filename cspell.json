@@ -3,5 +3,5 @@
   "version": "0.2",
   "ignorePaths": ["**/pnpm-lock.yaml", "**/package.json", "**/settings.json", "**/cspell.json"],
   "useGitignore": true,
-  "words": ["toolsets", "duoyun", "mantou", "boolattribute"]
+  "words": ["toolsets", "duoyun", "mantou", "boolattribute", "agentclientprotocol"]
 }

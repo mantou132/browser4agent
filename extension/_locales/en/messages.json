@@ -125,7 +125,7 @@
     "message": "Edit"
   },
   "devtoolsPanelEmpty": {
-    "message": "Click “New” or pick a session on the left to start chatting. Requires Claude Code or Codex installed and logged in locally"
+    "message": "Click “New” or pick a session on the left to start chatting. Some agents require Node.js 22+ and npm; sign in to the agent you select"
   },
   "devtoolsPanelEnqueue": {
     "message": "Add to queue"
@@ -174,9 +174,6 @@
   },
   "devtoolsNewSessionTitle": {
     "message": "New session"
-  },
-  "devtoolsNoAgents": {
-    "message": "No available Claude Code or Codex installation was detected"
   },
   "devtoolsThought": {
     "message": "Thought"

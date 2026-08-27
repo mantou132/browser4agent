@@ -1,4 +1,5 @@
 mod acp_agent;
+mod app_data;
 mod browser_agent;
 mod cli;
 mod constant;

@@ -66,7 +66,7 @@ export function createAgentApi() {
       return rpc().call('agent_cwd_complete', params, options);
     },
 
-    /** List locally installed ACP agents available for explicit selection. */
+    /** List supported ACP agents available for explicit selection. */
     listAgents(options = {}) {
       return rpc().call('agent_list', {}, options);
     },

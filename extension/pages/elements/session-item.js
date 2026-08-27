@@ -5,6 +5,8 @@ import { displayHomePath } from '../../shared/path.js';
 const agentNames = {
   claude: 'Claude Code',
   codex: 'Codex',
+  cursor: 'Cursor',
+  pi: 'pi',
 };
 
 @customElement('agent-session-item')

@@ -17,9 +17,9 @@ A browser extension that connects your browser with AI agents — in both direct
 
 | | **[Control your browser from any agent](#control-your-browser-from-any-agent-mcp--skill)** | **[Use an agent inside the browser](#use-an-agent-inside-the-browser-acp)** |
 | --- | --- | --- |
-| **Works with** | Any agent that speaks MCP, or can run shell commands (via a [Skill](#cli)) | A locally installed coding agent that speaks [ACP][acp] — currently Claude Code and Codex |
+| **Works with** | Any agent that speaks MCP, or can run shell commands (via a [Skill](#cli)) | Claude Code, Codex, Cursor, and pi; a working user-installed CLI is preferred, otherwise a managed copy is installed automatically |
 | **What you get** | The agent reads pages, cookies, localStorage, errors, and screenshots; manages tabs and windows; runs scripts | You chat with the agent about the current page, in DevTools or the browser's side panel |
-| **Setup** | The welcome page registers the Native Host and wires up MCP or installs the Skill automatically | The welcome page registers the Native Host; nothing else to configure — just open the Agent panel |
+| **Setup** | The welcome page registers the Native Host and wires up MCP or installs the Skill automatically | Register the Native Host; adapter-backed agents also need Node.js 22+ with npm; each managed runtime installs when first used |
 
 Both modes share the same prerequisite: download the `browser4agent` binary and run it once to register it as the Native Host (see [Install](#install)). After that, what differs is only how the agent side connects: MCP/Skill vs [ACP][acp].
 
@@ -75,9 +75,15 @@ browser4agent --tool read_tab --help   # inspect a tool's input schema
 
 ## Use an agent inside the browser (ACP)
 
-Open the **Agent** panel in DevTools — or as the browser's side panel — to chat with a locally installed coding agent about the page you're on. Sessions stream live, support attachments and permission prompts, can queue follow-up prompts while a turn is running, and you can keep several sessions and switch between them.
+Open the **Agent** panel in DevTools — or as the browser's side panel — to chat with a coding agent about the page you're on. Sessions stream live, support attachments and permission prompts, can queue follow-up prompts while a turn is running, and you can keep several sessions and switch between them.
 
-You need the Native Host plus a local coding agent that speaks the [ACP][acp] protocol. The Agent panel detects installed `claude` and `codex` CLIs, lets you choose one for each new session, and launches it through the corresponding ACP adapter.
+Supported agents are Claude Code, Codex, Cursor, and pi. The host prefers a working user-installed `claude`, `codex`, `cursor-agent`, or `pi` from PATH (including common user-local locations). Claude Code and Codex run through their ACP adapters, Cursor uses its native `cursor-agent acp` mode, and pi runs through `pi-acp`. If the selected CLI is missing, a compatible managed CLI is installed automatically; Cursor's binary comes from the official ACP Registry, while adapter-backed agents require Node.js 22 or newer with npm. Sign-in and agent configuration continue to use each agent's normal user-level files.
+
+Managed agent runtimes and logs live together in the platform's local application data directory:
+
+- macOS: `~/Library/Application Support/browser4agent`
+- Windows: `%LOCALAPPDATA%\browser4agent`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/browser4agent`
 
 ## Build from source
 

@@ -106,7 +106,7 @@ class AgentNewSessionPickerElement extends GemElement {
         <div class="px-4 py-3">
           <fieldset class="m-0 mb-3 border-0 p-0">
             <legend class="mb-1.5 p-0 text-xs font-medium text-describe">${t('devtoolsAgentLabel')}</legend>
-            <div v-if=${agents.length} class="flex gap-2">
+            <div class="flex gap-2">
               ${agents.map(
                 (item) => html`
                   <button
@@ -124,9 +124,6 @@ class AgentNewSessionPickerElement extends GemElement {
                   </button>
                 `,
               )}
-            </div>
-            <div v-else class="rounded border border-border bg-bg-light/40 px-3 py-2 text-xs text-negative">
-              ${t('devtoolsNoAgents')}
             </div>
           </fieldset>
           <label class="mb-1.5 block text-xs font-medium text-describe" for="agent-new-session-cwd-input">

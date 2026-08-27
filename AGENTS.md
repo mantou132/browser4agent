@@ -30,7 +30,7 @@
  3. `src/native_messaging.rs` 负责 Native Messaging 基础读写
  4. `src/peer.rs` 负责与扩展的双工 RPC 协议（请求/响应、流事件、通知），两端 API 对称
  5. `src/browser_agent.rs` 负责浏览器 agent 协议消息、流式事件转发
-  6. `src/acp_agent.rs` 负责 ACP 会话管理；Native Host 为用户选择的 Claude/Codex 分别复用可重连的长生命周期 ACP connection，每个 ACP session 仍由独立 actor 串行处理
+  6. `src/acp_agent.rs` 负责 ACP connection 和会话管理，`src/acp_agent/catalog.rs` 声明受支持 Agent，`src/acp_agent/provision.rs` 负责用户 CLI 探测及托管运行时准备；Claude/Codex/pi 的适配器与备用 CLI、Cursor 的原生 ACP 二进制自动安装到应用数据目录，优先使用用户 PATH 中可用的 CLI；Native Host 为用户选择的 Claude/Codex/Cursor/pi 分别复用可重连的长生命周期 ACP connection，每个 ACP session 仍由独立 actor 串行处理
 7. CLI 模式：
   1. `src/cli.rs` 解析 `--tool` / `--input`（或 stdin JSON）
   2. 转发单次工具调用到后台 MCP HTTP 服务 `127.0.0.1:39271/mcp`，打印结果后退出
@@ -45,6 +45,7 @@
 - `extension/_locales/`：扩展 i18n 文案，默认 `zh_CN`，同时维护英文 `en`
 - `extension/public/toolsets/`：内置工具集
 - `extension/read-content-hacks/`：特定站点的读取补丁
+- `src/acp_agent/`：受支持 Agent 目录以及用户 CLI 探测、托管运行时安装和启动命令准备
 - `cf/`：扩展中的工具集市场后端
 - `toolset-parser/`：工具集解析器
 
@@ -57,7 +58,7 @@
 - `extension/tailwind.css`：扩展全局 Tailwind 主题和基础样式
 - `extension/shared/i18n.js`：扩展侧 `t()` 翻译帮助函数和页面语言/标题同步
 - `extension/shared/diff.js`：ACP tool call 的 diff 内容项转 unified diff 文本，配合 `<gem-bind-diff2html>` 在面板渲染文件编辑
-- `extension/shared/icons.js`：通过 `extendIcons` 扩展 duoyun-ui 全局 icon store 的应用自定义图标（send/stop/file/edit/robot…）
+- `extension/shared/icons.js`：通过 `extendIcons` 扩展 duoyun-ui 全局 icon store 的应用自定义图标（send/stop/file/edit/robot…）；Claude/Codex/Cursor/pi 使用 ACP Registry 官方 SVG 的本地快照
 - `extension/shared/rpc.js`：对称双工 RPC 对端（`call` / `handle` / `notify`），同时用于 Native Host 链路和面板链路
 - `extension/shared/devtools-tracker.js`：追踪开着 DevTools 的 tab（devtools 页经 `devtools-alive` 端口上报，断开即关闭），`read_tab` 结果据此标注 `devtoolsOpen`
 - `extension/shared/agent-api.js`：面板侧 agent 会话 async API 客户端（经 background 的 `agent-rpc` 端口转发）
@@ -70,10 +71,14 @@
 - `extension/tools.js`：MCP 工具实现
 - `extension/sandbox-globals.js`：execute_script_in_background 沙箱的全局安装函数（经 Function.toString() 注入 QuickJS，必须保持自包含，且在 extension.config.mjs 中排除 swc 转译）：`chrome`/`browser`/`debuggerEvents` 统一经单一 `__invoke` 桥、定时器（主函数返回即丢弃未触发的）、console 捕获（随结果以 `logs` 返回）、queueMicrotask、基础 URL/URLSearchParams
 - `extension/debugger.js`：CDP 调试会话，per-tab 事件 ring buffer 桥接 chrome.debugger 的 push 和 MCP 的 pull；快照以惰性函数暴露为 execute_script_in_background QuickJS 里的全局 `debuggerEvents()`，脚本调用时才序列化；attach 状态经 storage.session 在 SW 重启后恢复。MCP 侧只有 `debugger_send_command`（自动 attach）和 `debugger_detach` 两个工具（Chromium only，见 `CHROMIUM_ONLY_TOOLS`）
+- `src/app_data.rs`：统一解析并创建 `browser4agent` 的跨平台本地应用数据目录；托管 Agent 运行时放在 `agents/`，程序和 ACP 日志放在 `logs/`，安装缓存放在 `npm-cache/`
 - `src/native_messaging.rs`：Native Messaging 基础消息读写
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
 - `src/browser_agent.rs`：浏览器侧 agent 请求协议、会话创建、流式事件转发
 - `src/acp_agent.rs`：共享的长生命周期 ACP connection、持续会话 actor、agent 事件转换
+- `src/acp_agent/catalog.rs`：Claude/Codex/Cursor/pi 的展示信息、用户 CLI 名称及 ACP 启动方式声明
+- `src/acp_agent/provision.rs`：跨平台用户 CLI 探测、数据目录内 npm 适配器/备用 CLI 与 ACP Registry 二进制自动安装、启动命令准备
+- `src/logger.rs`：写入应用数据目录 `logs/browser4agent.log` 的 Native Host 日志
 - `src/cli.rs`：命令行单次工具调用入口
 - `src/skill.md`：Skill 模板内容，内容应该和 MCP server 的描述语义上同步
 

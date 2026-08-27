@@ -1,21 +1,20 @@
-use std::{env, fs::OpenOptions, io::Write, path::PathBuf};
+use std::{fs::OpenOptions, io::Write, path::PathBuf};
 
 use chrono::Local;
 
-fn log_path() -> PathBuf {
-    let mut path = env::current_exe().unwrap();
-    let stem = path.file_stem().unwrap().to_os_string();
-    path.set_file_name(stem);
-    path.set_extension("log");
-    path
+use crate::app_data;
+
+fn log_path() -> anyhow::Result<PathBuf> {
+    Ok(app_data::log_dir()?.join("browser4agent.log"))
 }
 
 fn write(level: &str, msg: &str) {
-    let mut file = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(log_path())
-        .expect("Couldn't open log file");
+    let Ok(path) = log_path() else {
+        return;
+    };
+    let Ok(mut file) = OpenOptions::new().append(true).create(true).open(path) else {
+        return;
+    };
     let ts = Local::now().format("%Y-%m-%d %H:%M:%S");
     let _ = writeln!(file, "{ts} [{level}] {msg}");
 }

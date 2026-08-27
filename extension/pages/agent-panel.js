@@ -28,7 +28,7 @@ class AgentPanelPageElement extends GemElement {
     sessions: [], // persisted local records: { key, agent, sessionId, title?, cwd?, updatedAt? }
     draftSession: null, // at most one local session without an ACP session id; never persisted
     defaults: { agent: '', configOptionsByAgent: {} },
-    agents: [], // locally available ACP agents
+    agents: [], // supported ACP agents reported by the Native Host
     sessionKey: null, // unique local key of the displayed session
     messages: [], // text messages, thought blocks, tool calls, or raw events
     configOptions: [], // draft composer settings, or a live session's applied ACP options

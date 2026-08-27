@@ -94,19 +94,3 @@ fn render_tools() -> String {
     }
     out.trim_end().to_string()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Helper: `cargo test -- --nocapture dump_rendered_skill` to print the
-    /// full SKILL.md that would be written. Not a real assertion.
-    #[test]
-    #[ignore = "diagnostic only"]
-    fn dump_rendered_skill() {
-        let rendered = SKILL_BODY
-            .replace(TOOLS_PLACEHOLDER, &render_tools())
-            .replace(BIN_PLACEHOLDER, &current_bin());
-        println!("{rendered}");
-    }
-}

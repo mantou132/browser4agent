@@ -17,9 +17,9 @@
 
 | | **[让任意 Agent 操控你的浏览器](#让任意-agent-操控你的浏览器mcp--skill)** | **[在浏览器中使用 Agent](#在浏览器中使用-agentacp)** |
 | --- | --- | --- |
-| **谁能用** | 任何支持 MCP、或能跑 shell 命令（经 [Skill](#命令行)）的 Agent | 本地安装的、支持 [ACP][acp] 协议的编码 Agent —— 目前是 Claude Code 和 Codex |
+| **谁能用** | 任何支持 MCP、或能跑 shell 命令（经 [Skill](#命令行)）的 Agent | Claude Code、Codex、Cursor 和 pi；优先使用用户已安装且可用的 CLI，否则自动安装托管副本 |
 | **能得到什么** | Agent 可读取页面、Cookie、localStorage、报错和截图；管理标签页和窗口；执行脚本 | 在 DevTools 或浏览器侧边栏里，就在页面旁边和 Agent 聊当前页面 |
-| **怎么接入** | 欢迎页引导注册 Native Host，并自动配好 MCP 或安装 Skill | 欢迎页引导注册 Native Host；无需其他配置，打开 Agent 面板即用 |
+| **怎么接入** | 欢迎页引导注册 Native Host，并自动配好 MCP 或安装 Skill | 注册 Native Host；使用适配器的 Agent 还需 Node.js 22+ 和 npm；每个托管运行时在首次使用时自动安装 |
 
 两种用法有同一个前置步骤：下载 `browser4agent` 并运行一次，将它注册为 Native Host（见[安装](#安装)）。之后区别只在 Agent 侧的接入方式：MCP/Skill 还是 [ACP][acp]。
 
@@ -75,9 +75,15 @@ browser4agent --tool read_tab --help   # 查看工具的入参 schema
 
 ## 在浏览器中使用 Agent（ACP）
 
-在 DevTools 打开 **Agent** 面板（或作为浏览器侧边栏），即可和本地安装的编码 Agent 聊当前页面。会话实时流式输出，支持附件、权限确认，回合进行中可以排队输入，可以保留多个会话并随时切换。
+在 DevTools 打开 **Agent** 面板（或作为浏览器侧边栏），即可让编码 Agent 和你一起处理当前页面。会话实时流式输出，支持附件、权限确认，回合进行中可以排队输入，可以保留多个会话并随时切换。
 
-需要安装 Native Host，以及本地一个支持 [ACP][acp] 协议的编码 Agent。Agent 面板会识别已安装的 `claude` 和 `codex` 命令行，让你在新建会话时选择其一，再通过对应的 ACP 适配器启动。
+目前支持 Claude Code、Codex、Cursor 和 pi。Native Host 会优先使用 PATH（含常见用户级安装目录）中可用的 `claude`、`codex`、`cursor-agent` 或 `pi`。Claude Code 和 Codex 通过各自的 ACP 适配器运行，Cursor 直接使用原生的 `cursor-agent acp` 模式，pi 通过 `pi-acp` 运行。如果所选 CLI 不存在，则自动安装兼容的托管版本；Cursor 二进制来自官方 ACP Registry，使用适配器的 Agent 需要 Node.js 22 或更高版本和 npm。登录状态和 Agent 配置仍使用各 Agent 原有的用户级文件。
+
+托管的 Agent 运行时和日志统一存放在系统的本地应用数据目录：
+
+- macOS：`~/Library/Application Support/browser4agent`
+- Windows：`%LOCALAPPDATA%\browser4agent`
+- Linux：`${XDG_DATA_HOME:-~/.local/share}/browser4agent`
 
 ## 从源码构建
 

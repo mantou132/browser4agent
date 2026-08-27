@@ -89,9 +89,7 @@ pub fn register(peer: &Peer) {
     );
 
     peer.handle("agent_list", move |_params, _ctx| async move {
-        let agents = tokio::task::spawn_blocking(acp_agent::available_agents)
-            .await
-            .map_err(|err| format!("Agent detection task failed: {err}"))?;
+        let agents = acp_agent::available_agents();
         Ok(json!({ "agents": agents }))
     });
 

@@ -1,6 +1,7 @@
 import { GemBindDiff2htmlElement } from '@gem-bind/diff2html';
 import { GemBindMarkedElement } from '@gem-bind/marked';
 import { theme } from 'duoyun-ui/lib/theme';
+import { Renderer } from 'marked';
 import { toolCallDiffs } from '../../shared/diff.js';
 import { t } from '../../shared/i18n.js';
 
@@ -20,15 +21,26 @@ GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
   }
   h1,
   h2,
-  h3 {
+  h3,
+  h4,
+  h5,
+  h6 {
     margin: 0.65rem 0 0.3rem;
+    color: ${theme.highlightColor};
     font-weight: 650;
+    line-height: 1.35;
   }
   h1 {
     font-size: 1.2em;
   }
   h2 {
     font-size: 1.1em;
+  }
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-size: 1em;
   }
   ul,
   ol {
@@ -44,32 +56,66 @@ GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
     padding-left: 0.75rem;
     color: ${theme.describeColor};
   }
-  table {
-    display: block;
+  .table-scroll {
     max-width: 100%;
-    margin: 0.5rem 0;
+    margin: 0.65rem 0;
     overflow-x: auto;
-    border-collapse: collapse;
-    font-size: 0.9em;
+    border: 1px solid ${theme.borderColor};
+    border-radius: 8px;
+    background: ${theme.backgroundColor};
+    box-shadow: light-dark(0 1px 2px rgb(15 23 42 / 0.04), 0 1px 2px rgb(0 0 0 / 0.2));
+    scrollbar-width: thin;
+  }
+  .table-scroll:focus-visible {
+    outline: 2px solid ${theme.focusColor};
+    outline-offset: 2px;
+  }
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.875em;
+    line-height: 1.5;
   }
   th,
   td {
-    border: 1px solid ${theme.borderColor};
-    padding: 0.3rem 0.6rem;
+    min-width: 7rem;
+    padding: 0.55rem 0.7rem;
+    vertical-align: top;
   }
-  thead {
-    background: ${theme.backgroundColor};
+  th {
+    border-bottom: 1px solid ${theme.borderColor};
+    background: ${theme.lightBackgroundColor};
+    color: ${theme.highlightColor};
+    font-weight: 650;
+    white-space: nowrap;
+  }
+  tbody tr + tr td {
+    border-top: 1px solid ${theme.borderColor};
+  }
+  tbody tr:hover td {
+    background: color-mix(in srgb, ${theme.hoverBackgroundColor} 55%, ${theme.backgroundColor});
   }
   th:not([align]) {
     text-align: left;
   }
   code {
     border-radius: 3px;
-    background: ${theme.backgroundColor};
+    background: ${theme.lightBackgroundColor};
     padding: 0.1em 0.3em;
     font-size: 0.9em;
-    lien-height: 1.4;
+    line-height: 1.4;
     font-family: ${theme.codeFont};
+  }
+  hr {
+    margin: 0.75rem 0;
+    border: 0;
+    border-top: 1px solid ${theme.borderColor};
+  }
+  img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
   }
   dy-code-block {
     margin: 0.5rem 0;
@@ -92,6 +138,8 @@ GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
     text-decoration: underline;
   }
 `);
+
+const defaultMarkdownRenderer = new Renderer();
 
 const diffColorScheme = globalThis.chrome?.devtools?.panels?.themeName === 'dark' ? 'dark' : 'light';
 
@@ -126,6 +174,10 @@ const markdownExtensions = [
       code({ text, lang }) {
         const language = (lang || '').trim().split(/\s+/)[0];
         return `<dy-code-block ${language ? `codelang="${language}"` : ''}>${text}</dy-code-block>`;
+      },
+      table(token) {
+        const table = defaultMarkdownRenderer.table.call(this, token);
+        return `<div class="table-scroll" tabindex="0">${table}</div>`;
       },
     },
   },
@@ -163,7 +215,7 @@ class AgentMessageBubbleElement extends GemElement {
       return html`
         <details class="my-2 rounded border border-border bg-bg-light/60 text-xs text-describe overflow-hidden">
           <summary class="min-w-0 cursor-pointer select-none px-2.5 py-2 hover:text-text">
-            <span class="inline-flex w-[calc(100%_-_1rem)] min-w-0 items-center gap-2 align-middle">
+            <span class="inline-flex w-[calc(100%-1rem)] min-w-0 items-center gap-2 align-middle">
               <span class="min-w-0 flex-1 truncate font-medium text-text" title=${toolTitle}>${toolTitle}</span>
               <span v-if=${toolMeta} class="max-w-[45%] shrink-0 truncate font-mono" title=${toolMeta}
                 >${toolMeta}</span

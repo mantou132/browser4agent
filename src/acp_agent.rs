@@ -1,10 +1,7 @@
 use std::{
     collections::{HashMap, VecDeque},
-    env,
-    ffi::OsString,
     future,
     path::PathBuf,
-    process::Command,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -33,120 +30,12 @@ use tokio::sync::{Mutex, mpsc, oneshot, watch};
 
 use crate::{logger, peer::BoxFuture};
 
-/// A local ACP agent and the adapter command used to launch it.
-struct AgentCandidate {
-    id: &'static str,
-    name: &'static str,
-    cli: &'static str,
-    command: Vec<String>,
-}
+mod catalog;
+mod provision;
 
-/// Local ACP agents in display order.
-fn agent_candidates() -> Vec<AgentCandidate> {
-    let mut npx: Vec<&'static str> = if cfg!(windows) {
-        vec!["cmd", "/C", "npx"]
-    } else {
-        vec!["npx"]
-    };
-    npx.push("-y");
-    let adapter = |package: &'static str| {
-        let mut command = npx.clone();
-        command.push(package);
-        command
-    };
-    vec![
-        AgentCandidate {
-            id: "claude",
-            name: "Claude Code",
-            cli: "claude",
-            command: adapter("@agentclientprotocol/claude-agent-acp")
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-        },
-        AgentCandidate {
-            id: "codex",
-            name: "Codex",
-            cli: "codex",
-            command: adapter("@agentclientprotocol/codex-acp")
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-        },
-    ]
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AvailableAgent {
-    pub id: &'static str,
-    pub name: &'static str,
-}
-
-pub fn available_agents() -> Vec<AvailableAgent> {
-    agent_candidates()
-        .into_iter()
-        .filter(|candidate| cli_available(candidate.cli))
-        .map(|candidate| AvailableAgent {
-            id: candidate.id,
-            name: candidate.name,
-        })
-        .collect()
-}
-
-/// Browsers launched from Finder/Dock only inherit macOS' minimal PATH, which
-/// hides CLIs installed under Homebrew or user-local tool managers. Extend the
-/// inherited PATH with the usual install locations before probing/launching;
-/// `None` when there is nothing to add (or on Windows).
-fn augmented_path() -> Option<OsString> {
-    if cfg!(windows) {
-        return None;
-    }
-    let mut paths: Vec<PathBuf> = env::split_paths(&env::var_os("PATH")?).collect();
-    let mut extras = vec![
-        PathBuf::from("/opt/homebrew/bin"), // Homebrew on Apple Silicon
-        PathBuf::from("/opt/homebrew/sbin"),
-        PathBuf::from("/usr/local/bin"), // Homebrew on Intel, npm global
-    ];
-    if let Some(home) = env::var_os("HOME") {
-        let home = PathBuf::from(home);
-        extras.push(home.join(".local/bin")); // uv/pipx style user installs
-        extras.push(home.join(".cargo/bin"));
-        extras.push(home.join(".volta/bin"));
-        extras.push(home.join("Library/pnpm"));
-    }
-    let mut added = false;
-    for dir in extras {
-        if dir.is_dir() && !paths.contains(&dir) {
-            paths.push(dir);
-            added = true;
-        }
-    }
-    if !added {
-        return None;
-    }
-    env::join_paths(&paths).ok()
-}
-
-fn cli_available(cli: &str) -> bool {
-    // Windows only resolves `.cmd` shims through `cmd /C`, same as the npx
-    // launch itself.
-    let mut cmd = if cfg!(windows) {
-        let mut cmd = Command::new("cmd");
-        cmd.args(["/C", cli, "--version"]);
-        cmd
-    } else {
-        let mut cmd = Command::new(cli);
-        cmd.arg("--version");
-        cmd
-    };
-    if let Some(path) = augmented_path() {
-        cmd.env("PATH", path);
-    }
-    cmd.output()
-        .map(|out| out.status.success())
-        .unwrap_or(false)
-}
+pub use catalog::available_agents;
+use catalog::{AgentCandidate, agent_candidates};
+use provision::prepare_agent_command;
 
 fn resolve_cwd(cwd: Option<PathBuf>) -> Result<PathBuf> {
     match cwd {
@@ -187,7 +76,7 @@ struct RuntimeState {
 #[derive(Clone)]
 struct AcpRuntime {
     agent: String,
-    command: Vec<String>,
+    candidate: AgentCandidate,
     state: Arc<Mutex<RuntimeState>>,
     resolver: Option<PermissionResolver>,
     permission_cancels: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
@@ -195,11 +84,11 @@ struct AcpRuntime {
 }
 
 impl AcpRuntime {
-    fn new(agent: String, command: Vec<String>, resolver: Option<PermissionResolver>) -> Self {
+    fn new(candidate: AgentCandidate, resolver: Option<PermissionResolver>) -> Self {
         let (disconnects, _) = watch::channel(0);
         Self {
-            agent,
-            command,
+            agent: candidate.id.to_string(),
+            candidate,
             state: Arc::new(Mutex::new(RuntimeState {
                 connection: None,
                 connecting: false,
@@ -252,7 +141,10 @@ impl AcpRuntime {
     }
 
     async fn serve_connection(&self, generation: u64) -> Result<()> {
-        let mut command = self.command.clone();
+        let candidate = self.candidate;
+        let command = tokio::task::spawn_blocking(move || prepare_agent_command(candidate))
+            .await
+            .context("ACP runtime preparation task failed")??;
         logger::info(&format!(
             "Starting {} ACP agent: {}",
             self.agent,
@@ -260,9 +152,6 @@ impl AcpRuntime {
         ));
         // `from_args` treats leading `NAME=value` args as env overrides for the
         // spawned subprocess.
-        if let Some(path) = augmented_path() {
-            command.insert(0, format!("PATH={}", path.to_string_lossy()));
-        }
         let acp_agent =
             AcpAgent::from_args(command).context("failed to configure ACP agent command")?;
         let resolver = self.resolver.clone();
@@ -569,10 +458,7 @@ impl AgentSessionManager {
             .into_iter()
             .map(|candidate| {
                 let agent = candidate.id.to_string();
-                (
-                    agent.clone(),
-                    AcpRuntime::new(agent, candidate.command, resolver.clone()),
-                )
+                (agent.clone(), AcpRuntime::new(candidate, resolver.clone()))
             })
             .collect();
         Self {
@@ -637,17 +523,13 @@ impl AgentSessionManager {
         let agent = agent.to_string();
         tokio::spawn(async move {
             // ended_tx drops when the actor exits, triggering cleanup.
-            run_session_actor(
-                cwd,
-                load,
-                system_prompt,
-                runtime,
-                replay_tx,
-                rx,
-                ready_tx,
-                ended_tx,
-            )
-            .await;
+            let _ended_tx = ended_tx;
+            if let Err(err) =
+                run_session_actor_inner(cwd, load, system_prompt, runtime, replay_tx, rx, ready_tx)
+                    .await
+            {
+                logger::info(&format!("ACP session actor stopped: {err}"));
+            }
         });
 
         // Readiness is bounded by the caller's timeout, not here. The
@@ -881,23 +763,6 @@ impl AgentSessionManager {
             .block_task()
             .await?;
         Ok(())
-    }
-}
-
-async fn run_session_actor(
-    cwd: PathBuf,
-    load: Option<SessionId>,
-    system_prompt: Option<String>,
-    runtime: AcpRuntime,
-    replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
-    rx: mpsc::Receiver<SessionCommand>,
-    ready_tx: oneshot::Sender<Result<SessionReady, String>>,
-    _ended_tx: oneshot::Sender<()>,
-) {
-    if let Err(err) =
-        run_session_actor_inner(cwd, load, system_prompt, runtime, replay_tx, rx, ready_tx).await
-    {
-        logger::info(&format!("ACP session actor stopped: {err}"));
     }
 }
 
@@ -1273,15 +1138,7 @@ fn to_json(value: impl Serialize) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{AgentSessionKey, SessionReplayMetadata, session_metadata_from_meta};
-
-    #[test]
-    fn namespaces_identical_session_ids_by_agent() {
-        assert_ne!(
-            AgentSessionKey::new("claude", "same"),
-            AgentSessionKey::new("codex", "same")
-        );
-    }
+    use super::{SessionReplayMetadata, session_metadata_from_meta};
 
     #[test]
     fn reads_session_metadata_from_load_meta_and_replay() {

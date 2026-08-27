@@ -11,7 +11,9 @@ chrono = { version = "0.4", features = ["clock"] }
 dirs = "6"
 clap = { version = "4", features = ["derive"] }
 dialoguer = "0.12"
+flate2 = "1"
 rmcp = { version = "1", features = ["client", "macros", "server", "transport-streamable-http-client-reqwest", "transport-streamable-http-server"] }
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "rustls"] }
 schemars = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -24,9 +26,11 @@ agent-client-protocol = "1.0.0"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
+zip = { version = "2", default-features = false, features = ["deflate-flate2", "flate2"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+tar = "0.4"
 
 [profile.release]
 lto = true

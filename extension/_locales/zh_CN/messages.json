@@ -125,7 +125,7 @@
     "message": "编辑"
   },
   "devtoolsPanelEmpty": {
-    "message": "点击「新建」或从左侧选择一个会话开始对话。需要本地已安装并登录 Claude Code 或 Codex"
+    "message": "点击「新建」或从左侧选择一个会话开始对话。部分 Agent 需要 Node.js 22+ 和 npm；请登录所选 Agent"
   },
   "devtoolsPanelEnqueue": {
     "message": "加入队列"
@@ -174,9 +174,6 @@
   },
   "devtoolsNewSessionTitle": {
     "message": "新建会话"
-  },
-  "devtoolsNoAgents": {
-    "message": "未检测到可用的 Claude Code 或 Codex"
   },
   "devtoolsThought": {
     "message": "思考"
