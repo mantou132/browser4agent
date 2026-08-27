@@ -158,11 +158,17 @@ class AgentMessageBubbleElement extends GemElement {
     if (msg.type === 'tool') {
       const { title, kind, status, rawInput } = msg.data || {};
       const diffs = toolCallDiffs(msg.data);
+      const toolTitle = title || t('devtoolsToolCall');
+      const toolMeta = [kind, status].filter(Boolean).join(' / ');
       return html`
         <details class="my-2 rounded border border-border bg-bg-light/60 text-xs text-describe overflow-hidden">
-          <summary class="wrap-anywhere cursor-pointer select-none px-2.5 py-2 hover:text-text">
-            <span class="font-medium text-text">${title || t('devtoolsToolCall')}</span>
-            <span v-if=${kind || status} class="ml-2 font-mono">${[kind, status].filter(Boolean).join(' / ')}</span>
+          <summary class="min-w-0 cursor-pointer select-none px-2.5 py-2 hover:text-text">
+            <span class="inline-flex w-[calc(100%_-_1rem)] min-w-0 items-center gap-2 align-middle">
+              <span class="min-w-0 flex-1 truncate font-medium text-text" title=${toolTitle}>${toolTitle}</span>
+              <span v-if=${toolMeta} class="max-w-[45%] shrink-0 truncate font-mono" title=${toolMeta}
+                >${toolMeta}</span
+              >
+            </span>
           </summary>
           <div v-if=${diffs.length} class="border-t border-border">
             ${diffs.map(
