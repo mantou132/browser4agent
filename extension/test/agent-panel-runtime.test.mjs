@@ -82,6 +82,36 @@ describe('agent panel runtime', () => {
     assert.deepEqual(info.session, { title: 'ACP title', updatedAt: '2026-08-26' });
   });
 
+  it('filters Claude Code cancellation markers without hiding other user messages', () => {
+    const state = { messages: [], configOptions: [] };
+    const interrupted = {
+      event: 'session_update',
+      update: {
+        sessionUpdate: 'user_message_chunk',
+        content: { type: 'text', text: '[Request interrupted by user]' },
+      },
+    };
+
+    assert.equal(reduceSessionEvent(state, interrupted, { agent: 'claude' }), null);
+    assert.deepEqual(reduceSessionEvent(state, interrupted, { agent: 'codex' })?.pane.messages, [
+      { role: 'user', text: '[Request interrupted by user]' },
+    ]);
+    assert.deepEqual(
+      reduceSessionEvent(
+        state,
+        {
+          event: 'session_update',
+          update: {
+            sessionUpdate: 'user_message_chunk',
+            content: { type: 'text', text: 'Why did Claude show [Request interrupted by user]?' },
+          },
+        },
+        { agent: 'claude' },
+      )?.pane.messages,
+      [{ role: 'user', text: 'Why did Claude show [Request interrupted by user]?' }],
+    );
+  });
+
   it('shows a draft prompt immediately and keeps responding while the ACP session is created', async () => {
     const state = createPanelState();
     const runtime = createSessionRuntime(state);

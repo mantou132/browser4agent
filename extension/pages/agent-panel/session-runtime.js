@@ -2,6 +2,7 @@ import { removeStoredSession, updateAgentPanelState, upsertStoredSession } from 
 import { t } from '../../shared/i18n.js';
 
 export const DRAFT_SESSION_KEY = 'draft';
+const CLAUDE_INTERRUPTED_USER_MESSAGE = '[Request interrupted by user]';
 
 /** Keep the `mode` config option in sync with a `current_mode_update`. */
 export function withCurrentMode(configOptions, currentModeId) {
@@ -50,7 +51,7 @@ export function completeThought(messages) {
 export function reduceSessionEvent(
   state,
   event,
-  { getImageName = () => t('devtoolsPanelImageAttachment'), createId = () => crypto.randomUUID() } = {},
+  { agent, getImageName = () => t('devtoolsPanelImageAttachment'), createId = () => crypto.randomUUID() } = {},
 ) {
   const messages = state?.messages ?? [];
   if (event.event !== 'session_update') {
@@ -70,6 +71,9 @@ export function reduceSessionEvent(
         : null;
 
   if (role && update.content?.type === 'text') {
+    if (agent === 'claude' && role === 'user' && update.content.text.trim() === CLAUDE_INTERRUPTED_USER_MESSAGE) {
+      return currentMessages === messages ? null : { pane: { messages: currentMessages } };
+    }
     return {
       pane: {
         messages: appendChunk(
@@ -253,7 +257,7 @@ export function createSessionRuntime(state) {
   };
 
   const applyEvent = (sessionKey, event) => {
-    const result = reduceSessionEvent(getPane(sessionKey), event);
+    const result = reduceSessionEvent(getPane(sessionKey), event, { agent: record(sessionKey)?.agent });
     if (result?.pane) setPane(sessionKey, result.pane);
     if (result?.session) patchRecord(sessionKey, result.session);
   };

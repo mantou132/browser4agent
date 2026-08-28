@@ -10,6 +10,7 @@ class AgentChatPaneElement extends GemElement {
   @property messages;
   @property permissionRequest;
   @property bannerError;
+  @property agent;
   @property configOptions;
   @property composerDisabled;
   @property queue; // prompts staged while a turn is in flight
@@ -74,6 +75,7 @@ class AgentChatPaneElement extends GemElement {
       loadingSession,
       permissionRequest,
       bannerError,
+      agent,
       configOptions,
       composerDisabled,
       queue,
@@ -126,6 +128,7 @@ class AgentChatPaneElement extends GemElement {
             ${this.#composerRef}
             class="block"
             ?disabled=${composerDisabled}
+            .agent=${agent}
             .configOptions=${configOptions}
             .sessionKey=${sessionKey}
             .queue=${queue}

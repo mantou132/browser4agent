@@ -1,5 +1,5 @@
 import { t } from '../../shared/i18n.js';
-import { getAgentIcon, icons } from '../../shared/icons.js';
+import { icons } from '../../shared/icons.js';
 import { displayHomePath } from '../../shared/path.js';
 
 @customElement('agent-session-list')
@@ -20,12 +20,20 @@ class AgentSessionListElement extends GemElement {
   @template()
   #content = () => {
     const { compact, sessions, sessionKey, home, loadingIds, deleting } = this;
-    const activeSession = sessions.find((session) => session.key === sessionKey);
     const sessionOptions = sessions.length
       ? sessions.map((session) => {
           const title = session.title || t('devtoolsPanelNewSession');
           const cwd = displayHomePath(session.cwd, home);
-          return { label: title, description: cwd || undefined, value: session.key };
+          return {
+            label: html`
+              <agent-session-option-label
+                .sessionAgent=${session.agent}
+                .sessionTitle=${title}
+              ></agent-session-option-label>
+            `,
+            description: cwd || undefined,
+            value: session.key,
+          };
         })
       : [{ label: t('devtoolsPanelNoSessions'), value: '' }];
 
@@ -43,11 +51,6 @@ class AgentSessionListElement extends GemElement {
           }
         >
           <div class="flex w-full items-center justify-between gap-2">
-            <dy-use
-              v-if=${compact && !!activeSession}
-              class="size-4 shrink-0 text-describe"
-              .element=${getAgentIcon(activeSession?.agent)}
-            ></dy-use>
             <dy-picker
               v-if=${compact}
               class="min-w-0 flex-1 font-semibold"

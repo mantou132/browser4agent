@@ -75,14 +75,13 @@ class AgentPanelPageElement extends GemElement {
 
   /** Selectable session config options (mode/model/effort/…) for the composer. */
   get #configSelects() {
-    const agent = this.#runtime.record(this.#s.sessionKey)?.agent;
     return (this.#s.configOptions || []).filter(
-      (option) =>
-        option.type === 'select' &&
-        Array.isArray(option.options) &&
-        option.options.length &&
-        !(agent === 'codex' && option.id === 'fast-mode'),
+      (option) => option.type === 'select' && Array.isArray(option.options) && option.options.length,
     );
+  }
+
+  get #currentAgent() {
+    return this.#runtime.record(this.#s.sessionKey)?.agent || '';
   }
 
   get #currentTitle() {
@@ -159,6 +158,7 @@ class AgentPanelPageElement extends GemElement {
           .messages=${visibleMessages}
           .permissionRequest=${sessionKey ? permissions[sessionKey] : null}
           .bannerError=${bannerError}
+          .agent=${this.#currentAgent}
           .configOptions=${this.#configSelects}
           .composerDisabled=${pendingIds.includes(sessionKey)}
           .queue=${queue}

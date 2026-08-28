@@ -4,6 +4,7 @@ import { icons } from '../../shared/icons.js';
 
 const MAX_ATTACHMENTS = 10;
 const MAX_TEXT_ATTACHMENT_BYTES = 256 * 1024;
+const CODEX_COMBINED_CONFIG_IDS = new Set(['model', 'reasoning_effort', 'fast-mode']);
 // Cap images at what vision models can use anyway; compressionImage scales down.
 const IMAGE_DIMENSION = { width: 1568, height: 1568 };
 const TEXT_EXTENSION =
@@ -34,6 +35,7 @@ const stopButtonClass =
 @customElement('agent-composer')
 class AgentComposerElement extends GemElement {
   @boolattribute disabled; // prompt in flight
+  @property agent;
   @property configOptions;
   @property sessionKey;
   @property queue; // staged prompts while one is in flight
@@ -165,11 +167,40 @@ class AgentComposerElement extends GemElement {
     this.focus();
   };
 
+  #renderCodexConfigValue = (value) =>
+    ['model', 'reasoning_effort']
+      .map((id) => this.configOptions?.find((option) => option.id === id))
+      .map((option) => option?.options.find((item) => item.value === value?.[option.id])?.name)
+      .filter(Boolean)
+      .join(' ');
+
   @template()
   #content = () => {
     const { input, attachments, editingId } = this.#s;
     const pending = this.disabled;
     const configOptions = this.configOptions || [];
+    const codexConfigOptions =
+      this.agent === 'codex' ? configOptions.filter((option) => CODEX_COMBINED_CONFIG_IDS.has(option.id)) : [];
+    const standaloneConfigOptions = codexConfigOptions.length
+      ? configOptions.filter((option) => !CODEX_COMBINED_CONFIG_IDS.has(option.id))
+      : configOptions;
+    const codexPickerOptions = codexConfigOptions.map((option) => ({
+      label: option.name,
+      description: option.description,
+      value: option.id,
+      children: option.options.map((item) => ({
+        label: item.name,
+        description: item.description,
+        value: item.value,
+      })),
+    }));
+    const codexPickerValue = Object.fromEntries(codexConfigOptions.map((option) => [option.id, option.currentValue]));
+    const codexConfigSummary = codexConfigOptions
+      .map(
+        (option) =>
+          `${option.name}: ${option.options.find((item) => item.value === option.currentValue)?.name || option.currentValue}`,
+      )
+      .join('; ');
     const canSend = this.#canSend;
     // 忙碌时主按钮二态：有草稿是「加入队列」，空草稿是「停止」
     const mainIcon = pending ? (canSend ? icons.queueAdd : icons.stop) : icons.send;
@@ -284,8 +315,11 @@ class AgentComposerElement extends GemElement {
               <dy-use class="size-4" .element=${icons.add}></dy-use>
             </button>
             <div class="ml-auto flex min-w-0 items-center">
-              <div v-if=${configOptions.length} class="flex min-w-0 flex-wrap items-center gap-1">
-                ${configOptions.map(
+              <div
+                v-if=${standaloneConfigOptions.length || codexConfigOptions.length}
+                class="flex min-w-0 flex-wrap items-center gap-1"
+              >
+                ${standaloneConfigOptions.map(
                   (option) => html`
                     <dy-picker
                       borderless
@@ -303,6 +337,18 @@ class AgentComposerElement extends GemElement {
                     ></dy-picker>
                   `,
                 )}
+                <agent-grouped-picker
+                  v-if=${codexConfigOptions.length}
+                  borderless
+                  class="max-w-40"
+                  placeholder=${codexConfigOptions[0]?.name}
+                  .options=${codexPickerOptions}
+                  .value=${codexPickerValue}
+                  .renderValue=${this.#renderCodexConfigValue}
+                  aria-label=${codexConfigSummary}
+                  title=${codexConfigSummary}
+                  @change=${(event) => this.configchange({ configId: event.detail.group, value: event.detail.value })}
+                ></agent-grouped-picker>
               </div>
               <button
                 type="button"
