@@ -130,7 +130,7 @@ class AgentPanelPageElement extends GemElement {
     }
 
     const visibleMessages = this.showEvents ? messages : messages.filter((message) => message.type !== 'event');
-    const loadingSession = loadingIds.includes(sessionKey);
+    const loadingSession = loadingIds.includes(sessionKey) && !this.#runtime.record(sessionKey)?.draft;
     const bannerError = error || (sessionKey ? sessionErrors[sessionKey] : '') || '';
     const initialAgent = agents.some((agent) => agent.id === defaults.agent) ? defaults.agent : agents[0]?.id;
 

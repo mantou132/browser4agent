@@ -36,9 +36,8 @@ export function createSessionController({ state, runtime, turns, api }) {
     const draft = runtime.record(sessionKey);
     const draftState = runtime.getPane(sessionKey);
     if (!draft?.draft || !draftState) return;
-    const { configOptions: composerConfigOptions, messages: draftMessages } = draftState;
     let createdTarget;
-    runtime.clearError(sessionKey);
+    turns.stage(sessionKey, payload);
     runtime.setLoading(sessionKey, true);
     try {
       const created = await api.createSession({
@@ -47,6 +46,7 @@ export function createSessionController({ state, runtime, turns, api }) {
         panelContext: getPanelContext(),
       });
       createdTarget = { agent: draft.agent, sessionId: created.sessionId };
+      const composerConfigOptions = runtime.getPane(sessionKey)?.configOptions ?? draftState.configOptions;
       const configOptions = await applyComposerConfig(
         createdTarget,
         created.configOptions || [],
@@ -63,16 +63,19 @@ export function createSessionController({ state, runtime, turns, api }) {
         createdAt: now,
         updatedAt: created.updatedAt || now,
       };
+      const stagedPane = runtime.getPane(sessionKey) ?? draftState;
       const pane = {
-        messages: draftMessages,
+        messages: stagedPane.messages,
         configOptions,
         cwd: draft.cwd,
-        queue: [],
+        queue: stagedPane.queue,
       };
       const isCurrent = state.sessionKey === sessionKey;
       runtime.deletePane(sessionKey);
       runtime.setCachedPane(liveSessionKey, pane);
       state({ draftSession: null });
+      runtime.setPending(sessionKey, false);
+      runtime.setPending(liveSessionKey, true);
       if (isCurrent) {
         runtime.showPane(liveSessionKey, pane, { error: '' });
       }
@@ -81,11 +84,12 @@ export function createSessionController({ state, runtime, turns, api }) {
         upsertStoredSession(withAgentConfigOptions(storedState, draft.agent, configOptions), session),
       );
       createdTarget = null;
-      turns.run(liveSessionKey, payload);
+      turns.run(liveSessionKey, payload, { staged: true });
       await persistence;
     } catch (e) {
       if (createdTarget) api.closeSession(createdTarget.sessionId, { agent: createdTarget.agent }).catch(() => {});
       runtime.setError(sessionKey, e.message);
+      runtime.setPending(sessionKey, false);
       runtime.setLoading(sessionKey, false);
     }
   };

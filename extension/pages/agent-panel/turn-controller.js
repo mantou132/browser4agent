@@ -37,18 +37,9 @@ export function createTurnController({ state, runtime, api, scrollToLatest, star
     for (const sessionKey of [...permissionResolves.keys()]) decidePermission(sessionKey, null);
   };
 
-  /** Run one turn against the host; events keep following their session when
-   * the user switches away. */
-  const performTurn = async (sessionKey, { prompt, attachments }) => {
+  /** Show a submitted prompt immediately, before the host starts answering. */
+  const stage = (sessionKey, { prompt, attachments }) => {
     if (sessionKey === state.sessionKey) scrollToLatest?.();
-    const target = runtime.target(sessionKey);
-    if (!target) return;
-    const turnStart = (runtime.getPane(sessionKey)?.messages ?? []).length;
-    const wireAttachments = attachments.map((item) =>
-      item.kind === 'image'
-        ? { type: 'image', data: item.data, mimeType: item.mimeType }
-        : { type: 'text', text: `<attachment name="${item.name}">\n${item.text}\n</attachment>` },
-    );
     runtime.clearError(sessionKey);
     runtime.setPending(sessionKey, true);
     runtime.setPane(sessionKey, {
@@ -60,6 +51,26 @@ export function createTurnController({ state, runtime, api, scrollToLatest, star
       ...(title && { title }),
       updatedAt: new Date().toISOString(),
     });
+  };
+
+  /** Run one turn against the host; events keep following their session when
+   * the user switches away. A newly materialized draft is already staged. */
+  const performTurn = async (sessionKey, { prompt, attachments }, { staged = false } = {}) => {
+    const target = runtime.target(sessionKey);
+    if (!target) return;
+    if (staged) {
+      if (sessionKey === state.sessionKey) scrollToLatest?.();
+      runtime.clearError(sessionKey);
+      runtime.setPending(sessionKey, true);
+    } else {
+      stage(sessionKey, { prompt, attachments });
+    }
+    const turnStart = (runtime.getPane(sessionKey)?.messages ?? []).length;
+    const wireAttachments = attachments.map((item) =>
+      item.kind === 'image'
+        ? { type: 'image', data: item.data, mimeType: item.mimeType }
+        : { type: 'text', text: `<attachment name="${item.name}">\n${item.text}\n</attachment>` },
+    );
     try {
       const answer = await api.ask(prompt, {
         ...target,
@@ -85,8 +96,8 @@ export function createTurnController({ state, runtime, api, scrollToLatest, star
   };
 
   /** Track the settling promise so cancel-and-replace can await it. */
-  const run = (sessionKey, payload) => {
-    const turn = performTurn(sessionKey, payload)
+  const run = (sessionKey, payload, options) => {
+    const turn = performTurn(sessionKey, payload, options)
       .catch(() => {})
       .finally(() => {
         if (runningTurns.get(sessionKey) === turn) runningTurns.delete(sessionKey);
@@ -123,16 +134,15 @@ export function createTurnController({ state, runtime, api, scrollToLatest, star
   const send = ({ prompt, attachments }) => {
     const sessionKey = state.sessionKey;
     if ((!prompt && !attachments.length) || !sessionKey) return;
-    if (state.loadingIds.includes(sessionKey)) return;
     if (state.pendingIds.includes(sessionKey)) {
       runtime.setPane(sessionKey, {
         queue: [...(runtime.getPane(sessionKey)?.queue ?? []), { id: crypto.randomUUID(), prompt, attachments }],
       });
       return;
     }
+    if (state.loadingIds.includes(sessionKey)) return;
     if (runtime.record(sessionKey)?.draft) {
-      startDraftTurn(sessionKey, { prompt, attachments });
-      return;
+      return startDraftTurn(sessionKey, { prompt, attachments });
     }
     run(sessionKey, { prompt, attachments });
   };
@@ -175,6 +185,7 @@ export function createTurnController({ state, runtime, api, scrollToLatest, star
     decidePermission,
     declineAllPermissions,
     clearCanceledSessions: () => canceledSessions.clear(),
+    stage,
     send,
     cancel: () => state.sessionKey && abort(state.sessionKey),
     run,

@@ -82,35 +82,72 @@ describe('agent panel runtime', () => {
     assert.deepEqual(info.session, { title: 'ACP title', updatedAt: '2026-08-26' });
   });
 
-  it('materializes a draft once and starts its first turn with the ACP title', async () => {
+  it('shows a draft prompt immediately and keeps responding while the ACP session is created', async () => {
     const state = createPanelState();
     const runtime = createSessionRuntime(state);
-    const turns = {
-      ...noopTurns,
-      calls: [],
-      run(...args) {
-        this.calls.push(args);
-      },
+    let resolveCreate;
+    const askCalls = [];
+    const api = {
+      createSession: () =>
+        new Promise((resolve) => {
+          resolveCreate = resolve;
+        }),
+      setSessionConfigOption: async () => ({ configOptions: [] }),
+      closeSession: async () => true,
+      ask: (prompt) =>
+        new Promise((resolve) => {
+          askCalls.push({ prompt, resolve });
+        }),
     };
-    const controller = createSessionController({
+    let controller;
+    const turns = createTurnController({
       state,
       runtime,
-      turns,
-      api: {
-        createSession: async () => ({ sessionId: 'acp-1', title: 'ACP title', configOptions: [] }),
-        setSessionConfigOption: async () => ({ configOptions: [] }),
-        closeSession: async () => true,
-      },
+      api,
+      scrollToLatest() {},
+      startDraftTurn: (...args) => controller.startDraftTurn(...args),
     });
+    controller = createSessionController({ state, runtime, turns, api });
 
     controller.confirmNewSession({ agent: 'codex', cwd: '/repo' });
-    await controller.startDraftTurn('draft', { prompt: 'First prompt', attachments: [] });
+    const starting = turns.send({ prompt: 'First prompt', attachments: [] });
+
+    assert.equal(state.sessionKey, 'draft');
+    assert.deepEqual(state.messages, [{ role: 'user', text: 'First prompt', attachments: [] }]);
+    assert.deepEqual(state.pendingIds, ['draft']);
+    assert.deepEqual(state.loadingIds, ['draft']);
+
+    turns.send({ prompt: 'Queued while creating', attachments: [] });
+    assert.equal(state.queue[0].prompt, 'Queued while creating');
+
+    resolveCreate({ sessionId: 'acp-1', title: 'ACP title', configOptions: [] });
+    await starting;
 
     const key = agentSessionKey('codex', 'acp-1');
     assert.equal(state.draftSession, null);
     assert.equal(state.sessionKey, key);
     assert.equal(state.sessions[0].title, 'ACP title');
-    assert.deepEqual(turns.calls, [[key, { prompt: 'First prompt', attachments: [] }]]);
+    assert.deepEqual(state.messages, [{ role: 'user', text: 'First prompt', attachments: [] }]);
+    assert.deepEqual(state.pendingIds, [key]);
+    assert.deepEqual(state.loadingIds, []);
+    assert.equal(state.queue[0].prompt, 'Queued while creating');
+    assert.equal(askCalls[0].prompt, 'First prompt');
+
+    askCalls[0].resolve('First answer');
+    await new Promise(setImmediate);
+    assert.equal(askCalls[1].prompt, 'Queued while creating');
+    assert.deepEqual(
+      state.messages.map((message) => message.role),
+      ['user', 'agent', 'user'],
+    );
+
+    askCalls[1].resolve('Second answer');
+    await new Promise(setImmediate);
+    assert.deepEqual(state.pendingIds, []);
+    assert.deepEqual(
+      state.messages.map((message) => message.role),
+      ['user', 'agent', 'user', 'agent'],
+    );
   });
 
   it('ignores a stale load after reconnect and allows the session to be loaded again', async () => {
