@@ -2,8 +2,7 @@
 name: browser4agent
 description: |-
   Control the user's active browser via `{{BIN}}` CLI. Use this when built-in fetch/HTTP cannot access content (login walls, SSO, intranet), or when you need browser-specific data (cookies, localStorage, errors, screenshots) or web app interactions (forms, clicks, actions).
-
-  **Workflow:** Use whichever tool fits. If you need to run JavaScript in a page (`execute_script`), read the tab first (`read_tab` / `read_active_tab`) — if one of the page tools returned can do the job, use `execute_tab_tool` instead (use toolset_id, tool_name, and inputSchema from the read result; never guess).
+  Follow the routing workflow below: prefer dedicated tools, then discovered page tools, and use scripts or CDP only at their stated capability boundary.
 ---
 
 ## Calling a tool
@@ -20,22 +19,37 @@ EOF
 
 Use `--stdin` with heredoc when the JSON contains nested quotes, multiline strings, or embedded code that would be difficult to escape inline (use corresponding methods in different operating environments).
 
+## Tool routing
+
+{{WORKFLOW}}
+
 ## Available tools
 
-Use `{{BIN}} --tool <name> --help` to view each tool's latest parameters, don't guess.
+Each tool below includes a compact top-level input signature. Use `{{BIN}} --tool <name> --help`
+only when a nested value's shape is unclear or you need the complete latest schema; don't guess.
 
 {{TOOLS}}
 
 ## Debugging with CDP (Chromium only)
 
 The debugger tools exist only on Chromium (Chrome/Edge/Brave); never call them on Firefox.
-Prefer `get_errors` and `execute_script` first — reach for CDP only when you need network
-bodies/headers or lower-level visibility than page errors provide.
+Prefer dedicated tools and page/background scripts first. Reach for CDP only when they cannot
+provide network bodies/headers or other required protocol-level visibility.
 
-Order matters: `debugger_send_command` (`Network.enable`) → trigger the action → read
-`debuggerEvents(tab_id)` inside `execute_script_in_background` (filter in the script, return
-only what matters) → `debugger_detach`. Events are recorded only after their domain is
-enabled.
+For event-driven domains, order matters:
+
+1. Call `debugger_send_command` to enable the domain, such as `Network.enable`.
+2. Read `debuggerEvents(tab_id).cursor` inside `execute_script_in_background` and save it as the
+   baseline.
+3. Trigger the action.
+4. Read `debuggerEvents(tab_id)` again; filter inside the background script to events whose `seq`
+   is at least the baseline and return only the relevant methods/request IDs.
+5. Before detaching, run any required follow-up CDP commands. For a response body, wait for the
+   matching request to finish, then call `Network.getResponseBody` with its `requestId`.
+6. Call `debugger_detach` when all follow-up commands are complete.
+
+Events are recorded only after their domain is enabled. The baseline prevents buffered events
+from an earlier action or attachment from being mistaken for new ones.
 If an error mentions DevTools or another debugger holding the tab, ask the user to close it;
 on `No target with given id found`, get a fresh id via `list_tabs`.
 

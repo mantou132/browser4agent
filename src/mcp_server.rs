@@ -2,11 +2,11 @@ use std::sync::{Arc, Mutex};
 
 use rmcp::{
     ErrorData as McpError, RoleServer, ServerHandler,
-    handler::server::{
-        router::tool::ToolRouter, tool::ToolCallContext, wrapper::Parameters,
-    },
+    handler::server::{router::tool::ToolRouter, tool::ToolCallContext, wrapper::Parameters},
     model::*,
-    schemars, service::RequestContext, tool, tool_handler, tool_router,
+    schemars,
+    service::RequestContext,
+    tool, tool_handler, tool_router,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -17,6 +17,15 @@ use crate::peer::Peer;
 /// hidden from tools/list unless the extension reports `debuggerAvailable`.
 /// Keep in sync with SKILL.md.
 const CHROMIUM_ONLY_TOOLS: &[&str] = &["debugger_send_command", "debugger_detach"];
+
+/// Shared by MCP server instructions and the generated CLI Skill so both
+/// integrations teach agents the same shortest-path routing rules.
+pub(crate) const TOOL_ROUTING_WORKFLOW: &str = r#"1. Prefer a dedicated tool (`read_active_tab`, `read_tab`, `get_cookies`, `get_errors`, `get_local_storage`, `screenshot_tab`, etc.) over either script tool.
+2. Resolve the target without redundant reads: for the current page use `read_active_tab` directly; with a reliable tab ID use it directly and call `read_tab` only when page content or page-tool discovery is needed; only use `list_tabs` when the target tab is unknown.
+3. For page actions, inspect `tools` from `read_active_tab` / `read_tab`. Each `tools[]` item exposes `toolsetId`, `name`, and `inputSchema`; pass `toolsetId` as `toolset_id`, `name` as `tool_name`, and build `args` from `inputSchema`. Prefer `execute_tab_tool` when a matching tool exists; otherwise use `execute_script`.
+4. Reuse the discovered tab and page-tool metadata while the same document remains loaded. Read again after navigation or when a tool is no longer available. A short same-document sequence may be combined into one script call.
+5. Use `execute_script_in_background` only for one-shot browser-level operations such as tabs, windows, and downloads. It does not access page DOM, support event-listener callbacks, or keep work alive after the function returns.
+6. Use Chromium-only CDP tools only when dedicated tools and page/background scripts cannot provide the required lower-level data, such as network response bodies or protocol diagnostics. Complete follow-up CDP commands before `debugger_detach`."#;
 
 /// Browser-reported capabilities that decide which tools are exposed.
 #[derive(Clone, Copy, Debug, Default)]
@@ -41,7 +50,10 @@ pub type SharedCapabilities = Arc<Mutex<Capabilities>>;
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TabIdParams {
-    #[schemars(description = "Target tab ID (obtained from list_tabs).")]
+    #[schemars(
+        description = "Target tab ID obtained from read_active_tab, read_tab, list_tabs, or the \
+                       browser Agent panel context."
+    )]
     pub tab_id: i64,
 }
 
@@ -58,7 +70,10 @@ pub struct ExecuteScriptParams {
                        async. It receives the elements of `args` as its parameters."
     )]
     pub func_str: String,
-    #[schemars(description = "Target tab ID (obtained from list_tabs).")]
+    #[schemars(
+        description = "Target tab ID obtained from read_active_tab, read_tab, list_tabs, or the \
+                       browser Agent panel context."
+    )]
     pub tab_id: i64,
     #[schemars(
         description = "Array of arguments passed to the function. For example, args=[1,2] calls \
@@ -70,21 +85,25 @@ pub struct ExecuteScriptParams {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ExecuteTabToolParams {
-    #[schemars(description = "Target tab ID (obtained from list_tabs).")]
+    #[schemars(
+        description = "Target tab ID returned by the read_active_tab or read_tab call that \
+                       discovered this page tool."
+    )]
     pub tab_id: i64,
     #[schemars(
-        description = "Toolset ID from the read_tab result. Required — never guess; names may \
-                       repeat across toolsets."
+        description = "Copy tools[].toolsetId from the read_active_tab or read_tab result into \
+                       this field. Required — never guess; names may repeat across toolsets."
     )]
     pub toolset_id: String,
     #[schemars(
-        description = "Tool name from the read_tab result. Required — never guess; discover at \
-                       runtime."
+        description = "Copy tools[].name from the read_active_tab or read_tab result into this \
+                       field. Required — never guess; discover at runtime."
     )]
     pub tool_name: String,
     #[schemars(
         description = "JSON object of arguments. Must match the tool's `inputSchema` from the \
-                       read_tab result. Pass `{}` when the tool takes no parameters."
+                       read_active_tab or read_tab result. Pass `{}` when the tool takes no \
+                       parameters."
     )]
     #[serde(default)]
     pub args: serde_json::Map<String, Value>,
@@ -109,8 +128,8 @@ pub struct ExecuteScriptInBackgroundParams {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DebuggerSendCommandParams {
     #[schemars(
-        description = "Target tab ID (obtained from list_tabs). The debugging session attaches \
-                       automatically."
+        description = "Target tab ID obtained from read_active_tab, read_tab, list_tabs, or the \
+                       browser Agent panel context. The debugging session attaches automatically."
     )]
     pub tab_id: i64,
     #[schemars(
@@ -146,11 +165,7 @@ impl BrowserMcpServer {
     /// lacks it (capabilities not reported yet counts as lacking).
     fn tool_available(&self, name: &str) -> bool {
         !CHROMIUM_ONLY_TOOLS.contains(&name)
-            || self
-                .caps
-                .lock()
-                .expect("lock poisoned")
-                .debugger_available
+            || self.caps.lock().expect("lock poisoned").debugger_available
     }
 
     /// Tool metadata (name / description / input schema) generated by the
@@ -162,8 +177,8 @@ impl BrowserMcpServer {
 
     #[tool(
         description = "List every open tab in the browser. Returns each tab's id, title, active \
-                       flag, last-accessed time, and URL. Use this to obtain tab_id before \
-                       read_tab, execute_tab_tool, get_local_storage, etc."
+                       flag, last-accessed time, and URL. Use this only when the target tab is \
+                       unknown; for the current page use read_active_tab directly."
     )]
     async fn list_tabs(&self) -> Result<CallToolResult, McpError> {
         self.call("list_tabs", json!({})).await
@@ -171,9 +186,9 @@ impl BrowserMcpServer {
 
     #[tool(
         description = "Read a condensed HTML snapshot of the given tab. Also returns the page \
-                       tools available on this tab (toolset_id, tool_name, description, \
-                       inputSchema) for use with execute_tab_tool. Use list_tabs first to obtain \
-                       the tab ID."
+                       tools available on this tab. Each tools[] item contains toolsetId, name, \
+                       description, and inputSchema for use with execute_tab_tool. Use list_tabs \
+                       first only when the target tab ID is unknown."
     )]
     async fn read_tab(
         &self,
@@ -184,9 +199,10 @@ impl BrowserMcpServer {
 
     #[tool(
         description = "Read a condensed HTML snapshot of the active tab in the current window. \
-                       Also returns the page tools available on this tab (toolset_id, tool_name, \
-                       description, inputSchema) for use with execute_tab_tool. Use this when the \
-                       user asks about \"the current page\" — no list_tabs needed first."
+                       Returns tabId, title, URL, content, and page tools. Each tools[] item \
+                       contains toolsetId, name, description, and inputSchema for use with \
+                       execute_tab_tool. Use this when the user asks about \"the current page\" — \
+                       no list_tabs or follow-up read_tab is needed first."
     )]
     async fn read_active_tab(&self) -> Result<CallToolResult, McpError> {
         self.call("read_active_tab", json!({})).await
@@ -217,8 +233,8 @@ impl BrowserMcpServer {
 
     #[tool(
         description = "Run custom JavaScript inside the given tab. Use ONLY after read_tab shows \
-                       no matching page tool. For site-specific actions, prefer execute_tab_tool \
-                       instead."
+                       no matching page tool, or read_active_tab shows none for the current page. \
+                       For site-specific actions, prefer execute_tab_tool instead."
     )]
     async fn execute_script(
         &self,
@@ -236,11 +252,13 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Invoke a page tool on the given tab. REQUIRED workflow: list_tabs to get \
-                       tab_id → read_tab to get toolset_id, tool_name, and inputSchema → call \
-                       this with args matching inputSchema exactly. Do not guess tool_name or \
-                       args — pick them from the read_tab result. Prefer this over execute_script \
-                       whenever the tab has a matching tool."
+        description = "Invoke a discovered page tool on the given tab. For the current page, \
+                       call read_active_tab directly; with a known tab ID call read_tab; only use \
+                       list_tabs first when the target is unknown. From the selected tools[] item, \
+                       pass toolsetId as toolset_id, name as tool_name, and args matching \
+                       inputSchema exactly. Do not guess. Prefer this over execute_script whenever \
+                       the tab has a matching tool. Reuse the discovery result while the same \
+                       document is loaded; read again after navigation."
     )]
     async fn execute_tab_tool(
         &self,
@@ -260,17 +278,18 @@ impl BrowserMcpServer {
 
     #[tool(
         description = "Run a JavaScript function in the extension's background service worker and \
-                       return its result. Use this to open/close tabs and windows \
-                       (chrome.tabs.create/remove, chrome.windows.create/remove), intercept \
-                       network requests, control downloads, etc. Cannot quit the browser process \
-                       itself. Both chrome.* and browser.* namespaces are proxied (promise-style); \
-                       setTimeout/setInterval (+clear), queueMicrotask, console output (returned \
-                       as `logs`) and basic URL parsing are available. Timers only run while the \
-                       function is still executing — once it returns, pending timers are dropped, \
-                       so await your sleeps. On Chromium, the `debuggerEvents(tab_id)` global \
-                       function (see debugger_send_command) returns that tab's { attached, \
-                       cursor, events: [{method, params, time, seq}] }, or null before any \
-                       debugging session."
+                       return its result. Use this for one-shot browser-level operations such as \
+                       opening/closing tabs and windows (chrome.tabs.create/remove, \
+                       chrome.windows.create/remove) or controlling downloads. Both chrome.* and \
+                       browser.* namespaces are proxied for Promise-style calls whose arguments \
+                       and results are JSON-serializable. Event-listener callbacks and persistent \
+                       background work are not supported; timers are dropped when the function \
+                       returns, so await your sleeps. This cannot access page DOM or quit the \
+                       browser process. Use debugger_send_command, not browser event listeners, \
+                       for Chromium network observation. setTimeout/setInterval (+clear), \
+                       queueMicrotask, captured console logs, and basic URL parsing are available. \
+                       On Chromium, debuggerEvents(tab_id) returns that tab's { attached, cursor, \
+                       events: [{method, params, time, seq}] }, or null before any debugging session."
     )]
     async fn execute_script_in_background(
         &self,
@@ -300,8 +319,8 @@ impl BrowserMcpServer {
 
     #[tool(
         description = "Screenshot the given tab and return a base64-encoded PNG. Use list_tabs \
-                       first to obtain its ID. The target tab is activated automatically so the \
-                       screenshot succeeds."
+                       first only when its ID is unknown. The target tab is activated \
+                       automatically so the screenshot succeeds."
     )]
     async fn screenshot_tab(
         &self,
@@ -325,15 +344,17 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "(Chromium-only) Send a raw Chrome DevTools Protocol command to the tab to \
-                       debug network traffic, console, DOM, etc. Attaches automatically (Chrome \
-                       then shows a yellow \"started debugging\" banner; call debugger_detach \
-                       when done; fails while DevTools is open on that tab). Events are only \
-                       recorded after enabling their domain, e.g. send Network.enable, trigger \
-                       the action, then read them via execute_script_in_background's \
-                       `debuggerEvents` global. More domains can be enabled mid-session without \
-                       re-attaching. Warning: Debugger.pause blocks the page on a breakpoint \
-                       until Debugger.resume."
+        description = "(Chromium-only, last resort) Send a raw Chrome DevTools Protocol command \
+                       when dedicated tools and page/background scripts cannot provide required \
+                       lower-level data such as network response bodies or protocol diagnostics. \
+                       Attaches automatically (Chrome shows a yellow debugging banner; fails while \
+                       DevTools is open). For event-driven domains: enable the domain, read and \
+                       save debuggerEvents(tab_id).cursor as a baseline, trigger the action, then \
+                       read debuggerEvents in execute_script_in_background and keep only events \
+                       whose seq is at least the baseline. Run required follow-up commands such as \
+                       Network.getResponseBody before calling debugger_detach. More domains can be \
+                       enabled without re-attaching. Warning: Debugger.pause blocks the page until \
+                       Debugger.resume."
     )]
     async fn debugger_send_command(
         &self,
@@ -358,7 +379,8 @@ impl BrowserMcpServer {
         &self,
         Parameters(p): Parameters<TabIdParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.call("debugger_detach", json!({ "tabId": p.tab_id })).await
+        self.call("debugger_detach", json!({ "tabId": p.tab_id }))
+            .await
     }
 }
 
@@ -436,23 +458,18 @@ impl ServerHandler for BrowserMcpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
             .with_server_info(Implementation::from_build_env())
-            .with_instructions(
+            .with_instructions(format!(
                 "Control the user's active browser via this MCP server. Use this when built-in \
                  fetch/HTTP cannot access content (login walls, SSO, intranet), or when you need \
                  browser-specific data (cookies, localStorage, errors, screenshots) or web app \
-                 interactions (forms, clicks, actions).\n\n**Workflow:** Use whichever tool fits. \
-                 If you need to run JavaScript in a page (execute_script), read the tab first \
-                 (read_tab / read_active_tab) — if one of the page tools returned can do the job, \
-                 use execute_tab_tool instead (use toolset_id, tool_name, and inputSchema from \
-                 the read result; never guess)."
-                    .to_string(),
-            )
+                 interactions (forms, clicks, actions).\n\nTool routing:\n\n{TOOL_ROUTING_WORKFLOW}"
+            ))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{BrowserMcpServer, CHROMIUM_ONLY_TOOLS};
+    use super::{BrowserMcpServer, CHROMIUM_ONLY_TOOLS, TOOL_ROUTING_WORKFLOW};
 
     #[test]
     fn chromium_only_tools_exist_in_router() {
@@ -466,5 +483,14 @@ mod tests {
                 "{name} is gated as chromium-only but missing from tool_specs"
             );
         }
+    }
+
+    #[test]
+    fn shared_workflow_covers_dynamic_tool_mapping_and_cdp_fallback() {
+        assert!(TOOL_ROUTING_WORKFLOW.contains("toolsetId` as `toolset_id"));
+        assert!(TOOL_ROUTING_WORKFLOW.contains("`name` as `tool_name"));
+        assert!(TOOL_ROUTING_WORKFLOW.contains("only use `list_tabs`"));
+        assert!(TOOL_ROUTING_WORKFLOW.contains("CDP tools only when"));
+        assert!(TOOL_ROUTING_WORKFLOW.contains("before `debugger_detach`"));
     }
 }

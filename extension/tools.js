@@ -79,7 +79,7 @@ export async function readTab(tabId) {
     });
     const content = scriptResult(results) || '';
     const tools = await getTabTools(tabId);
-    return withDevtoolsFlag({ tabId, content, tools }, tabId);
+    return withDevtoolsFlag({ tabId, tools, content }, tabId);
   } catch (e) {
     throw new Error(`Failed to read tab ${tabId}: ${e.message}`);
   }
@@ -100,7 +100,7 @@ export async function readActiveTab() {
     });
     const content = scriptResult(results) || '';
     const tools = await getTabTools(tab.id);
-    return withDevtoolsFlag({ tabId: tab.id, title: tab.title, url: tab.url, content, tools }, tab.id);
+    return withDevtoolsFlag({ tabId: tab.id, title: tab.title, url: tab.url, tools, content }, tab.id);
   } catch (e) {
     throw new Error(`Failed to read active tab: ${e.message}`);
   }
