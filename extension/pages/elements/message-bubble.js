@@ -1,11 +1,13 @@
 import { GemBindDiff2htmlElement } from '@gem-bind/diff2html';
-import { GemBindMarkedElement } from '@gem-bind/marked';
+import { GemBindMarkedElement, Renderer } from '@gem-bind/marked';
 import { theme } from 'duoyun-ui/lib/theme';
-import { Renderer } from 'marked';
 import { toolCallDiffs } from '../../shared/diff.js';
 import { t } from '../../shared/i18n.js';
+import { createMarkdownExtensions } from '../../shared/markdown.js';
 
 import '@gem-bind/diff2html';
+import '@gem-bind/latex';
+import '@gem-bind/mermaid';
 import 'duoyun-ui/elements/code-block';
 
 GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
@@ -146,7 +148,7 @@ GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
 `);
 
 const defaultMarkdownRenderer = new Renderer();
-
+const markdownExtensions = createMarkdownExtensions(defaultMarkdownRenderer);
 const diffColorScheme = globalThis.chrome?.devtools?.panels?.themeName === 'dark' ? 'dark' : 'light';
 
 // 工具标题已含文件路径，隐藏 d2h 文件头；
@@ -165,29 +167,6 @@ GemBindDiff2htmlElement[Symbol.metadata].adoptedStyleSheets.push(css`
     }
   }
 `);
-
-const markdownExtensions = [
-  {
-    gfm: true,
-    breaks: true,
-    renderer: {
-      link({ href, title, tokens }) {
-        // TODO：默认编辑器中打开本地文件
-        const label = this.parser.parseInline(tokens);
-        const titleAttribute = title ? `title="${title}"` : '';
-        return `<a href="${href}" target="_blank" rel="noopener noreferrer" ${titleAttribute}>${label}</a>`;
-      },
-      code({ text, lang }) {
-        const language = (lang || '').trim().split(/\s+/)[0];
-        return `<dy-code-block ${language ? `codelang="${language}"` : ''}>${text}</dy-code-block>`;
-      },
-      table(token) {
-        const table = defaultMarkdownRenderer.table.call(this, token);
-        return `<div class="table-scroll" tabindex="0">${table}</div>`;
-      },
-    },
-  },
-];
 
 const dataImageLinkPattern = /\[([^\]\n]*)\]\((data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+)\)/gi;
 
