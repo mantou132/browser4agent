@@ -13,7 +13,7 @@
 
 ## 运行链路
 
-1. 浏览器扩展在安装后打开 `extension/pages/welcome.html`
+1. 浏览器扩展首次安装后自动订阅内置 `common` 工具集，并打开 `extension/pages/welcome.html`
 2. 扩展后台在 `extension/background.js` 里连接本地 Native Host
 3. Rust 程序在 `src/main.rs` 里判断运行模式
 4. Setup 模式（无参数）：

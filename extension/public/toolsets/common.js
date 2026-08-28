@@ -37,6 +37,11 @@ function setControlValue(el, value) {
   return false;
 }
 
+function setFileInputFiles(element, files) {
+  const nativeFilesSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files').set;
+  nativeFilesSetter.call(element, files);
+}
+
 async function selectAntdOption(searchText) {
   await sleep(1500);
 
@@ -93,6 +98,64 @@ export async function fill_field_by_label({ label, value } = {}) {
     await selectAntdOption(value);
   }
   return { label, value: 'value' in target ? target.value : target.textContent, matched: true };
+}
+
+/**
+ * 将 Base64 内容作为文件写入文件输入控件，并触发 input/change 事件
+ * @pattern *://*:*\/*
+ * @param {{ label?: string, filename: string, base64: string, mimeType?: string }} options
+ * @param {string} [options.label] - 文件控件的 label、aria-label、name 或 id 关键词；页面只有一个文件控件时可省略
+ * @param {string} options.filename - 文件名（包含扩展名）
+ * @param {string} options.base64 - 文件内容的 Base64 编码（不含 data URL 前缀）
+ * @param {string} [options.mimeType=application/octet-stream] - 文件 MIME 类型
+ */
+export function upload_file({ label, filename, base64, mimeType = 'application/octet-stream' } = {}) {
+  if (!filename) throw new Error('filename is required');
+  if (typeof base64 !== 'string') throw new Error('base64 is required');
+
+  const inputs = [...document.deepQuerySelectorAll('>>> input[type="file"]')];
+  if (!inputs.length) throw new Error('未找到文件输入控件');
+
+  const key = normalize(label).toLowerCase();
+  const target = key
+    ? inputs.find((element) => {
+        const text = [
+          element.getAttribute('aria-label'),
+          element.getAttribute('name'),
+          element.id,
+          ...[...(element.labels || [])].map((item) => item.textContent),
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return text.includes(key);
+      })
+    : inputs.length === 1
+      ? inputs[0]
+      : null;
+
+  if (!target) {
+    if (key) throw new Error(`未找到匹配 "${label}" 的文件输入控件`);
+    throw new Error(`找到 ${inputs.length} 个文件输入控件，请提供 label`);
+  }
+
+  let binary;
+  try {
+    binary = atob(base64);
+  } catch {
+    throw new Error('base64 不是有效的 Base64 内容');
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
+
+  const file = new File([bytes], filename, { type: mimeType });
+  const transfer = new DataTransfer();
+  transfer.items.add(file);
+  setFileInputFiles(target, transfer.files);
+  target.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+  target.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+
+  return { uploaded: true, filename: file.name, size: file.size, type: file.type, url: location.href };
 }
 
 /**

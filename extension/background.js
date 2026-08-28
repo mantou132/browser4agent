@@ -6,6 +6,7 @@ import { loadToolset } from './shared/loader.js';
 import { ensureAuthToken } from './shared/market-api.js';
 import { RpcPeer } from './shared/rpc.js';
 import { getToolConfig, persist } from './shared/tool-store.js';
+import { getToolsetId } from './shared/toolsets.js';
 import {
   executeScript,
   executeScriptInBackground,
@@ -22,6 +23,7 @@ import {
 const NATIVE_HOST_NAME = 'browser4agent';
 const WELCOME_URL = chrome.runtime.getURL('pages/welcome.html');
 const MARKET_URL = chrome.runtime.getURL('pages/market.html');
+const COMMON_TOOLSET_URL = chrome.runtime.getURL('toolsets/common.json');
 // Raise when the extension starts relying on host capabilities that older
 // native hosts don't have; hosts below this version get flagged incompatible.
 const MIN_HOST_VERSION = '0.2.4';
@@ -29,12 +31,23 @@ const MIN_HOST_VERSION = '0.2.4';
 chrome.runtime.onInstalled.addListener((details) => {
   ensureAuthToken();
   if (details.reason === 'install') {
+    subscribeCommonToolset().catch((e) => console.error('Failed to subscribe common toolset:', e));
     chrome.tabs.create({ url: WELCOME_URL });
   }
   if (details.reason === 'update') {
     refreshBuiltinToolsets();
   }
 });
+
+async function subscribeCommonToolset() {
+  const { meta, tools } = await loadToolset(COMMON_TOOLSET_URL);
+  const { toolsets } = await getToolConfig();
+  const id = getToolsetId(COMMON_TOOLSET_URL);
+  if (toolsets.some((toolset) => toolset.id === id)) return;
+  await persist({
+    toolsets: [...toolsets, { ...meta, id, url: COMMON_TOOLSET_URL, type: 'official', enabled: true, tools }],
+  });
+}
 
 async function refreshBuiltinToolsets() {
   const { toolsets } = await getToolConfig();
