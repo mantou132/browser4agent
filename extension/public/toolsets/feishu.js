@@ -5,11 +5,34 @@
  * @author Browser for AI Agent
  */
 
+// window.__md2html() 不会转义正文中夹带的原始 HTML，因此在写入 clipboardData 前
+// 需要用白名单方式剔除危险标签/属性，防止脚本注入（XSS）。
+function sanitizeHtml(html) {
+  const allowedTags = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'UL', 'OL', 'LI', 'P', 'PRE', 'CODE', 'STRONG', 'EM', 'S', 'A', 'META']);
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  for (const el of [...template.content.querySelectorAll('*')]) {
+    if (!allowedTags.has(el.tagName)) {
+      el.remove();
+      continue;
+    }
+    for (const attr of [...el.attributes]) {
+      const name = attr.name.toLowerCase();
+      const keep =
+        (el.tagName === 'A' && name === 'href' && !/^\s*javascript:/i.test(attr.value)) ||
+        (el.tagName === 'CODE' && name === 'class') ||
+        (el.tagName === 'META' && name === 'charset');
+      if (!keep) el.removeAttribute(attr.name);
+    }
+  }
+  return template.innerHTML;
+}
+
 async function pasteHTML(zone, md) {
   const rootEditor = document.querySelector('.page-block.root-block[contenteditable="true"]');
   if (!rootEditor) throw new Error('未找到编辑器根节点');
 
-  const html = `<meta charset="utf-8">${window.__md2html(md)}`;
+  const html = sanitizeHtml(`<meta charset="utf-8">${window.__md2html(md)}`);
   const text = md;
 
   const leafSpans = zone.querySelectorAll('span[data-leaf="true"]');
