@@ -16,6 +16,22 @@ export default {
   },
   config(config) {
     config.target = ['web', 'es2024', 'browserslist:chrome >= 125, firefox >= 128'];
+    config.optimization ??= {};
+    config.optimization.splitChunks = {
+      ...config.optimization.splitChunks,
+      cacheGroups: {
+        ...config.optimization.splitChunks?.cacheGroups,
+        mermaidParser: {
+          test: /[\\/]@mermaid-js[\\/]parser[\\/]/,
+          name: 'mermaid-parser',
+          chunks: 'async',
+          minChunks: 2,
+          priority: 30,
+          reuseExistingChunk: true,
+          enforce: true,
+        },
+      },
+    };
     config.module ??= {};
     config.module.rules ??= [];
     // dy-code-block 的 Prism 改为本地 vendor，见 loaders/prism-local.mjs
