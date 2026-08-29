@@ -15,7 +15,7 @@ export default {
     },
   },
   config(config) {
-    config.target = ['web', 'es2024'];
+    config.target = ['web', 'es2024', 'browserslist:chrome >= 125, firefox >= 128'];
     config.module ??= {};
     config.module.rules ??= [];
     // dy-code-block 的 Prism 改为本地 vendor，见 loaders/prism-local.mjs
