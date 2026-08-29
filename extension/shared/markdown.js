@@ -1,6 +1,26 @@
 const escapeHtml = (value) =>
   value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
 
+// Agent 代码引用围栏信息，codelang 应取文件扩展名：
+// - Cursor: startLine:endLine:filepath
+// - path:line:col（编译器/终端常见，含 file:/// 绝对路径）
+const CODE_REFERENCE_RE = /^(\d+):(\d+):(.+)$/;
+const PATH_LOCATION_RE = /^(?!\d+:\d+:)(.+):(\d+):(\d+)$/;
+
+const langFromFilepath = (filepath) => {
+  const dot = filepath.lastIndexOf('.');
+  return dot > 0 ? filepath.slice(dot + 1).toLowerCase() : '';
+};
+
+const resolveCodeLang = (lang) => {
+  const token = (lang || '').trim().split(/\s+/)[0];
+  const ref = CODE_REFERENCE_RE.exec(token);
+  if (ref) return langFromFilepath(ref[3]);
+  const location = PATH_LOCATION_RE.exec(token);
+  if (location) return langFromFilepath(location[1]);
+  return token.toLowerCase();
+};
+
 const firstIndex = (...values) => {
   const indexes = values.filter((value) => value >= 0);
   return indexes.length ? Math.min(...indexes) : undefined;
@@ -55,7 +75,7 @@ export const createMarkdownExtensions = (defaultMarkdownRenderer) => [
         return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" ${titleAttribute}>${label}</a>`;
       },
       code({ text, lang }) {
-        const language = (lang || '').trim().split(/\s+/)[0].toLowerCase();
+        const language = resolveCodeLang(lang);
         const source = escapeHtml(text);
         if (language === 'mermaid') return `<gem-bind-mermaid tabindex="0">${source}</gem-bind-mermaid>`;
         if (['latex', 'tex', 'math'].includes(language)) {

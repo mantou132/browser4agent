@@ -45,6 +45,44 @@ describe('agent markdown renderers', () => {
     assert.match(output, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
   });
 
+  it('parses startLine:endLine:filepath fence info into file extension codelang', () => {
+    const output = renderer.code({
+      lang: '104:111:packages/gem-book/docs/zh/003-plugins.md',
+      text: '# Plugins',
+    });
+
+    assert.match(output, /<dy-code-block codelang="md">/);
+    assert.match(output, /# Plugins/);
+  });
+
+  it('parses file:///path:line:col fence info into file extension codelang', () => {
+    const output = renderer.code({
+      lang: 'file:///Users/foo/bar.ts:10:5',
+      text: 'const x = 1',
+    });
+
+    assert.match(output, /<dy-code-block codelang="ts">/);
+    assert.match(output, /const x = 1/);
+  });
+
+  it('parses relative path:line:col fence info into file extension codelang', () => {
+    const output = renderer.code({
+      lang: 'foo/bar.ts:10:5',
+      text: 'const x = 1',
+    });
+
+    assert.match(output, /<dy-code-block codelang="ts">/);
+  });
+
+  it('parses Windows file URI fence info into file extension codelang', () => {
+    const output = renderer.code({
+      lang: 'file:///C:/Users/foo/bar.py:42:1',
+      text: 'print("hi")',
+    });
+
+    assert.match(output, /<dy-code-block codelang="py">/);
+  });
+
   it('wraps tables rendered by the injected Marked renderer', () => {
     const parser = { parseInline: (tokens) => tokens.map((token) => token.text).join('') };
     const token = {
