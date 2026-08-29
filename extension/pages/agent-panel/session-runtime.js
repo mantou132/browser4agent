@@ -48,11 +48,7 @@ export function completeThought(messages) {
 }
 
 /** Convert one streamed ACP event into local pane and session-index patches. */
-export function reduceSessionEvent(
-  state,
-  event,
-  { agent, getImageName = () => t('devtoolsPanelImageAttachment'), createId = () => crypto.randomUUID() } = {},
-) {
+export function reduceSessionEvent(state, event, { agent } = {}) {
   const messages = state?.messages ?? [];
   if (event.event !== 'session_update') {
     if (event.event !== 'stop') return null;
@@ -88,9 +84,9 @@ export function reduceSessionEvent(
   if (role && update.content?.type === 'image' && update.content.data) {
     const { mimeType = 'image/png', data } = update.content;
     const attachment = {
-      id: createId(),
+      id: crypto.randomUUID(),
       kind: 'image',
-      name: getImageName(),
+      name: t('devtoolsPanelImageAttachment'),
       mimeType,
       previewUrl: `data:${mimeType};base64,${data}`,
     };

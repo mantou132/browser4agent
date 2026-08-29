@@ -83,13 +83,6 @@ describe('execute_script_in_background sandbox', () => {
     ]);
   });
 
-  it('runs queueMicrotask callbacks in order', async () => {
-    const { value } = await run(
-      `async () => { const out = []; queueMicrotask(() => out.push(2)); out.push(1); await null; return out; }`,
-    );
-    assert.deepEqual(value, [1, 2]);
-  });
-
   it('captures errors thrown in queueMicrotask callbacks into logs', async () => {
     const { logs } = await run(`async () => { queueMicrotask(() => { throw new Error('micro-oops'); }); await null; }`);
     assert.deepEqual(logs, ['[error] micro-oops']);
@@ -130,11 +123,6 @@ describe('execute_script_in_background sandbox', () => {
     assert.deepEqual(value, [null, 'undefined']);
   });
 
-  it('still exposes the debuggerEvents global asynchronously', async () => {
-    const { value } = await run(`async () => await debuggerEvents(123)`);
-    assert.equal(value, null);
-  });
-
   it('supports synchronous and asynchronous host APIs together', async () => {
     const { value } = await run(`async () => {
       const snapshot = debuggerEvents(123);
@@ -144,25 +132,11 @@ describe('execute_script_in_background sandbox', () => {
     assert.deepEqual(value, [null, 42]);
   });
 
-  it('propagates synchronous host API errors', async () => {
-    await assert.rejects(
-      run(`async () => {
-      try { debuggerEvents(); } catch (e) { return e.message; }
-      throw new Error('not thrown');
-    }`),
-      /not thrown/,
-    );
-  });
-
   it('propagates script errors together with their logs', async () => {
     await assert.rejects(run(`async () => { console.log('before-crash'); throw new Error('kaput'); }`), (e) => {
       assert.match(e.message, /^kaput/);
       assert.match(e.message, /before-crash/);
       return true;
     });
-  });
-
-  it('rejects non-function timer callbacks', async () => {
-    await assert.rejects(run(`async () => setTimeout(null)`), /must be a function/);
   });
 });

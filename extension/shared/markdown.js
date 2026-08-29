@@ -70,5 +70,3 @@ export const createMarkdownExtensions = (defaultMarkdownRenderer) => [
     },
   },
 ];
-
-export { escapeHtml };

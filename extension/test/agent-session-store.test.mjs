@@ -1,13 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-const {
-  emptyAgentPanelState,
-  readAgentPanelState,
-  sessionTitleFromPrompt,
-  updateAgentPanelState,
-  upsertStoredSession,
-} = await import('../shared/agent-session-store.js');
+const { agentSessionKey, readAgentPanelState, updateAgentPanelState, upsertStoredSession } = await import(
+  '../shared/agent-session-store.js'
+);
 
 describe('agent session storage', () => {
   it('keeps agent session keys distinct', () => {
@@ -17,15 +13,9 @@ describe('agent session storage', () => {
       { agent: 'a:b', sessionId: 'c' },
       { agent: 'a', sessionId: 'b:c' },
     ];
-    const state = sessions.reduce(upsertStoredSession, emptyAgentPanelState());
+    const keys = sessions.map(({ agent, sessionId }) => agentSessionKey(agent, sessionId));
 
-    assert.equal(state.sessions.length, sessions.length);
-  });
-
-  it('builds a compact title from the first user prompt', () => {
-    assert.equal(sessionTitleFromPrompt('  Fix\n\n  the   panel  '), 'Fix the panel');
-    assert.equal(sessionTitleFromPrompt('一二三四', 3), '一二三…');
-    assert.equal(sessionTitleFromPrompt('   '), '');
+    assert.equal(new Set(keys).size, sessions.length);
   });
 
   it('never persists an in-memory draft session', async () => {

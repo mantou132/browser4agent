@@ -1,6 +1,6 @@
 import { localStorageKeys } from './storage-keys.js';
 
-export const emptyAgentPanelState = () => ({
+const emptyAgentPanelState = () => ({
   sessions: [],
   defaults: {
     agent: '',

@@ -4,6 +4,7 @@ import { icons } from '../../shared/icons.js';
 
 const MAX_ATTACHMENTS = 10;
 const MAX_TEXT_ATTACHMENT_BYTES = 256 * 1024;
+const LONG_PASTE_CHAR_THRESHOLD = 2_000;
 const CODEX_COMBINED_CONFIG_IDS = new Set(['model', 'reasoning_effort', 'fast-mode']);
 // Cap images at what vision models can use anyway; compressionImage scales down.
 const IMAGE_DIMENSION = { width: 1568, height: 1568 };
@@ -149,7 +150,31 @@ class AgentComposerElement extends GemElement {
 
   #onPaste = (e) => {
     const images = [...(e.clipboardData?.files || [])].filter((file) => file.type.startsWith('image/'));
-    if (images.length) this.#addFiles(images);
+    if (images.length) {
+      e.preventDefault();
+      this.#addFiles(images);
+      return;
+    }
+
+    const text = e.clipboardData?.getData('text/plain') || '';
+    if (text.length < LONG_PASTE_CHAR_THRESHOLD || this.#s.attachments.length >= MAX_ATTACHMENTS) return;
+
+    e.preventDefault();
+    if (new TextEncoder().encode(text).byteLength > MAX_TEXT_ATTACHMENT_BYTES) {
+      this.attacherror(t('devtoolsPanelAttachmentTooLarge'));
+      return;
+    }
+    this.#s({
+      attachments: [
+        ...this.#s.attachments,
+        {
+          id: crypto.randomUUID(),
+          kind: 'text',
+          name: t('devtoolsPanelPastedTextAttachment'),
+          text,
+        },
+      ],
+    });
   };
 
   /** Put a queued prompt back into the draft; sending then updates that
