@@ -151,9 +151,6 @@
   "devtoolsPanelPlaceholder": {
     "message": "Message the agent — Enter to send, Shift+Enter for a new line"
   },
-  "devtoolsPanelPastedTextAttachment": {
-    "message": "Pasted text.txt"
-  },
   "devtoolsPanelQueuedPrompts": {
     "message": "Queued prompts"
   },

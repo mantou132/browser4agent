@@ -151,9 +151,6 @@
   "devtoolsPanelPlaceholder": {
     "message": "向 Agent 发送消息，Enter 发送，Shift+Enter 换行"
   },
-  "devtoolsPanelPastedTextAttachment": {
-    "message": "粘贴文本.txt"
-  },
   "devtoolsPanelQueuedPrompts": {
     "message": "等待发送"
   },

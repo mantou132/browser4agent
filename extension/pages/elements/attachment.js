@@ -59,10 +59,7 @@ class AgentAttachmentElement extends GemElement {
         </button>
       </span>
     `;
-    return html`
-      <dy-popover position="auto" ?disabled=${!previewable} .content=${previewable ? this.#preview() : ''}>
-        ${chip}
-      </dy-popover>
-    `;
+    if (!previewable) return chip;
+    return html`<dy-popover position="auto" .content=${this.#preview()}>${chip}</dy-popover>`;
   };
 }

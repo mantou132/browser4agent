@@ -57,6 +57,8 @@ class AgentComposerElement extends GemElement {
 
   #fileInputRef = createRef();
   #textareaRef = createRef();
+  #nextPasteReference = 1;
+  #pastedAttachments = new Map();
 
   focus = () => {
     this.#textareaRef.value?.focus();
@@ -71,6 +73,8 @@ class AgentComposerElement extends GemElement {
   };
 
   #clearDraft = () => {
+    this.#nextPasteReference = 1;
+    this.#pastedAttachments.clear();
     this.#s({ attachments: [], editingId: null });
     this.#setInput('');
   };
@@ -115,6 +119,16 @@ class AgentComposerElement extends GemElement {
     e.target.value = '';
   };
 
+  #createPasteReference = (kind) => {
+    const number = this.#nextPasteReference++;
+    const label = `${kind === 'image' ? 'Image' : 'Pasted text'} #${number}`;
+    return {
+      pasteReference: number,
+      marker: `[${label}]`,
+      name: kind === 'image' ? label : `${label}.txt`,
+    };
+  };
+
   #readFile = async (file) => {
     const base = { id: crypto.randomUUID(), name: file.name };
     try {
@@ -131,28 +145,143 @@ class AgentComposerElement extends GemElement {
     }
   };
 
-  #addFiles = async (fileList) => {
+  #readFiles = async (fileList) => {
     // dy-drop-area wraps plain-text drags as { name: 'temp', type: '*' } —
     // ignore them; pasting covers that case.
     const room = MAX_ATTACHMENTS - this.#s.attachments.length;
     const files = [...fileList].filter((file) => file.type !== '*').slice(0, Math.max(room, 0));
-    if (!files.length) return;
+    if (!files.length) return [];
     const results = await Promise.all(files.map((file) => this.#readFile(file)));
     const added = results.flatMap(({ attachment }) => (attachment ? [attachment] : []));
     const reason = results.find(({ reason }) => reason)?.reason || '';
-    if (added.length) this.#s({ attachments: [...this.#s.attachments, ...added] });
     if (reason) this.attacherror(reason);
+    return added;
+  };
+
+  #addFiles = async (fileList) => {
+    const added = await this.#readFiles(fileList);
+    if (added.length) this.#s({ attachments: [...this.#s.attachments, ...added] });
+  };
+
+  #markerRanges = () =>
+    this.#s.attachments.flatMap((attachment) => {
+      if (!attachment.marker) return [];
+      const start = this.#s.input.indexOf(attachment.marker);
+      return start < 0 ? [] : [{ attachment, start, end: start + attachment.marker.length }];
+    });
+
+  #expandRangeOverMarkers = (start, end, includeCaretInside = false) => {
+    const collapsed = start === end;
+    const ranges = this.#markerRanges().filter(({ start: markerStart, end: markerEnd }) =>
+      collapsed
+        ? includeCaretInside && markerStart < start && start < markerEnd
+        : markerStart < end && markerEnd > start,
+    );
+    if (!ranges.length) return { start, end, attachmentIds: [] };
+    return {
+      start: Math.min(start, ...ranges.map((range) => range.start)),
+      end: Math.max(end, ...ranges.map((range) => range.end)),
+      attachmentIds: ranges.map((range) => range.attachment.id),
+    };
+  };
+
+  #syncInput = (input) => {
+    const referencedAttachments = [...this.#pastedAttachments.values()]
+      .filter((attachment) => input.includes(attachment.marker))
+      .sort((a, b) => input.indexOf(a.marker) - input.indexOf(b.marker));
+    this.#s({
+      input,
+      attachments: [...this.#s.attachments.filter((attachment) => !attachment.marker), ...referencedAttachments],
+    });
+  };
+
+  #replaceInputRange = (start, end, replacement, addedAttachments = []) => {
+    const input = this.#s.input;
+    start = Math.max(0, Math.min(start, input.length));
+    end = Math.max(start, Math.min(end, input.length));
+    const nextInput = `${input.slice(0, start)}${replacement}${input.slice(end)}`;
+    for (const attachment of addedAttachments) this.#pastedAttachments.set(attachment.id, attachment);
+    const textarea = this.#textareaRef.value;
+    if (!textarea) {
+      this.#syncInput(nextInput);
+      return;
+    }
+    textarea.focus();
+    textarea.setSelectionRange(start, end);
+    try {
+      document.execCommand(replacement ? 'insertText' : 'delete', false, replacement);
+    } catch {
+      // Fall through to the direct-value fallback below.
+    }
+    if (textarea.value !== nextInput) textarea.value = nextInput;
+    if (this.#s.input !== nextInput) this.#syncInput(nextInput);
+    const caret = start + replacement.length;
+    textarea.setSelectionRange(caret, caret);
+  };
+
+  #insertPastedAttachments = (attachments, selection) => {
+    if (!attachments.length) return;
+    const textarea = this.#textareaRef.value;
+    const currentSelection =
+      selection.input === this.#s.input
+        ? selection
+        : {
+            start: textarea?.selectionStart ?? this.#s.input.length,
+            end: textarea?.selectionEnd ?? this.#s.input.length,
+          };
+    const range = this.#expandRangeOverMarkers(currentSelection.start, currentSelection.end, true);
+    const markerText = attachments.map((attachment) => attachment.marker).join(' ');
+    this.#replaceInputRange(range.start, range.end, markerText, attachments);
   };
 
   #removeAttachment = (id) => {
+    const attachment = this.#s.attachments.find((item) => item.id === id);
+    const markerStart = attachment?.marker ? this.#s.input.indexOf(attachment.marker) : -1;
+    if (markerStart >= 0) {
+      this.#replaceInputRange(markerStart, markerStart + attachment.marker.length, '');
+      return;
+    }
     this.#s({ attachments: this.#s.attachments.filter((item) => item.id !== id) });
   };
 
-  #onPaste = (e) => {
+  #onBeforeInput = (e) => {
+    const textarea = e.target;
+    let start = textarea.selectionStart ?? 0;
+    let end = textarea.selectionEnd ?? start;
+    if (e.inputType.startsWith('insert')) {
+      const range = this.#expandRangeOverMarkers(start, end, true);
+      if (range.attachmentIds.length) textarea.setSelectionRange(range.start, range.end);
+      return;
+    }
+    if (!e.inputType.startsWith('delete')) return;
+    if (start === end) {
+      if (e.inputType.endsWith('Backward')) start = Math.max(0, start - 1);
+      else if (e.inputType.endsWith('Forward')) end = Math.min(this.#s.input.length, end + 1);
+      else return;
+    }
+    const range = this.#expandRangeOverMarkers(start, end);
+    if (!range.attachmentIds.length) return;
+    textarea.setSelectionRange(range.start, range.end);
+  };
+
+  #onInput = (e) => {
+    this.#syncInput(e.target.value);
+  };
+
+  #onPaste = async (e) => {
+    const selection = {
+      input: this.#s.input,
+      start: e.target.selectionStart ?? this.#s.input.length,
+      end: e.target.selectionEnd ?? this.#s.input.length,
+    };
     const images = [...(e.clipboardData?.files || [])].filter((file) => file.type.startsWith('image/'));
     if (images.length) {
       e.preventDefault();
-      this.#addFiles(images);
+      const added = await this.#readFiles(images);
+      this.#insertPastedAttachments(
+        added.map((attachment) => ({ ...attachment, ...this.#createPasteReference('image') })),
+        selection,
+      );
       return;
     }
 
@@ -164,17 +293,17 @@ class AgentComposerElement extends GemElement {
       this.attacherror(t('devtoolsPanelAttachmentTooLarge'));
       return;
     }
-    this.#s({
-      attachments: [
-        ...this.#s.attachments,
+    this.#insertPastedAttachments(
+      [
         {
           id: crypto.randomUUID(),
           kind: 'text',
-          name: t('devtoolsPanelPastedTextAttachment'),
           text,
+          ...this.#createPasteReference('text'),
         },
       ],
-    });
+      selection,
+    );
   };
 
   /** Put a queued prompt back into the draft; sending then updates that
@@ -188,7 +317,13 @@ class AgentComposerElement extends GemElement {
     if (!item) return;
     this.#s({ editingId: id });
     this.#setInput(item.prompt);
-    this.#s({ attachments: item.attachments || [] });
+    const attachments = item.attachments || [];
+    this.#s({ attachments });
+    this.#pastedAttachments.clear();
+    for (const attachment of attachments) {
+      if (attachment.marker) this.#pastedAttachments.set(attachment.id, attachment);
+    }
+    this.#nextPasteReference = Math.max(0, ...attachments.map((attachment) => attachment.pasteReference || 0)) + 1;
     this.focus();
   };
 
@@ -323,8 +458,8 @@ class AgentComposerElement extends GemElement {
             class="field-sizing-content box-border block min-h-13 max-h-48 w-full resize-none overflow-y-auto border-0 bg-transparent px-3.5 pb-1 pt-3 text-sm leading-6 text-text outline-none placeholder:text-describe"
             rows="1"
             placeholder=${editingId ? t('devtoolsPanelEditHint') : t('devtoolsPanelPlaceholder')}
-            .value=${input}
-            @input=${(e) => this.#s({ input: e.target.value })}
+            @beforeinput=${this.#onBeforeInput}
+            @input=${this.#onInput}
             @keydown=${this.#onKeydown}
             @paste=${this.#onPaste}
           ></textarea>
