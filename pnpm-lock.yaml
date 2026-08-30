@@ -45,8 +45,8 @@ importers:
         specifier: ^0.0.1
         version: 0.0.1
       '@gem-bind/marked':
-        specifier: ^0.0.4
-        version: 0.0.4
+        specifier: ^0.0.5
+        version: 0.0.5
       '@gem-bind/mermaid':
         specifier: ^0.0.1
         version: 0.0.1
@@ -710,8 +710,8 @@ packages:
   '@gem-bind/latex@0.0.1':
     resolution: {integrity: sha512-bd4IFPzUXuXKADZrEZUyJtigcv5coiJwlyTjjXXHlb4pzPSnd2G3lXyuPFMIIwE7dOf8dUgMXPiUTHZRcSNJaQ==}
 
-  '@gem-bind/marked@0.0.4':
-    resolution: {integrity: sha512-iztY9txTjftgMUyi8bHiAFN1EGZnPFJ6p7F7JSPFrKr9BuvGqW3hhuMW+YotqmtHF0ydLXf8wy4VmilSDfBc0A==}
+  '@gem-bind/marked@0.0.5':
+    resolution: {integrity: sha512-0ahn3oyqc2I9Uxrk9CDZEGHBJYEFHT+qZbHcCWjXIyr7K+rgzk9alw12K+B6dBDQGDZdq4wkAbo7lIHgVdAIag==}
 
   '@gem-bind/mermaid@0.0.1':
     resolution: {integrity: sha512-xU/1MZdqeVFmeYNLfwFBdQXzSzg9TvKY2wvWdPfWsY123nbAkYWpeGYLM+/nsPxE4duQxq3LKQhRHnpScxuycg==}
@@ -3779,7 +3779,7 @@ snapshots:
       duoyun-ui: 2.2.3(patch_hash=c3594afe5a41399964b13e4db6d89845d2181c5825576d62e97cf8fe59e0a018)(@mantou/gem@2.2.8)
       katex: 0.18.4
 
-  '@gem-bind/marked@0.0.4':
+  '@gem-bind/marked@0.0.5':
     dependencies:
       '@mantou/gem': 2.2.8
       '@swc/helpers': 0.5.23

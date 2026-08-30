@@ -160,7 +160,7 @@ class AgentPanelPageElement extends GemElement {
           .bannerError=${bannerError}
           .agent=${this.#currentAgent}
           .configOptions=${this.#configSelects}
-          .composerDisabled=${pendingIds.includes(sessionKey)}
+          ?turn-pending=${pendingIds.includes(sessionKey)}
           .queue=${queue}
           @send=${(e) => this.#turns.send(e.detail)}
           @cancel=${this.#turns.cancel}

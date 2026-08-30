@@ -4,6 +4,7 @@ import { theme } from 'duoyun-ui/lib/theme';
 import { toolCallDiffs } from '../../shared/diff.js';
 import { t } from '../../shared/i18n.js';
 import { createMarkdownExtensions } from '../../shared/markdown.js';
+import { nextStreamingText } from '../../shared/stream-text.js';
 
 import '@gem-bind/diff2html';
 import '@gem-bind/latex';
@@ -150,6 +151,7 @@ GemBindMarkedElement[Symbol.metadata].adoptedStyleSheets.push(css`
 const defaultMarkdownRenderer = new Renderer();
 const markdownExtensions = createMarkdownExtensions(defaultMarkdownRenderer);
 const diffColorScheme = globalThis.chrome?.devtools?.panels?.themeName === 'dark' ? 'dark' : 'light';
+const STREAM_REVEAL_INTERVAL = 32;
 
 // 工具标题已含文件路径，隐藏 d2h 文件头；
 // 元素把自己的样式表排在外来之后，特异性必须高于上游的 .d2h-file-header 才能覆盖
@@ -182,6 +184,42 @@ const extractDataImageAttachments = (text) => {
 @customElement('agent-message-bubble')
 class AgentMessageBubbleElement extends GemElement {
   @property message;
+  @property streamKey;
+  @boolattribute streaming;
+
+  #streamText = createState({ key: undefined, text: '' });
+  #streamTimer = 0;
+
+  @memo((i) => [i.streamKey, i.streaming, i.message?.text])
+  #updateStreamingText = () => {
+    clearTimeout(this.#streamTimer);
+    const targetText = this.message?.text || '';
+    if (!this.streaming) {
+      this.#streamText({ key: this.streamKey, text: targetText });
+      return;
+    }
+    if (this.#streamText.key !== this.streamKey) {
+      this.#streamText({ key: this.streamKey, text: '' });
+    } else if (!targetText.startsWith(this.#streamText.text)) {
+      this.#streamText({ text: targetText });
+      return;
+    }
+
+    const reveal = () => {
+      const target = this.message?.text || '';
+      const text = nextStreamingText(this.#streamText.text, target);
+      if (text === this.#streamText.text) return;
+      this.#streamText({ text });
+      if (text !== target) this.#streamTimer = setTimeout(reveal, STREAM_REVEAL_INTERVAL);
+    };
+    reveal();
+    return () => clearTimeout(this.#streamTimer);
+  };
+
+  get #messageText() {
+    const targetText = this.message?.text || '';
+    return this.streaming && this.#streamText.key === this.streamKey ? this.#streamText.text : targetText;
+  }
 
   @template()
   #content = () => {
@@ -195,9 +233,10 @@ class AgentMessageBubbleElement extends GemElement {
             <span>${t('devtoolsThought')}</span>
           </summary>
           <gem-bind-marked
+            ?streaming=${this.streaming}
             class="block wrap-break-word px-2.5 pb-1 leading-relaxed"
             .extensions=${markdownExtensions}
-            >${msg.text || ''}</gem-bind-marked
+            >${this.#messageText}</gem-bind-marked
           >
         </details>
       `;
@@ -253,7 +292,7 @@ class AgentMessageBubbleElement extends GemElement {
     }
 
     const isUser = msg.role === 'user';
-    const { attachments: linkedAttachments, markdown } = extractDataImageAttachments(msg.text || '');
+    const { attachments: linkedAttachments, markdown } = extractDataImageAttachments(this.#messageText);
     const attachments = [...(msg.attachments || []), ...linkedAttachments];
     return html`
       <div class=${`my-3 flex ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -271,7 +310,7 @@ class AgentMessageBubbleElement extends GemElement {
               `,
             )}
           </div>
-          <gem-bind-marked class=${isUser ? 'user' : ''} .extensions=${markdownExtensions}
+          <gem-bind-marked ?streaming=${this.streaming} class=${isUser ? 'user' : ''} .extensions=${markdownExtensions}
             >${markdown}</gem-bind-marked
           >
         </div>

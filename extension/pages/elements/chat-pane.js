@@ -12,7 +12,7 @@ class AgentChatPaneElement extends GemElement {
   @property bannerError;
   @property agent;
   @property configOptions;
-  @property composerDisabled;
+  @boolattribute turnPending;
   @property queue; // prompts staged while a turn is in flight
 
   @emitter send;
@@ -77,7 +77,7 @@ class AgentChatPaneElement extends GemElement {
       bannerError,
       agent,
       configOptions,
-      composerDisabled,
+      turnPending,
       queue,
     } = this;
     const canChat = Boolean(sessionKey);
@@ -112,7 +112,15 @@ class AgentChatPaneElement extends GemElement {
           class="flex min-h-0 flex-1 flex-col overflow-auto px-4 py-2"
           @scroll=${this.#onMessagesScroll}
         >
-          ${messages.map((msg) => html`<agent-message-bubble .message=${msg}></agent-message-bubble>`)}
+          ${messages.map(
+            (msg) => html`
+                <agent-message-bubble
+                  .message=${msg}
+                  .streamKey=${sessionKey}
+                  ?streaming=${turnPending && (msg.role === 'agent' || (msg.type === 'thought' && msg.pending))}
+                ></agent-message-bubble>
+            `,
+          )}
           <agent-permission-request
             v-if=${permissionRequest}
             class="mb-1 mt-2 block"
@@ -127,7 +135,7 @@ class AgentChatPaneElement extends GemElement {
           <agent-composer
             ${this.#composerRef}
             class="block"
-            ?disabled=${composerDisabled}
+            ?turn-pending=${turnPending}
             .agent=${agent}
             .configOptions=${configOptions}
             .sessionKey=${sessionKey}

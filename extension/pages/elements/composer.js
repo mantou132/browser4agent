@@ -35,7 +35,7 @@ const stopButtonClass =
 
 @customElement('agent-composer')
 class AgentComposerElement extends GemElement {
-  @boolattribute disabled; // prompt in flight
+  @boolattribute turnPending;
   @property agent;
   @property configOptions;
   @property sessionKey;
@@ -337,7 +337,7 @@ class AgentComposerElement extends GemElement {
   @template()
   #content = () => {
     const { input, attachments, editingId } = this.#s;
-    const pending = this.disabled;
+    const pending = this.turnPending;
     const configOptions = this.configOptions || [];
     const codexConfigOptions =
       this.agent === 'codex' ? configOptions.filter((option) => CODEX_COMBINED_CONFIG_IDS.has(option.id)) : [];

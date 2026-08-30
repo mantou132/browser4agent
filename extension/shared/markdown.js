@@ -26,6 +26,15 @@ const firstIndex = (...values) => {
   return indexes.length ? Math.min(...indexes) : undefined;
 };
 
+const hasClosingFence = (raw) => {
+  if (!raw) return true;
+  const [openingLine, ...lines] = raw.split(/\r?\n/);
+  const fence = /^ {0,3}(`{3,}|~{3,})/.exec(openingLine)?.[1];
+  if (!fence) return true;
+  const closingFence = new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[ \\t]*$`);
+  return lines.some((line) => closingFence.test(line));
+};
+
 const blockLatex = {
   name: 'latexBlock',
   level: 'block',
@@ -38,10 +47,11 @@ const blockLatex = {
     const dollar = /^\$\$[ \t]*\n?([\s\S]*?)\n?[ \t]*\$\$(?:[ \t]*(?:\n|$))/.exec(source);
     const bracket = /^\\\[[ \t]*\n?([\s\S]*?)\n?[ \t]*\\\](?:[ \t]*(?:\n|$))/.exec(source);
     const match = dollar || bracket;
-    if (!match?.[1]?.trim()) return;
-    return { type: 'latexBlock', raw: match[0], text: match[1].trim() };
+    if (match) return { type: 'latexBlock', raw: match[0], text: match[1].trim() };
+    if (/^(?:\$\$|\\\[)/.test(source)) return { type: 'latexBlock', raw: source, text: '', pending: true };
   },
-  renderer({ text }) {
+  renderer({ text, pending }) {
+    if (pending) return '';
     return `<gem-bind-latex block tabindex="0">${escapeHtml(text)}</gem-bind-latex>\n`;
   },
 };
@@ -74,12 +84,12 @@ export const createMarkdownExtensions = (defaultMarkdownRenderer) => [
         const titleAttribute = title ? `title="${escapeHtml(title)}"` : '';
         return `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" ${titleAttribute}>${label}</a>`;
       },
-      code({ text, lang }) {
+      code({ text, lang, raw }) {
         const language = resolveCodeLang(lang);
         const source = escapeHtml(text);
         if (language === 'mermaid') return `<gem-bind-mermaid tabindex="0">${source}</gem-bind-mermaid>`;
         if (['latex', 'tex', 'math'].includes(language)) {
-          return `<gem-bind-latex block tabindex="0">${source}</gem-bind-latex>`;
+          return hasClosingFence(raw) ? `<gem-bind-latex block tabindex="0">${source}</gem-bind-latex>` : '';
         }
         return `<dy-code-block ${language ? `codelang="${escapeHtml(language)}"` : ''}>${source}</dy-code-block>`;
       },

@@ -27,14 +27,26 @@ describe('agent markdown renderers', () => {
       '<gem-bind-latex block tabindex="0">\\frac{a}{b}</gem-bind-latex>\n',
     );
     assert.equal(blockLatex.renderer(blockBracket), '<gem-bind-latex block tabindex="0">x^2</gem-bind-latex>\n');
+
+    const pendingBlock = blockLatex.tokenizer('$$\n\\frac{a}{');
+    assert.equal(pendingBlock.pending, true);
+    assert.equal(blockLatex.renderer(pendingBlock), '');
   });
 
   it('routes Mermaid and TeX fences to their custom elements', () => {
-    const mermaid = renderer.code({ lang: 'mermaid', text: 'flowchart LR\nA --> B' });
-    const latex = renderer.code({ lang: 'tex', text: 'x < y' });
+    const mermaid = renderer.code({ lang: 'mermaid', text: 'flowchart LR\nA --> B', raw: '```mermaid\nA --> B\n```' });
+    const latex = renderer.code({ lang: 'tex', text: 'x < y', raw: '```tex\nx < y\n```' });
 
     assert.equal(mermaid, '<gem-bind-mermaid tabindex="0">flowchart LR\nA --&gt; B</gem-bind-mermaid>');
     assert.equal(latex, '<gem-bind-latex block tabindex="0">x &lt; y</gem-bind-latex>');
+  });
+
+  it('renders Mermaid live but defers TeX until its closing fence arrives', () => {
+    assert.equal(
+      renderer.code({ lang: 'mermaid', text: 'flowchart LR', raw: '```mermaid\nflowchart LR' }),
+      '<gem-bind-mermaid tabindex="0">flowchart LR</gem-bind-mermaid>',
+    );
+    assert.equal(renderer.code({ lang: 'tex', text: '\\frac{1}{', raw: '```tex\n\\frac{1}{' }), '');
   });
 
   it('keeps other fenced code on dy-code-block and escapes its source', () => {
