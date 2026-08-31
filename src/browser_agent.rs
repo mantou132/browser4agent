@@ -186,6 +186,31 @@ pub fn register(peer: &Peer) {
         }
     });
 
+    let list_sessions = sessions.clone();
+    peer.handle("agent_session_list", move |params, _ctx| {
+        let sessions = list_sessions.clone();
+        async move {
+            let agent = required_agent(&params, "agent_session_list")?;
+            let cwd = message_cwd(&params);
+            let cursor = params
+                .get("cursor")
+                .and_then(Value::as_str)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+            let timeout_secs = message_timeout_secs(&params);
+            match tokio::time::timeout(
+                Duration::from_secs(timeout_secs),
+                sessions.list_sessions(agent, cwd, cursor),
+            )
+            .await
+            {
+                Ok(Ok(list)) => Ok(list),
+                Ok(Err(err)) => Err(err.to_string()),
+                Err(_) => Err("Timeout listing ACP agent sessions".to_string()),
+            }
+        }
+    });
+
     let delete_sessions = sessions.clone();
     peer.handle("agent_session_delete", move |params, _ctx| {
         let sessions = delete_sessions.clone();

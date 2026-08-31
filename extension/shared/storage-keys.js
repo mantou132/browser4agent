@@ -5,6 +5,7 @@ const keys = {
   toolStates: 'toolStates',
   likedToolsets: 'likedToolsets',
   agentPanelState: 'browser4agent.agentPanelState.v2',
+  relayId: 'browser4agent.relayId.v1',
 };
 
 const values = Object.values(keys);

@@ -14,9 +14,9 @@ use agent_client_protocol::{
         ProtocolVersion,
         v1::{
             CancelNotification, CloseSessionRequest, ContentBlock, ContentChunk,
-            DeleteSessionRequest, ImageContent, InitializeRequest, LoadSessionRequest,
-            NewSessionRequest, NewSessionResponse, PermissionOptionId, PromptRequest,
-            PromptResponse, RequestPermissionOutcome, RequestPermissionRequest,
+            DeleteSessionRequest, ImageContent, InitializeRequest, ListSessionsRequest,
+            LoadSessionRequest, NewSessionRequest, NewSessionResponse, PermissionOptionId,
+            PromptRequest, PromptResponse, RequestPermissionOutcome, RequestPermissionRequest,
             RequestPermissionResponse, ResourceLink, SelectedPermissionOutcome, SessionConfigId,
             SessionConfigValueId, SessionId, SessionModeId, SessionNotification, SessionUpdate,
             SetSessionConfigOptionRequest, SetSessionModeRequest, TextContent,
@@ -751,6 +751,30 @@ impl AgentSessionManager {
         };
         let _ = session.tx.send(SessionCommand::Close).await;
         true
+    }
+
+    /// List sessions persisted by an ACP agent (`session/list`). This does not
+    /// create live actors, so remote clients can discover a session first and
+    /// explicitly load it afterwards.
+    pub async fn list_sessions(
+        &self,
+        agent: &str,
+        cwd: Option<PathBuf>,
+        cursor: Option<String>,
+    ) -> Result<serde_json::Value> {
+        let connection = self.runtime(agent)?.connection().await?;
+        let mut request = ListSessionsRequest::new();
+        if let Some(cwd) = cwd {
+            request = request.cwd(cwd);
+        }
+        if let Some(cursor) = cursor {
+            request = request.cursor(cursor);
+        }
+        let response = connection
+            .send_request_to(Agent, request)
+            .block_task()
+            .await?;
+        Ok(to_json(response))
     }
 
     pub async fn delete_session(&self, agent: &str, session_id: &str) -> Result<()> {

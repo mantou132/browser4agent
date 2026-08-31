@@ -34,6 +34,10 @@
 7. CLI 模式：
   1. `src/cli.rs` 解析 `--tool` / `--input`（或 stdin JSON）
   2. 转发单次工具调用到后台 MCP HTTP 服务 `127.0.0.1:39271/mcp`，打印结果后退出
+8. 远端 Agent 模式：
+  1. `extension/background.js` 在 `chrome.storage.local` 生成并持久化配对 id，通过 `capabilities` 通知发送给 Native Host
+  2. `src/native_host.rs` 收到配对 id 后才让 `src/relay_client.rs` 建立远端连接；debug/test 使用本机 `ws://127.0.0.1:39371/ws`，release 使用 `wss://agent-deck.xianqiao.wang/ws`，客户端在进程内维护 outbox/接收游标并自动重连
+  3. 远端连接使用独立 `Peer` 和 ACP 会话管理器，不会和扩展的请求 id/响应串线
 
 ## 目录职责
 
@@ -75,6 +79,7 @@
 - `src/app_data.rs`：统一解析并创建 `browser4agent` 的跨平台本地应用数据目录；托管 Agent 运行时放在 `agents/`，程序和 ACP 日志放在 `logs/`，安装缓存放在 `npm-cache/`
 - `src/native_messaging.rs`：Native Messaging 基础消息读写
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
+- `src/relay_client.rs`：Native Host 的远端传输；通过 Git `relay` 依赖复用 wire protocol，配对 id 来自扩展的 `capabilities` 通知；debug/test 连接本机 relay，release 连接 `agent-deck.xianqiao.wang`，在进程内维护 outbox/接收游标并自动重连
 - `src/browser_agent.rs`：浏览器侧 agent 请求协议、会话创建、流式事件转发
 - `src/acp_agent.rs`：共享的长生命周期 ACP connection、持续会话 actor、agent 事件转换
 - `src/acp_agent/catalog.rs`：Claude/Codex/Cursor/pi 的展示信息、用户 CLI 名称及 ACP 启动方式声明
@@ -90,6 +95,7 @@
 - `pnpm --dir extension dev`：开发模式
 - `pnpm lint`：格式化 JS/TS/HTML
 - `cargo build --release`：构建 Native Host
+- `cargo test`：运行 Native Host 的 Rust 测试
 
 ## 维护要求
 
