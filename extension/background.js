@@ -5,6 +5,7 @@ import { t } from './shared/i18n.js';
 import { loadToolset } from './shared/loader.js';
 import { ensureAuthToken } from './shared/market-api.js';
 import { RpcPeer } from './shared/rpc.js';
+import { localStorageKeys } from './shared/storage-keys.js';
 import { getToolConfig, persist } from './shared/tool-store.js';
 import { getToolsetId } from './shared/toolsets.js';
 import {
@@ -171,16 +172,41 @@ async function updateHostCompat(version) {
   await chrome.action.setTitle({ title: t('hostIncompatTitle') });
 }
 
-peer.onNotify('connected', (params) => {
-  console.log('Connected to native host:', NATIVE_HOST_NAME);
-  updateHostCompat(params?.version).catch((e) => console.error('Failed to check host compat:', e));
-  // Tell the host what this engine supports so it can hide MCP tools the
-  // browser can't serve. Firefox exposes getBrowserInfo; Chromium doesn't.
+let relayIdPromise;
+
+function ensureRelayId() {
+  if (relayIdPromise) return relayIdPromise;
+  relayIdPromise = (async () => {
+    const key = localStorageKeys.relayId;
+    const stored = (await chrome.storage.local.get(key))[key];
+    if (typeof stored === 'string' && stored) return stored;
+    const relayId = crypto.randomUUID();
+    await chrome.storage.local.set({ [key]: relayId });
+    return relayId;
+  })().catch((error) => {
+    relayIdPromise = undefined;
+    throw error;
+  });
+  return relayIdPromise;
+}
+
+async function reportCapabilities() {
+  // Firefox exposes getBrowserInfo; Chromium doesn't.
   const isFirefox = typeof chrome.runtime.getBrowserInfo === 'function';
+  const relayId = await ensureRelayId();
   peer.notify('capabilities', {
     browser: isFirefox ? 'firefox' : 'chromium',
     debuggerAvailable: !isFirefox,
+    relayId,
   });
+}
+
+peer.onNotify('connected', (params) => {
+  console.log('Connected to native host:', NATIVE_HOST_NAME);
+  updateHostCompat(params?.version).catch((e) => console.error('Failed to check host compat:', e));
+  // Tell the host what this engine supports and provide the stable pairing id
+  // before the host starts its optional relay connection.
+  reportCapabilities().catch((e) => console.error('Failed to report capabilities:', e));
   // A (re)connected host process knows no live sessions; panels must drop
   // their cached state.
   agentSessionOwners.clear();

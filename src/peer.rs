@@ -28,6 +28,7 @@ impl CallCtx {
 
 type Handler =
     Arc<dyn Fn(Value, CallCtx) -> BoxFuture<'static, Result<Value, String>> + Send + Sync>;
+type Writer = Arc<dyn Fn(Value) + Send + Sync>;
 
 struct Pending {
     reply: oneshot::Sender<Result<Value, String>>,
@@ -44,15 +45,42 @@ struct Pending {
 ///
 /// Both sides use the same API: `call` / `notify` to initiate,
 /// `handle` / `on_notify` to serve.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Peer {
     pending: Arc<Mutex<HashMap<String, Pending>>>,
     handlers: Arc<Mutex<HashMap<String, Handler>>>,
     notify_handlers: Arc<Mutex<HashMap<String, Arc<dyn Fn(Value) + Send + Sync>>>>,
     next_id: Arc<Mutex<u64>>,
+    writer: Writer,
+}
+
+impl Default for Peer {
+    fn default() -> Self {
+        Self::new(write_native_message)
+    }
 }
 
 impl Peer {
+    /// Create an RPC peer whose outgoing frames use the supplied transport.
+    /// Each transport must have its own `Peer`, keeping request ids and replies
+    /// isolated even when several clients control the same native host.
+    pub fn new<F>(writer: F) -> Self
+    where
+        F: Fn(&Value) + Send + Sync + 'static,
+    {
+        Self {
+            pending: Arc::default(),
+            handlers: Arc::default(),
+            notify_handlers: Arc::default(),
+            next_id: Arc::default(),
+            writer: Arc::new(move |message| writer(&message)),
+        }
+    }
+
+    fn write(&self, message: Value) {
+        (self.writer)(message);
+    }
+
     /// Call the peer and await its final result.
     pub async fn call(&self, method: &str, params: Value) -> Result<Value> {
         self.call_stream(method, params, None).await
@@ -79,7 +107,7 @@ impl Peer {
             },
         );
 
-        write_native_message(&json!({ "id": id, "method": method, "params": params }));
+        self.write(json!({ "id": id, "method": method, "params": params }));
 
         match rx.await {
             Ok(result) => result.map_err(anyhow::Error::msg),
@@ -89,7 +117,7 @@ impl Peer {
 
     /// Send a fire-and-forget notification to the peer.
     pub fn notify(&self, method: &str, params: Value) {
-        write_native_message(&json!({ "method": method, "params": params }));
+        self.write(json!({ "method": method, "params": params }));
     }
 
     /// Register an async handler for requests from the peer. The handler's
@@ -157,24 +185,24 @@ impl Peer {
             .get(&method)
             .cloned();
         let Some(handler) = handler else {
-            write_native_message(
-                &json!({ "id": id, "error": format!("Unknown method: {method}") }),
-            );
+            self.write(json!({ "id": id, "error": format!("Unknown method: {method}") }));
             return;
         };
 
         let emit_id = id.clone();
+        let event_peer = self.clone();
         let ctx = CallCtx {
             emit: Arc::new(move |event| {
-                write_native_message(&json!({ "id": emit_id, "event": event }));
+                event_peer.write(json!({ "id": emit_id, "event": event }));
             }),
         };
+        let reply_peer = self.clone();
         tokio::spawn(async move {
             let reply = match handler(params, ctx).await {
                 Ok(result) => json!({ "id": id, "result": result }),
                 Err(err) => json!({ "id": id, "error": err }),
             };
-            write_native_message(&reply);
+            reply_peer.write(reply);
         });
     }
 

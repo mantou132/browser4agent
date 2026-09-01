@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use rmcp::transport::streamable_http_server::{
@@ -12,12 +12,16 @@ use crate::{
     mcp_server::{BrowserMcpServer, Capabilities, SharedCapabilities},
     native_messaging::read_native_message,
     peer::Peer,
+    relay_client,
 };
 
 /// Run the native messaging loop on the current thread.
 /// Returns when stdin is closed (browser disconnected).
 async fn native_message_loop(peer: Peer) {
-    peer.notify("connected", serde_json::json!({ "version": env!("CARGO_PKG_VERSION") }));
+    peer.notify(
+        "connected",
+        serde_json::json!({ "version": env!("CARGO_PKG_VERSION") }),
+    );
     logger::info("Connected to browser extension");
 
     loop {
@@ -36,11 +40,32 @@ pub async fn run() -> Result<()> {
     browser_agent::register(&peer);
 
     let caps: SharedCapabilities = Arc::default();
+    let remote_peer: Arc<Mutex<Option<Peer>>> = Arc::default();
     {
         let caps = caps.clone();
+        let remote_peer = remote_peer.clone();
         // The extension reports this right after receiving `connected`.
         peer.on_notify("capabilities", move |params| {
             *caps.lock().expect("lock poisoned") = Capabilities::from_params(&params);
+            let Some(relay_id) = params
+                .get("relayId")
+                .and_then(serde_json::Value::as_str)
+                .filter(|id| !id.is_empty())
+            else {
+                return;
+            };
+
+            // The remote peer owns a separate RPC id space and Agent session
+            // manager. Start it only after the extension supplies its stable
+            // pairing id, and retain it for this process's lifetime.
+            let mut remote_peer = remote_peer.lock().expect("lock poisoned");
+            if remote_peer.is_some() {
+                return;
+            }
+            match relay_client::start(relay_id) {
+                Ok(peer) => *remote_peer = Some(peer),
+                Err(error) => logger::info(&format!("Remote relay disabled: {error:#}")),
+            }
         });
     }
 
