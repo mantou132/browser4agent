@@ -39,11 +39,9 @@ impl ClientHandler for Handler {
         logger::info("Connected to relay WebSocket");
     }
 
-    fn on_disconnected(&self, error: Option<String>) {
-        match error {
-            Some(error) => logger::info(&format!("Relay WebSocket error: {error}")),
-            None => logger::info("Relay WebSocket disconnected"),
-        }
+    fn on_disconnected(&self, _error: Option<String>) {
+        // Relay client reconnects indefinitely in the background; do not log
+        // disconnects or connection errors to avoid flooding logs or disk.
     }
 
     fn on_conflict(&self) {

@@ -174,7 +174,9 @@ export async function executeScript(tabId, funcStr, args) {
         if (nonce) script.setAttribute('nonce', nonce);
         script.onerror = reject;
         try {
-          script.textContent = window.__firstPolicy.createScript(blobContent);
+          const content = window.__firstPolicy.createScript(blobContent);
+          if (content.toString() !== blobContent) throw new Error('invalid policy');
+          script.textContent = content;
         } catch {
           script.textContent = window.__browser4agentPolicy.createScript(blobContent);
         }
