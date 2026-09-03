@@ -78,13 +78,13 @@ struct AcpRuntime {
     agent: String,
     candidate: AgentCandidate,
     state: Arc<Mutex<RuntimeState>>,
-    resolver: Option<PermissionResolver>,
+    session_resolvers: Arc<Mutex<HashMap<String, PermissionResolver>>>,
     permission_cancels: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
     disconnects: watch::Sender<u64>,
 }
 
 impl AcpRuntime {
-    fn new(candidate: AgentCandidate, resolver: Option<PermissionResolver>) -> Self {
+    fn new(candidate: AgentCandidate) -> Self {
         let (disconnects, _) = watch::channel(0);
         Self {
             agent: candidate.id.to_string(),
@@ -95,7 +95,7 @@ impl AcpRuntime {
                 generation: 0,
                 waiters: Vec::new(),
             })),
-            resolver,
+            session_resolvers: Arc::new(Mutex::new(HashMap::new())),
             permission_cancels: Arc::new(Mutex::new(HashMap::new())),
             disconnects,
         }
@@ -154,7 +154,7 @@ impl AcpRuntime {
         // spawned subprocess.
         let acp_agent =
             AcpAgent::from_args(command).context("failed to configure ACP agent command")?;
-        let resolver = self.resolver.clone();
+        let session_resolvers = self.session_resolvers.clone();
         let permission_cancels = self.permission_cancels.clone();
         let runtime = self.clone();
         let agent_id = self.agent.clone();
@@ -164,7 +164,7 @@ impl AcpRuntime {
             .name("browser4agent")
             .on_receive_request(
                 async move |request: RequestPermissionRequest, responder, connection| {
-                    let resolver = resolver.clone();
+                    let session_resolvers = session_resolvers.clone();
                     let permission_cancels = permission_cancels.clone();
                     let agent_id = agent_id.clone();
                     connection.spawn(async move {
@@ -175,6 +175,7 @@ impl AcpRuntime {
                             "toolCall": to_json(request.tool_call),
                             "options": to_json(request.options),
                         });
+                        let resolver = session_resolvers.lock().await.get(&session_id).cloned();
                         let cancel = permission_cancels.lock().await.get(&session_id).cloned();
                         let resolution = match (resolver, cancel) {
                             (Some(resolver), Some(cancel)) => {
@@ -323,8 +324,20 @@ impl AcpRuntime {
         ))
     }
 
+    async fn set_session_resolver(&self, session_id: &str, resolver: PermissionResolver) {
+        self.session_resolvers
+            .lock()
+            .await
+            .insert(session_id.to_string(), resolver);
+    }
+
+    async fn clear_session_resolver(&self, session_id: &str) {
+        self.session_resolvers.lock().await.remove(session_id);
+    }
+
     async fn unregister_session(&self, session_id: &str) {
         self.permission_cancels.lock().await.remove(session_id);
+        self.session_resolvers.lock().await.remove(session_id);
     }
 }
 
@@ -398,8 +411,6 @@ pub type SessionEndCallback = Arc<dyn Fn(&str, &str) + Send + Sync>;
 pub struct AgentSessionManager {
     sessions: Arc<Mutex<HashMap<AgentSessionKey, AgentSession>>>,
     runtimes: Arc<HashMap<String, AcpRuntime>>,
-    /// Invoked with the agent and session id whenever a session actor exits,
-    /// whether closed on purpose, cancelled, or died with the subprocess.
     on_end: Option<SessionEndCallback>,
 }
 
@@ -437,6 +448,7 @@ enum SessionCommand {
         prompt: String,
         attachments: Vec<Attachment>,
         event_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
+        permission_resolver: Option<PermissionResolver>,
         reply: oneshot::Sender<Result<String, String>>,
     },
     Cancel,
@@ -453,14 +465,15 @@ enum SessionCommand {
 }
 
 impl AgentSessionManager {
-    pub fn new(on_end: Option<SessionEndCallback>, resolver: Option<PermissionResolver>) -> Self {
+    pub fn new(on_end: Option<SessionEndCallback>) -> Self {
         let runtimes = agent_candidates()
             .into_iter()
             .map(|candidate| {
                 let agent = candidate.id.to_string();
-                (agent.clone(), AcpRuntime::new(candidate, resolver.clone()))
+                (agent.clone(), AcpRuntime::new(candidate))
             })
             .collect();
+
         Self {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             runtimes: Arc::new(runtimes),
@@ -572,6 +585,7 @@ impl AgentSessionManager {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn prompt(
         &self,
         agent: &str,
@@ -580,6 +594,7 @@ impl AgentSessionManager {
         attachments: Vec<Attachment>,
         timeout_secs: u64,
         event_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
+        permission_resolver: Option<PermissionResolver>,
     ) -> Result<String> {
         let session = self.session(agent, session_id).await?;
         if session.busy.swap(true, Ordering::AcqRel) {
@@ -616,6 +631,7 @@ impl AgentSessionManager {
                 prompt,
                 attachments,
                 event_tx: turn_event_tx,
+                permission_resolver,
                 reply: reply_tx,
             })
             .await
@@ -842,9 +858,13 @@ async fn run_session_actor_inner(
                     prompt,
                     attachments,
                     event_tx,
+                    permission_resolver,
                     reply,
                 } => {
-                    match run_prompt_turn(
+                    if let Some(resolver) = permission_resolver {
+                        runtime.set_session_resolver(&session_id, resolver).await;
+                    }
+                    let turn_result = run_prompt_turn(
                         &mut session,
                         prompt,
                         attachments,
@@ -852,8 +872,9 @@ async fn run_session_actor_inner(
                         &cancel_flag,
                         Some(&mut rx),
                     )
-                    .await
-                    {
+                    .await;
+                    runtime.clear_session_resolver(&session_id).await;
+                    match turn_result {
                         Ok((answer, new_deferred)) => {
                             let _ = reply.send(Ok(answer));
                             deferred.extend(new_deferred);

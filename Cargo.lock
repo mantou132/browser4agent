@@ -1934,7 +1934,7 @@ dependencies = [
 [[package]]
 name = "relay-client"
 version = "0.1.0"
-source = "git+https://github.com/mantou132/relay.git#77f14055853b1620e7fafad099629bd8a8a5e157"
+source = "git+https://github.com/mantou132/relay.git#62dc2c292303993e687940039fc637158ebc0839"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1943,6 +1943,8 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-tungstenite",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]

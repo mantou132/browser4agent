@@ -1,6 +1,6 @@
 mod acp_agent;
+mod agent_rpc;
 mod app_data;
-mod browser_agent;
 mod cli;
 mod constant;
 mod logger;

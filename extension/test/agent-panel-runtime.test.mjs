@@ -188,20 +188,29 @@ describe('agent panel runtime', () => {
     const runtime = createSessionRuntime(state);
     let resolveFirstLoad;
     let loadCount = 0;
+    let onFirstLoadStarted;
+    const firstLoadStarted = new Promise((resolve) => {
+      onFirstLoadStarted = resolve;
+    });
     const controller = createSessionController({
       state,
       runtime,
       turns: noopTurns,
       api: {
+        closeSession: async () => true,
         loadSession: () => {
           loadCount += 1;
-          if (loadCount === 1) return new Promise((resolve) => (resolveFirstLoad = resolve));
+          if (loadCount === 1) {
+            onFirstLoadStarted();
+            return new Promise((resolve) => (resolveFirstLoad = resolve));
+          }
           return Promise.resolve({ configOptions: [{ id: 'model' }] });
         },
       },
     });
 
     const staleLoad = controller.openSession(key);
+    await firstLoadStarted;
     controller.handleHostReconnect();
     resolveFirstLoad({ configOptions: [{ id: 'stale' }] });
     await staleLoad;
@@ -212,6 +221,55 @@ describe('agent panel runtime', () => {
     await controller.openSession(key);
     assert.equal(loadCount, 2);
     assert.equal(state.sessionKey, key);
+    assert.deepEqual(state.configOptions, [{ id: 'model' }]);
+  });
+
+  it('stays on the selected session and records the error when loadSession fails', async () => {
+    const previousKey = agentSessionKey('codex', 'prev');
+    const targetKey = agentSessionKey('codex', 'target');
+    const sessions = [
+      { key: previousKey, agent: 'codex', sessionId: 'prev' },
+      { key: targetKey, agent: 'codex', sessionId: 'target' },
+    ];
+    const state = createPanelState({ sessions, sessionKey: previousKey });
+    const runtime = createSessionRuntime(state);
+    runtime.setCachedPane(previousKey, {
+      messages: [{ role: 'agent', text: 'Previous' }],
+      configOptions: [],
+      cwd: '/prev',
+      queue: [],
+    });
+    let loadShouldFail = true;
+    let loadAttempts = 0;
+    const controller = createSessionController({
+      state,
+      runtime,
+      turns: noopTurns,
+      api: {
+        closeSession: async () => true,
+        loadSession: () => {
+          loadAttempts += 1;
+          if (loadShouldFail) return Promise.reject(new Error('Session not found'));
+          return Promise.resolve({ configOptions: [{ id: 'model' }] });
+        },
+      },
+    });
+
+    await controller.openSession(targetKey);
+
+    assert.equal(state.sessionKey, targetKey);
+    assert.equal(state.sessionErrors[targetKey], 'Session not found');
+    assert.equal(state.loadingIds.includes(targetKey), false);
+    assert.equal(runtime.hasCachedPane(targetKey), false);
+
+    // Clicking target session again retries loading
+    loadShouldFail = false;
+    await controller.openSession(targetKey);
+
+    assert.equal(loadAttempts, 2);
+    assert.equal(state.sessionKey, targetKey);
+    assert.equal(state.sessionErrors[targetKey], undefined);
+    assert.equal(runtime.hasCachedPane(targetKey), true);
     assert.deepEqual(state.configOptions, [{ id: 'model' }]);
   });
 
@@ -253,6 +311,51 @@ describe('agent panel runtime', () => {
     assert.deepEqual(
       state.sessions.map((session) => session.key),
       [previousKey, nextKey],
+    );
+  });
+
+  it('removes the session locally and activates fallback even if agent deleteSession fails', async () => {
+    const previousKey = agentSessionKey('codex', 'previous');
+    const currentKey = agentSessionKey('codex', 'current');
+    const sessions = [
+      { key: previousKey, agent: 'codex', sessionId: 'previous' },
+      { key: currentKey, agent: 'codex', sessionId: 'current' },
+    ];
+    storage[localStorageKeys.agentPanelState] = {
+      sessions,
+      defaults: { agent: 'codex', configOptionsByAgent: {} },
+    };
+    const state = createPanelState({
+      sessions,
+      sessionKey: currentKey,
+      sessionErrors: { [currentKey]: 'session is archived' },
+    });
+    const runtime = createSessionRuntime(state);
+    runtime.setCachedPane(previousKey, {
+      messages: [{ role: 'agent', text: 'Previous session' }],
+      configOptions: [],
+      cwd: '/previous',
+      queue: [],
+    });
+    const controller = createSessionController({
+      state,
+      runtime,
+      turns: noopTurns,
+      api: {
+        closeSession: async () => true,
+        deleteSession: () => Promise.reject(new Error('session is archived')),
+      },
+    });
+
+    await controller.deleteSession(currentKey);
+
+    assert.equal(state.sessionKey, previousKey);
+    assert.equal(state.error, '');
+    assert.equal(state.sessionErrors[currentKey], undefined);
+    assert.equal(state.sessionErrors[previousKey], undefined);
+    assert.deepEqual(
+      state.sessions.map((session) => session.key),
+      [previousKey],
     );
   });
 

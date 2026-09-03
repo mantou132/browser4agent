@@ -124,7 +124,6 @@ export function createSessionController({ state, runtime, turns, api }) {
     if (!sessionKey) return;
     const isCurrent = sessionKey === state.sessionKey;
     if (isCurrent && (runtime.hasCachedPane(sessionKey) || pendingLoads.has(sessionKey))) return;
-    const previous = isCurrent ? null : state.sessionKey;
     if (!isCurrent) runtime.snapshotCurrent();
     const selected = runtime.record(sessionKey);
     if (!selected) return;
@@ -148,6 +147,7 @@ export function createSessionController({ state, runtime, turns, api }) {
     const record = { alive: true };
     pendingLoads.set(sessionKey, record);
     try {
+      await api.closeSession(selected.sessionId, { agent: selected.agent, timeoutSeconds: 3 }).catch(() => {});
       const { configOptions, title, updatedAt } = await api.loadSession(selected.sessionId, {
         agent: selected.agent,
         cwd: selected.cwd,
@@ -182,9 +182,7 @@ export function createSessionController({ state, runtime, turns, api }) {
     } catch (e) {
       if (!record.alive) return;
       runtime.setError(sessionKey, e.message);
-      if (state.sessionKey !== sessionKey) return;
-      const fallback = previous ? runtime.getCachedPane(previous) : null;
-      if (fallback) runtime.showPane(previous, fallback);
+      runtime.deletePane(sessionKey);
     } finally {
       if (pendingLoads.get(sessionKey) === record) {
         pendingLoads.delete(sessionKey);
@@ -215,28 +213,34 @@ export function createSessionController({ state, runtime, turns, api }) {
         : null;
     const previousSessions = state.sessions;
     const previousDraft = state.draftSession;
-    state({
-      deleting: sessionKey,
-      sessions: previousSessions.filter((session) => session.key !== sessionKey),
-      ...(isDraft && { draftSession: null }),
-      ...(isCurrent && {
-        sessionKey: null,
-        messages: [],
-        configOptions: [],
-        queue: [],
-        cwd: '',
-      }),
-    });
-    if (fallbackKey) void openSession(fallbackKey);
+    state({ deleting: sessionKey });
     try {
-      if (!isDraft && (isCurrent || loadRecord || runtime.hasCachedPane(sessionKey)))
-        await api.closeSession(selected.sessionId, { agent: selected.agent }).catch(() => {});
+      if (!isDraft && (isCurrent || loadRecord || runtime.hasCachedPane(sessionKey))) {
+        await api.closeSession(selected.sessionId, { agent: selected.agent, timeoutSeconds: 3 }).catch(() => {});
+      }
       if (!isDraft) {
-        await api.deleteSession(selected.sessionId, { agent: selected.agent });
+        await api.deleteSession(selected.sessionId, { agent: selected.agent, timeoutSeconds: 5 }).catch(() => {});
         await runtime.removeRecord(sessionKey);
+      }
+      if (isDraft) {
+        state({ draftSession: null });
       }
       runtime.deletePane(sessionKey);
       runtime.clearError(sessionKey);
+      if (isCurrent) {
+        if (fallbackKey) {
+          await openSession(fallbackKey);
+        } else {
+          state({
+            sessionKey: null,
+            messages: [],
+            configOptions: [],
+            queue: [],
+            cwd: '',
+            error: '',
+          });
+        }
+      }
     } catch (e) {
       state({ sessions: previousSessions, draftSession: previousDraft, error: e.message });
       return;

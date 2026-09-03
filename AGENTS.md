@@ -29,15 +29,15 @@
  2. `extension/background.js` 里的 `agent-rpc` 端口桥把面板的 `agent_*` 请求透传给 Native Host，并原样转发流事件和最终响应
  3. `src/native_messaging.rs` 负责 Native Messaging 基础读写
  4. `src/peer.rs` 负责与扩展的双工 RPC 协议（请求/响应、流事件、通知），两端 API 对称
- 5. `src/browser_agent.rs` 负责浏览器 agent 协议消息、流式事件转发
+ 5. `src/agent_rpc.rs` 提供 `AgentService` 统一承载 Agent 业务逻辑与会话管理，将 RPC 接口挂载到各端连接
   6. `src/acp_agent.rs` 负责 ACP connection 和会话管理，`src/acp_agent/catalog.rs` 声明受支持 Agent，`src/acp_agent/provision.rs` 负责用户 CLI 探测及托管运行时准备；Claude/Codex/pi 的适配器与备用 CLI、Cursor 的原生 ACP 二进制自动安装到应用数据目录，优先使用用户 PATH 中可用的 CLI；Native Host 为用户选择的 Claude/Codex/Cursor/pi 分别复用可重连的长生命周期 ACP connection，每个 ACP session 仍由独立 actor 串行处理
 7. CLI 模式：
   1. `src/cli.rs` 解析 `--tool` / `--input`（或 stdin JSON）
   2. 转发单次工具调用到后台 MCP HTTP 服务 `127.0.0.1:39271/mcp`，打印结果后退出
 8. 远端 Agent 模式：
   1. `extension/background.js` 在 `chrome.storage.local` 生成并持久化配对 id，通过 `capabilities` 通知发送给 Native Host
-  2. `src/native_host.rs` 收到配对 id 后才让 `src/relay_client.rs` 建立远端连接；debug/test 使用本机 `ws://127.0.0.1:39371/ws`，release 使用 `wss://agent-deck.xianqiao.wang/ws`，客户端在进程内维护 outbox/接收游标并自动重连
-  3. 远端连接使用独立 `Peer` 和 ACP 会话管理器，不会和扩展的请求 id/响应串线
+  2. `src/native_host.rs` 收到配对 id 后让 `src/relay_client.rs` 启动 `RemotePeerManager`；debug/test 使用本机 `ws://127.0.0.1:39371/ws`，release 使用 `wss://agent-deck.xianqiao.wang/ws`，客户端在进程内维护 outbox/接收游标并自动重连
+  3. 多移动端通过 `peer_attach` 获取自增 `peerId`（如 Phone A 为 1、Phone B 为 2），`RemotePeerManager` 为每个设备维护独立的 `Peer` 并接入 `AgentService`，消息与权限确认携带 `peerId` 并在各端过滤，互不串线
 
 ## 目录职责
 
@@ -79,8 +79,8 @@
 - `src/app_data.rs`：统一解析并创建 `browser4agent` 的跨平台本地应用数据目录；托管 Agent 运行时放在 `agents/`，程序和 ACP 日志放在 `logs/`，安装缓存放在 `npm-cache/`
 - `src/native_messaging.rs`：Native Messaging 基础消息读写
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
-- `src/relay_client.rs`：Native Host 的远端传输；通过 Git `relay-client` 依赖接入公共客户端，配对 id 来自扩展的 `capabilities` 通知；debug/test 连接本机 relay，release 连接 `agent-deck.xianqiao.wang`，由共享客户端维护 outbox/接收游标并自动重连
-- `src/browser_agent.rs`：浏览器侧 agent 请求协议、会话创建、流式事件转发
+- `src/relay_client.rs`：Native Host 远端传输与 `RemotePeerManager`；通过 `peerId` 多路复用手机 A/B 等多设备，统一接入 `AgentService`
+- `src/agent_rpc.rs`：`AgentService` 业务服务层，负责会话创建、加载与关闭、流式事件转发与端点权限绑定
 - `src/acp_agent.rs`：共享的长生命周期 ACP connection、持续会话 actor、agent 事件转换
 - `src/acp_agent/catalog.rs`：Claude/Codex/Cursor/pi 的展示信息、用户 CLI 名称及 ACP 启动方式声明
 - `src/acp_agent/provision.rs`：跨平台用户 CLI 探测、数据目录内 npm 适配器/备用 CLI 与 ACP Registry 二进制自动安装、启动命令准备

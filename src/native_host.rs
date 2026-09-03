@@ -6,7 +6,7 @@ use rmcp::transport::streamable_http_server::{
 };
 
 use crate::{
-    browser_agent,
+    agent_rpc::AgentService,
     constant::{BIND_ADDRESS, MCP_PATH},
     logger,
     mcp_server::{BrowserMcpServer, Capabilities, SharedCapabilities},
@@ -36,14 +36,16 @@ async fn native_message_loop(peer: Peer) {
 }
 
 pub async fn run() -> Result<()> {
+    let service = Arc::new(AgentService::new());
     let peer = Peer::default();
-    browser_agent::register(&peer);
+    service.attach(&peer);
 
     let caps: SharedCapabilities = Arc::default();
-    let remote_peer: Arc<Mutex<Option<Peer>>> = Arc::default();
+    let remote_manager: Arc<Mutex<Option<Arc<relay_client::RemotePeerManager>>>> = Arc::default();
     {
         let caps = caps.clone();
-        let remote_peer = remote_peer.clone();
+        let remote_manager = remote_manager.clone();
+        let service = service.clone();
         // The extension reports this right after receiving `connected`.
         peer.on_notify("capabilities", move |params| {
             *caps.lock().expect("lock poisoned") = Capabilities::from_params(&params);
@@ -55,15 +57,15 @@ pub async fn run() -> Result<()> {
                 return;
             };
 
-            // The remote peer owns a separate RPC id space and Agent session
-            // manager. Start it only after the extension supplies its stable
-            // pairing id, and retain it for this process's lifetime.
-            let mut remote_peer = remote_peer.lock().expect("lock poisoned");
-            if remote_peer.is_some() {
+            // The remote peer manager owns independent RPC id spaces for each connected
+            // device while sharing the central Agent service. Start it only after the
+            // extension supplies its stable pairing id, and retain it for this process's lifetime.
+            let mut remote_manager = remote_manager.lock().expect("lock poisoned");
+            if remote_manager.is_some() {
                 return;
             }
-            match relay_client::start(relay_id) {
-                Ok(peer) => *remote_peer = Some(peer),
+            match relay_client::start(relay_id, &service) {
+                Ok(manager) => *remote_manager = Some(manager),
                 Err(error) => logger::info(&format!("Remote relay disabled: {error:#}")),
             }
         });

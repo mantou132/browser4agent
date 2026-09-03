@@ -198,6 +198,7 @@ export function createSessionRuntime(state) {
 
   const snapshotCurrent = () => {
     if (!state.sessionKey) return;
+    if (!paneCache.has(state.sessionKey) && !state.loadingIds.includes(state.sessionKey)) return;
     paneCache.set(state.sessionKey, {
       messages: completeThought(state.messages),
       configOptions: state.configOptions,
