@@ -56,7 +56,7 @@ pub struct Peer {
 
 impl Default for Peer {
     fn default() -> Self {
-        Self::new(write_native_message)
+        Self::new(|message| write_native_message(&message))
     }
 }
 
@@ -66,14 +66,14 @@ impl Peer {
     /// isolated even when several clients control the same native host.
     pub fn new<F>(writer: F) -> Self
     where
-        F: Fn(&Value) + Send + Sync + 'static,
+        F: Fn(Value) + Send + Sync + 'static,
     {
         Self {
             pending: Arc::default(),
             handlers: Arc::default(),
             notify_handlers: Arc::default(),
             next_id: Arc::default(),
-            writer: Arc::new(move |message| writer(&message)),
+            writer: Arc::new(writer),
         }
     }
 
