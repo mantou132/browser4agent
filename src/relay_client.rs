@@ -204,8 +204,9 @@ pub fn start(relay_id: &str, service: &AgentService) -> Result<Arc<RemotePeerMan
 
     let manager = Arc::new(RemotePeerManager::new(service.clone(), outbound_tx));
 
-    let client = Client::new(
+    let client = Client::new_with_ack_head(
         endpoint_url(relay_id),
+        true,
         store,
         Arc::new(Handler {
             manager: manager.clone(),
