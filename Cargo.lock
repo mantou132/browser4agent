@@ -1934,7 +1934,7 @@ dependencies = [
 [[package]]
 name = "relay-client"
 version = "0.1.0"
-source = "git+https://github.com/mantou132/relay.git#5453916621c5282a8bb33afefed8edcc8fd7fff3"
+source = "git+https://github.com/mantou132/relay.git#77da7db95f233677a708878b24a87f5d9ec6082f"
 dependencies = [
  "anyhow",
  "async-trait",

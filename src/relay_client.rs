@@ -51,8 +51,9 @@ fn save_persisted_peers(map: &HashMap<String, u64>) {
 /// Allocates auto-increment `peerId` to connected devices and tags/filters messages.
 pub struct RemotePeerManager {
     service: AgentService,
-    outbound_tx: tokio::sync::mpsc::UnboundedSender<Value>,
+    outbound_tx: tokio::sync::mpsc::UnboundedSender<(Value, Option<String>)>,
     device_to_peer_id: Arc<Mutex<HashMap<String, u64>>>,
+    peer_to_device_id: Arc<Mutex<HashMap<u64, String>>>,
     peers: Arc<Mutex<HashMap<u64, Peer>>>,
     next_peer_id: Arc<AtomicU64>,
 }
@@ -60,14 +61,19 @@ pub struct RemotePeerManager {
 impl RemotePeerManager {
     pub fn new(
         service: AgentService,
-        outbound_tx: tokio::sync::mpsc::UnboundedSender<Value>,
+        outbound_tx: tokio::sync::mpsc::UnboundedSender<(Value, Option<String>)>,
     ) -> Self {
         let initial_dev_map = load_persisted_peers();
         let max_id = initial_dev_map.values().copied().max().unwrap_or(0);
+        let mut initial_peer_map = HashMap::new();
+        for (dev, &peer_id) in &initial_dev_map {
+            initial_peer_map.insert(peer_id, dev.clone());
+        }
         Self {
             service,
             outbound_tx,
             device_to_peer_id: Arc::new(Mutex::new(initial_dev_map)),
+            peer_to_device_id: Arc::new(Mutex::new(initial_peer_map)),
             peers: Arc::default(),
             next_peer_id: Arc::new(AtomicU64::new(max_id + 1)),
         }
@@ -80,11 +86,16 @@ impl RemotePeerManager {
         }
 
         let outbound_tx = self.outbound_tx.clone();
+        let peer_to_device_id = self.peer_to_device_id.clone();
         let peer = Peer::new(move |mut message| {
             if let Value::Object(ref mut map) = message {
                 map.insert("peerId".to_string(), json!(peer_id));
             }
-            if outbound_tx.send(message).is_err() {
+            let target_device_id = peer_to_device_id
+                .lock()
+                .ok()
+                .and_then(|map| map.get(&peer_id).cloned());
+            if outbound_tx.send((message, target_device_id)).is_err() {
                 logger::info(&format!(
                     "Relay client stopped; peer {peer_id} message dropped"
                 ));
@@ -114,6 +125,9 @@ impl RemotePeerManager {
         };
         if !device_id.is_empty() {
             dev_map.insert(device_id.to_string(), assigned);
+            if let Ok(mut peer_to_dev) = self.peer_to_device_id.lock() {
+                peer_to_dev.insert(assigned, device_id.to_string());
+            }
             save_persisted_peers(&dev_map);
         }
         assigned
@@ -158,7 +172,12 @@ impl RemotePeerManager {
                 "params": { "peerId": peer_id, "deviceId": device_id }
             }),
         };
-        let _ = self.outbound_tx.send(response);
+        let target = if device_id.is_empty() {
+            None
+        } else {
+            Some(device_id)
+        };
+        let _ = self.outbound_tx.send((response, target));
     }
 }
 
@@ -176,10 +195,13 @@ impl ClientHandler for Handler {
 
     fn on_connected(&self) {
         logger::info("Connected to relay WebSocket");
-        let _ = self.manager.outbound_tx.send(json!({
-            "method": "host_reconnected",
-            "params": {}
-        }));
+        let _ = self.manager.outbound_tx.send((
+            json!({
+                "method": "host_reconnected",
+                "params": {}
+            }),
+            None,
+        ));
     }
 
     fn on_disconnected(&self, _error: Option<String>) {
@@ -200,7 +222,8 @@ pub fn start(relay_id: &str, service: &AgentService) -> Result<Arc<RemotePeerMan
 
     // `Peer`'s writer is a sync callback on arbitrary threads; bridge it to
     // the async client through an unbounded channel drained by a dedicated task.
-    let (outbound_tx, mut outbound_rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
+    let (outbound_tx, mut outbound_rx) =
+        tokio::sync::mpsc::unbounded_channel::<(Value, Option<String>)>();
 
     let manager = Arc::new(RemotePeerManager::new(service.clone(), outbound_tx));
 
@@ -215,8 +238,8 @@ pub fn start(relay_id: &str, service: &AgentService) -> Result<Arc<RemotePeerMan
 
     let send_client = client.clone();
     tokio::spawn(async move {
-        while let Some(payload) = outbound_rx.recv().await {
-            if let Err(error) = send_client.send(payload).await {
+        while let Some((payload, target_device_id)) = outbound_rx.recv().await {
+            if let Err(error) = send_client.send_targeted(payload, target_device_id).await {
                 logger::info(&format!("Failed to queue relay message: {error:#}"));
             }
         }
@@ -266,7 +289,8 @@ mod tests {
 
     #[tokio::test]
     async fn remote_peer_manager_demultiplexes_multiple_devices() {
-        let (outbound_tx, mut outbound_rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
+        let (outbound_tx, mut outbound_rx) =
+            tokio::sync::mpsc::unbounded_channel::<(Value, Option<String>)>();
         let service = AgentService::new();
         let manager = Arc::new(RemotePeerManager::new(service, outbound_tx));
 
@@ -279,7 +303,8 @@ mod tests {
             }))
             .await;
 
-        let res_a = outbound_rx.recv().await.expect("Phone A response");
+        let (res_a, target_a) = outbound_rx.recv().await.expect("Phone A response");
+        assert_eq!(target_a, Some("device-phone-a".to_string()));
         assert_eq!(res_a.get("peerId").and_then(Value::as_u64), Some(1));
         assert_eq!(
             res_a
@@ -298,7 +323,8 @@ mod tests {
             }))
             .await;
 
-        let res_b = outbound_rx.recv().await.expect("Phone B response");
+        let (res_b, target_b) = outbound_rx.recv().await.expect("Phone B response");
+        assert_eq!(target_b, Some("device-phone-b".to_string()));
         assert_eq!(res_b.get("peerId").and_then(Value::as_u64), Some(2));
         assert_eq!(
             res_b
@@ -318,7 +344,8 @@ mod tests {
             }))
             .await;
 
-        let res_agents = outbound_rx.recv().await.expect("Phone A agent_list");
+        let (res_agents, target_agents) = outbound_rx.recv().await.expect("Phone A agent_list");
+        assert_eq!(target_agents, Some("device-phone-a".to_string()));
         assert_eq!(res_agents.get("peerId").and_then(Value::as_u64), Some(1));
         assert_eq!(res_agents.get("id").and_then(Value::as_str), Some("req-a2"));
         assert!(res_agents.get("result").is_some());
