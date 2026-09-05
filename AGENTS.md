@@ -81,7 +81,8 @@
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
 - `src/relay_client.rs`：Native Host 远端传输与 `RemotePeerManager`；通过 `peerId` 多路复用手机 A/B 等多设备，统一接入 `AgentService`
 - `src/agent_rpc.rs`：`AgentService` 业务服务层，负责会话创建、加载与关闭、流式事件转发与端点权限绑定
-- `src/acp_agent.rs`：共享的长生命周期 ACP connection、持续会话 actor、agent 事件转换
+- `src/acp_agent.rs`：共享的长生命周期 ACP connection、持续会话 actor、agent 事件转换；close 通过独立取消信号打断 actor，等待权限与本地会话清理后返回，远端 close 最多等待 5 秒；ACP 输入关闭会结束连接流程并使旧 actor 退出
+- `src/acp_agent/lifecycle_tests.rs`：真实 manager/actor/ACP SDK 与内存 mock ACP 的生命周期回归测试，覆盖 close/load、关闭卡住、并发调用与断线恢复
 - `src/acp_agent/catalog.rs`：Claude/Codex/Cursor/pi 的展示信息、用户 CLI 名称及 ACP 启动方式声明
 - `src/acp_agent/provision.rs`：跨平台用户 CLI 探测、数据目录内 npm 适配器/备用 CLI 与 ACP Registry 二进制自动安装、启动命令准备
 - `src/logger.rs`：写入应用数据目录 `logs/browser4agent.log` 的 Native Host 日志

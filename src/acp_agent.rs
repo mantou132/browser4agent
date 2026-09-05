@@ -1,6 +1,5 @@
 use std::{
     collections::{HashMap, VecDeque},
-    future,
     path::PathBuf,
     sync::{
         Arc,
@@ -27,11 +26,15 @@ use agent_client_protocol::{
 use anyhow::{Context, Result};
 use serde::Serialize;
 use tokio::sync::{Mutex, mpsc, oneshot, watch};
+use tokio_util::sync::CancellationToken;
 
 use crate::{logger, peer::BoxFuture};
 
 mod catalog;
 mod provision;
+
+#[cfg(test)]
+mod lifecycle_tests;
 
 pub use catalog::available_agents;
 use catalog::{AgentCandidate, agent_candidates};
@@ -154,6 +157,14 @@ impl AcpRuntime {
         // spawned subprocess.
         let acp_agent =
             AcpAgent::from_args(command).context("failed to configure ACP agent command")?;
+        self.connect_agent(generation, acp_agent).await
+    }
+
+    async fn connect_agent(
+        &self,
+        generation: u64,
+        agent: impl agent_client_protocol::ConnectTo<Client>,
+    ) -> Result<()> {
         let session_resolvers = self.session_resolvers.clone();
         let permission_cancels = self.permission_cancels.clone();
         let runtime = self.clone();
@@ -189,8 +200,8 @@ impl AcpRuntime {
                                     }
                                 }
                             }
-                            (Some(resolver), None) => resolver(payload).await,
-                            (None, _) => None,
+                            // Missing live-session cancellation state means the request is stale.
+                            _ => None,
                         };
                         match resolution {
                             Some(option_id) => responder.respond(RequestPermissionResponse::new(
@@ -206,7 +217,7 @@ impl AcpRuntime {
                 },
                 agent_client_protocol::on_receive_request!(),
             )
-            .connect_with(acp_agent, |connection: ConnectionTo<Agent>| async move {
+            .connect_with(agent, |connection: ConnectionTo<Agent>| async move {
                 let response = connection
                     .send_request(InitializeRequest::new(ProtocolVersion::V1))
                     .block_task()
@@ -215,8 +226,14 @@ impl AcpRuntime {
                     "ACP agent capabilities: {:?}",
                     response.agent_capabilities
                 ));
-                runtime.connection_ready(generation, connection).await;
-                future::pending::<Result<(), agent_client_protocol::Error>>().await
+                runtime
+                    .connection_ready(generation, connection.clone())
+                    .await;
+                // The SDK can keep a connect_with foreground task alive after EOF.
+                // End ours explicitly so the runtime discards the dead connection.
+                connection.incoming_closed().await;
+                Err(agent_client_protocol::Error::internal_error()
+                    .data("ACP agent connection closed"))
             })
             .await
             .context("ACP agent connection failed")
@@ -418,6 +435,15 @@ pub struct AgentSessionManager {
 struct AgentSession {
     tx: mpsc::Sender<SessionCommand>,
     busy: Arc<AtomicBool>,
+    closing: CancellationToken,
+    stopped: watch::Receiver<bool>,
+}
+
+impl AgentSession {
+    async fn wait_closed(&self) {
+        let mut stopped = self.stopped.clone();
+        let _ = stopped.wait_for(|stopped| *stopped).await;
+    }
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -461,7 +487,6 @@ enum SessionCommand {
         value: String,
         reply: oneshot::Sender<Result<serde_json::Value, String>>,
     },
-    Close,
 }
 
 impl AgentSessionManager {
@@ -510,6 +535,14 @@ impl AgentSessionManager {
         system_prompt: Option<String>,
         replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     ) -> Result<SessionReady> {
+        let key = AgentSessionKey::new(agent, session_id);
+        let previous = self.sessions.lock().await.get(&key).cloned();
+        if let Some(previous) = previous {
+            if !previous.closing.is_cancelled() {
+                anyhow::bail!("{agent} ACP session is already active: {session_id}");
+            }
+            previous.wait_closed().await;
+        }
         self.start_session(
             agent,
             cwd,
@@ -532,14 +565,27 @@ impl AgentSessionManager {
         let (tx, rx) = mpsc::channel(8);
         let (ready_tx, ready_rx) = oneshot::channel();
         let (ended_tx, ended_rx) = oneshot::channel::<()>();
+        let (stopped_tx, stopped) = watch::channel(false);
+        let closing = CancellationToken::new();
+        // A timed-out create/load must not leave a detached actor behind.
+        let close_on_drop = closing.clone().drop_guard();
+        let actor_closing = closing.clone();
         let runtime = self.runtime(agent)?;
         let agent = agent.to_string();
         tokio::spawn(async move {
             // ended_tx drops when the actor exits, triggering cleanup.
             let _ended_tx = ended_tx;
-            if let Err(err) =
-                run_session_actor_inner(cwd, load, system_prompt, runtime, replay_tx, rx, ready_tx)
-                    .await
+            if let Err(err) = run_session_actor_inner(
+                cwd,
+                load,
+                system_prompt,
+                runtime,
+                replay_tx,
+                rx,
+                ready_tx,
+                actor_closing,
+            )
+            .await
             {
                 logger::info(&format!("ACP session actor stopped: {err}"));
             }
@@ -551,19 +597,19 @@ impl AgentSessionManager {
             Ok(Ok(ready)) => {
                 let session_id = ready.session_id.clone();
                 let session_key = AgentSessionKey::new(&agent, &session_id);
+                let session = AgentSession {
+                    tx,
+                    busy: Arc::new(AtomicBool::new(false)),
+                    closing,
+                    stopped,
+                };
                 {
                     let mut sessions = self.sessions.lock().await;
                     if sessions.contains_key(&session_key) {
-                        // Dropping tx ends the duplicate actor.
+                        // The drop guard closes the duplicate actor.
                         anyhow::bail!("{agent} ACP session is already active: {session_id}");
                     }
-                    sessions.insert(
-                        session_key.clone(),
-                        AgentSession {
-                            tx,
-                            busy: Arc::new(AtomicBool::new(false)),
-                        },
-                    );
+                    sessions.insert(session_key.clone(), session.clone());
                 }
                 let sessions = self.sessions.clone();
                 let on_end = self.on_end.clone();
@@ -572,12 +618,23 @@ impl AgentSessionManager {
                     let _ = ended_rx.await;
                     // Only report sessions that were actually registered
                     // (actors that died before readiness never were).
-                    if sessions.lock().await.remove(&ended_session_key).is_some() {
-                        if let Some(on_end) = on_end {
-                            on_end(&ended_session_key.agent, &ended_session_key.session_id);
+                    let mut sessions = sessions.lock().await;
+                    if sessions
+                        .get(&ended_session_key)
+                        .is_some_and(|current| current.tx.same_channel(&session.tx))
+                    {
+                        sessions.remove(&ended_session_key);
+                        // Explicit close already has a reply. Do not emit a late
+                        // ended notification that could invalidate a reloaded session.
+                        if !session.closing.is_cancelled() {
+                            if let Some(on_end) = on_end {
+                                on_end(&ended_session_key.agent, &ended_session_key.session_id);
+                            }
                         }
                     }
+                    stopped_tx.send_replace(true);
                 });
+                close_on_drop.disarm();
                 Ok(ready)
             }
             Ok(Err(err)) => anyhow::bail!(err),
@@ -742,6 +799,7 @@ impl AgentSessionManager {
             .lock()
             .await
             .get(&key)
+            .filter(|session| !session.closing.is_cancelled())
             .cloned()
             .with_context(|| format!("Unknown {agent} ACP session: {session_id}"))
     }
@@ -762,10 +820,13 @@ impl AgentSessionManager {
 
     pub async fn close_session(&self, agent: &str, session_id: &str) -> bool {
         let key = AgentSessionKey::new(agent, session_id);
-        let Some(session) = self.sessions.lock().await.remove(&key) else {
+        let Some(session) = self.sessions.lock().await.get(&key).cloned() else {
             return false;
         };
-        let _ = session.tx.send(SessionCommand::Close).await;
+        // Keep it registered until the actor has released its ACP handle and
+        // permission state. Concurrent close/load calls wait for the same cleanup.
+        session.closing.cancel();
+        session.wait_closed().await;
         true
     }
 
@@ -806,6 +867,7 @@ impl AgentSessionManager {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_session_actor_inner(
     cwd: PathBuf,
     load: Option<SessionId>,
@@ -814,9 +876,14 @@ async fn run_session_actor_inner(
     replay_tx: Option<mpsc::UnboundedSender<AgentEvent>>,
     mut rx: mpsc::Receiver<SessionCommand>,
     ready_tx: oneshot::Sender<Result<SessionReady, String>>,
+    closing: CancellationToken,
 ) -> Result<()> {
+    let started = tokio::select! {
+        result = runtime.start_session(cwd, load, system_prompt) => result,
+        _ = closing.cancelled() => return Ok(()),
+    };
     let (mut session, mut ready, cancel_flag, mut disconnects, connection_generation) =
-        match runtime.start_session(cwd, load, system_prompt).await {
+        match started {
             Ok(session) => session,
             Err(err) => {
                 let _ = ready_tx.send(Err(err.to_string()));
@@ -824,7 +891,7 @@ async fn run_session_actor_inner(
             }
         };
     let session_id = ready.session_id.clone();
-    let result: Result<(), agent_client_protocol::Error> = async {
+    let run = async {
         // The load-time history replay is queued before attach; forward it
         // before reporting ready so the client sees the events before the
         // load call resolves.
@@ -841,16 +908,7 @@ async fn run_session_actor_inner(
         loop {
             let command = match deferred.pop_front() {
                 Some(command) => Some(command),
-                None => tokio::select! {
-                    command = rx.recv() => command,
-                    changed = disconnects.changed() => {
-                        if changed.is_err() || *disconnects.borrow() >= connection_generation {
-                            None
-                        } else {
-                            continue;
-                        }
-                    }
-                },
+                None => rx.recv().await,
             };
             let Some(command) = command else { break };
             match command {
@@ -897,15 +955,29 @@ async fn run_session_actor_inner(
                 } => {
                     send_set_config_option(&session, config_id, value, reply).await;
                 }
-                SessionCommand::Close => {
-                    close_session_gracefully(&session).await;
-                    break;
-                }
             }
         }
         Ok(())
+    };
+    let result: Result<(), agent_client_protocol::Error> = tokio::select! {
+        result = run => result,
+        _ = closing.cancelled() => Ok(()),
+        _ = async {
+            loop {
+                if disconnects.changed().await.is_err()
+                    || *disconnects.borrow() >= connection_generation
+                {
+                    break;
+                }
+            }
+        } => Err(agent_client_protocol::Error::internal_error().data("ACP connection stopped")),
+    };
+    if closing.is_cancelled() {
+        // This also interrupts a stuck mode/config request or permission wait;
+        // close must not queue behind the operation the user is resetting.
+        cancel_prompt(&session, &cancel_flag);
+        close_session_gracefully(&session).await;
     }
-    .await;
     runtime.unregister_session(&session_id).await;
 
     if let Err(err) = result {
@@ -917,24 +989,30 @@ async fn run_session_actor_inner(
 
 fn cancel_prompt(session: &ActiveSession<'_, Agent>, cancel_flag: &watch::Sender<bool>) {
     // Pending permission requests of this turn must settle cancelled.
-    let _ = cancel_flag.send(true);
+    cancel_flag.send_replace(true);
     let notification = CancelNotification::new(session.session_id().clone());
     if let Err(err) = session.connection().send_notification(notification) {
         logger::info(&format!("Failed to cancel ACP session: {err}"));
     }
 }
 
-/// Ask the agent to close the session properly (e.g. persist its state)
-/// before the connection drops.
+const SESSION_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Give the agent a bounded chance to persist and release this session.
 async fn close_session_gracefully(session: &ActiveSession<'_, Agent>) {
     let request = CloseSessionRequest::new(session.session_id().clone());
-    if let Err(err) = session
-        .connection()
-        .send_request_to(Agent, request)
-        .block_task()
-        .await
+    match tokio::time::timeout(
+        SESSION_CLOSE_TIMEOUT,
+        session
+            .connection()
+            .send_request_to(Agent, request)
+            .block_task(),
+    )
+    .await
     {
-        logger::info(&format!("Failed to close ACP session gracefully: {err}"));
+        Ok(Ok(_)) => {}
+        Ok(Err(err)) => logger::info(&format!("Failed to close ACP session gracefully: {err}")),
+        Err(_) => logger::info("Timed out closing ACP session; releasing local session state"),
     }
 }
 
@@ -1045,9 +1123,9 @@ async fn send_set_config_option(
 }
 
 /// Run one prompt turn. While the turn runs, keeps draining `incoming` (when
-/// given) so Cancel and Close stay actionable instead of queueing behind the
-/// turn; config/mode changes go out live (see `send_set_mode`), other commands
-/// are returned deferred.
+/// given) so Cancel stays actionable instead of queueing behind the turn;
+/// explicit close interrupts the entire actor independently of this queue.
+/// Config/mode changes go out live (see `send_set_mode`), other commands are deferred.
 async fn run_prompt_turn(
     session: &mut ActiveSession<'_, Agent>,
     prompt: String,
@@ -1057,7 +1135,7 @@ async fn run_prompt_turn(
     mut incoming: Option<&mut mpsc::Receiver<SessionCommand>>,
 ) -> Result<(String, Vec<SessionCommand>), agent_client_protocol::Error> {
     // New turn: clear any previous cancellation before requests can arrive.
-    let _ = cancel_flag.send(false);
+    cancel_flag.send_replace(false);
 
     // `send_prompt` only takes text, so build the request manually to support
     // image/resource blocks. The final stop reason then arrives as the
@@ -1124,10 +1202,6 @@ async fn run_prompt_turn(
             }
             TurnInput::Command(SessionCommand::Cancel) => {
                 cancel_prompt(session, cancel_flag);
-            }
-            TurnInput::Command(SessionCommand::Close) => {
-                cancel_prompt(session, cancel_flag);
-                deferred.push(SessionCommand::Close);
             }
             TurnInput::Command(SessionCommand::SetMode { mode_id, reply }) => {
                 send_set_mode(session, mode_id, reply).await;
