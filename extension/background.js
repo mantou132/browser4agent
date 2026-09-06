@@ -82,6 +82,12 @@ chrome.contextMenus.create({
   contexts: ['action'],
 });
 
+chrome.contextMenus.create({
+  id: 'copy-relay-id',
+  title: t('contextCopyRelayId'),
+  contexts: ['action'],
+});
+
 chrome.contextMenus.onClicked.addListener((info) => {
   switch (info.menuItemId) {
     case 'open-welcome':
@@ -89,6 +95,9 @@ chrome.contextMenus.onClicked.addListener((info) => {
       break;
     case 'open-market':
       chrome.tabs.create({ url: MARKET_URL });
+      break;
+    case 'copy-relay-id':
+      copyRelayId().catch((error) => console.error('Failed to copy relay id:', error));
       break;
   }
 });
@@ -188,6 +197,40 @@ function ensureRelayId() {
     throw error;
   });
   return relayIdPromise;
+}
+
+let copyRelayIdPromise;
+
+function copyRelayId() {
+  // Repeated clicks share one operation so offscreen creation/cleanup cannot race.
+  if (copyRelayIdPromise) return copyRelayIdPromise;
+  copyRelayIdPromise = (async () => {
+    const text = await ensureRelayId();
+    // Firefox's background page can access the clipboard directly.
+    if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
+
+    const url = chrome.runtime.getURL('pages/clipboard.html');
+    const contexts = await chrome.runtime.getContexts({
+      contextTypes: ['OFFSCREEN_DOCUMENT'],
+      documentUrls: [url],
+    });
+    if (!contexts.length) {
+      await chrome.offscreen.createDocument({
+        url,
+        reasons: ['CLIPBOARD'],
+        justification: 'Copy the relay id from the action menu.',
+      });
+    }
+    try {
+      const result = await chrome.runtime.sendMessage({ target: 'clipboard', text });
+      if (!result?.ok) throw new Error(result?.error || 'Clipboard write failed');
+    } finally {
+      await chrome.offscreen.closeDocument();
+    }
+  })().finally(() => {
+    copyRelayIdPromise = undefined;
+  });
+  return copyRelayIdPromise;
 }
 
 async function reportCapabilities() {

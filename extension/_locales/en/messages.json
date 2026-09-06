@@ -64,6 +64,9 @@
   "configureNewTool": {
     "message": "Configure New Tool"
   },
+  "contextCopyRelayId": {
+    "message": "Copy relay id"
+  },
   "contextToolsetMarket": {
     "message": "Toolset Market"
   },

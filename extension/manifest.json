@@ -18,6 +18,7 @@
     "sidePanel",
     "storage",
     "contextMenus",
+    "clipboardWrite",
     "tabs",
     "activeTab",
     "scripting",

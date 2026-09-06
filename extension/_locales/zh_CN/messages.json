@@ -64,6 +64,9 @@
   "configureNewTool": {
     "message": "配置新工具"
   },
+  "contextCopyRelayId": {
+    "message": "复制 relay id"
+  },
   "contextToolsetMarket": {
     "message": "工具集市场"
   },
