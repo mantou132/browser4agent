@@ -32,7 +32,7 @@ Both modes share the same prerequisite: download the `browser4agent` binary and 
 1. Install the extension from your browser's store ([Chrome](https://chromewebstore.google.com/detail/cddjomjjojijahpjngcfebapepdecaff) · [Edge](https://microsoftedge.microsoft.com/addons/detail/kgofhkkibnooojbchfppjblmajdcboib) · [Firefox](https://addons.mozilla.org/firefox/addon/browser4agent@xianqiao.wang)).
 2. The welcome page that opens after install walks you through:
    - downloading and registering the **Native Host**,
-   - optionally wiring up **MCP** for any of Codex, Claude Code, VS Code, Cursor, and Zed that it detects,
+   - optionally wiring up **MCP** for any of Codex, Claude Code, VS Code, Cursor, Zed, and Antigravity that it detects,
    - optionally installing the **Skill** for those same agents.
 
 > **Note:** the extension listens on a local port, so if it is installed and active in multiple browsers at the same time, only one of them will work.
@@ -46,7 +46,7 @@ Prefer not to use a store? Grab `extension-chrome.zip` or `extension-firefox.zip
 
 ## Control your browser from any agent (MCP / Skill)
 
-Agents with MCP support work out of the box; agents that don't take MCP config can still drive everything through the [`browser4agent` CLI](#cli) via a Skill or plain shell commands. Setup detects Codex, Claude Code, VS Code, Cursor, and Zed and offers to configure them for you.
+Agents with MCP support work out of the box; agents that don't take MCP config can still drive everything through the [`browser4agent` CLI](#cli) via a Skill or plain shell commands. Setup detects Codex, Claude Code, VS Code, Cursor, Zed, and Antigravity and offers to configure them for you.
 
 What the agent gets:
 

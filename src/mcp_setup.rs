@@ -177,6 +177,25 @@ fn setup_zed() -> Result<SetupOutcome> {
     Ok(SetupOutcome::Configured)
 }
 
+fn setup_antigravity() -> Result<SetupOutcome> {
+    let cmd = platform_cmd("agy");
+    if !cmd_succeeds(&cmd, &["--version"]) {
+        return Ok(SetupOutcome::NotInstalled);
+    }
+    if cli_already_configured(&cmd, &["mcp", "list"])? {
+        return Ok(SetupOutcome::Configured);
+    }
+    let ok = Command::new(&cmd)
+        .args(["mcp", "add", "--type", "http", SERVER_NAME, &url()])
+        .status()?
+        .success();
+    Ok(if ok {
+        SetupOutcome::Configured
+    } else {
+        SetupOutcome::Failed
+    })
+}
+
 pub fn setup_mcp() -> Result<bool> {
     let tools: &[(&str, fn() -> Result<SetupOutcome>)] = &[
         ("Codex", setup_codex),
@@ -184,6 +203,7 @@ pub fn setup_mcp() -> Result<bool> {
         ("VS Code", setup_vscode),
         ("Cursor", setup_cursor),
         ("Zed", setup_zed),
+        ("Antigravity", setup_antigravity),
     ];
 
     let mut any_configured = false;
@@ -208,6 +228,7 @@ pub fn uninstall_mcp() -> Result<()> {
         "claude",
         &["mcp", "remove", "--scope", "user", SERVER_NAME],
     );
+    uninstall_via_cli("Antigravity", "agy", &["mcp", "remove", SERVER_NAME]);
 
     let vscode_path = dirs::config_dir().map(|p| p.join("Code/User/mcp.json"));
     if let Some(path) = vscode_path {

@@ -22,6 +22,7 @@ fn agents() -> Vec<(&'static str, PathBuf)> {
         ("Codex", home.join(".codex")),
         ("Claude Code", home.join(".claude")),
         ("Cursor", home.join(".cursor")),
+        ("Antigravity", home.join(".gemini/config")),
     ]
     .into_iter()
     .filter(|(_, base)| base.exists())
@@ -196,5 +197,17 @@ mod tests {
         assert!(!rendered.contains(TOOLS_PLACEHOLDER));
         assert!(!rendered.contains(WORKFLOW_PLACEHOLDER));
         assert!(!rendered.contains(BIN_PLACEHOLDER));
+    }
+
+    #[test]
+    fn detects_antigravity_when_present() {
+        if let Some(home) = dirs::home_dir() {
+            if home.join(".gemini/config").exists() {
+                let list = super::agents();
+                assert!(list.iter().any(|(label, base)| {
+                    *label == "Antigravity" && *base == home.join(".gemini/config")
+                }));
+            }
+        }
     }
 }

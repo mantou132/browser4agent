@@ -32,7 +32,7 @@
 1. 在浏览器商店安装扩展（[Chrome](https://chromewebstore.google.com/detail/cddjomjjojijahpjngcfebapepdecaff) · [Edge](https://microsoftedge.microsoft.com/addons/detail/kgofhkkibnooojbchfppjblmajdcboib) · [Firefox](https://addons.mozilla.org/firefox/addon/browser4agent@xianqiao.wang)）。
 2. 安装完会自动打开欢迎页，引导你完成：
    - 下载并注册 **Native Host**；
-   - 可选：为检测到的 Codex、Claude Code、VS Code、Cursor、Zed 配置 **MCP**；
+   - 可选：为检测到的 Codex、Claude Code、VS Code、Cursor、Zed、Antigravity 配置 **MCP**；
    - 可选：为上述 Agent 安装 **Skill**。
 
 > **注意**：扩展需要监听本地端口，同时在多个浏览器中安装并激活时只有一个会工作。
@@ -46,7 +46,7 @@
 
 ## 让任意 Agent 操控你的浏览器（MCP / Skill）
 
-支持 MCP 的 Agent 开箱即用；不方便配 MCP 的 Agent 也能通过 [`browser4agent` 命令行](#命令行)，以 Skill 或普通 shell 命令驱动全部能力。安装向导会检测 Codex、Claude Code、VS Code、Cursor、Zed 并引导配置。
+支持 MCP 的 Agent 开箱即用；不方便配 MCP 的 Agent 也能通过 [`browser4agent` 命令行](#命令行)，以 Skill 或普通 shell 命令驱动全部能力。安装向导会检测 Codex、Claude Code、VS Code、Cursor、Zed、Antigravity 并引导配置。
 
 Agent 能得到：
 
