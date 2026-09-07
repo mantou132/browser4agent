@@ -73,6 +73,11 @@ echo '{"tab_id":123}' | browser4agent --tool read_tab --stdin
 browser4agent --tool read_tab --help   # 查看工具的入参 schema
 ```
 
+### 实战案例
+
+- [高频 UI 动画性能剖析与逐帧重构（Card 展开动画调优）](./docs/cases.zh-CN.md#案例一高频-ui-动画性能剖析与逐帧重构card-展开动画调优)
+- [查看更多实战案例](./docs/cases.zh-CN.md)
+
 ## 在浏览器中使用 Agent（ACP）
 
 在 DevTools 打开 **Agent** 面板（或作为浏览器侧边栏），即可让编码 Agent 和你一起处理当前页面。会话实时流式输出，支持附件、权限确认，回合进行中可以排队输入，可以保留多个会话并随时切换。

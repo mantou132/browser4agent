@@ -73,6 +73,11 @@ echo '{"tab_id":123}' | browser4agent --tool read_tab --stdin
 browser4agent --tool read_tab --help   # inspect a tool's input schema
 ```
 
+### Case Studies
+
+- [High-Frequency UI Animation Profiling & Frame-by-Frame Tuning](./docs/cases.md#case-1-high-frequency-ui-animation-profiling--frame-by-frame-refactoring-card-expansion-tuning)
+- [View All Case Studies](./docs/cases.md)
+
 ## Use an agent inside the browser (ACP)
 
 Open the **Agent** panel in DevTools — or as the browser's side panel — to chat with a coding agent about the page you're on. Sessions stream live, support attachments and permission prompts, can queue follow-up prompts while a turn is running, and you can keep several sessions and switch between them.
