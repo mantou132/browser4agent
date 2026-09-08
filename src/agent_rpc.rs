@@ -4,6 +4,7 @@ use std::{
     time::Duration,
 };
 
+use base64::{engine::general_purpose, Engine as _};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
@@ -110,6 +111,14 @@ impl AgentService {
             tokio::task::spawn_blocking(move || complete_directories(&input, limit))
                 .await
                 .map_err(|err| format!("Directory completion task failed: {err}"))?
+        });
+
+        peer.handle("file_read", move |params, _ctx| async move {
+            let path = required_str(&params, "path", "file_read")?.to_string();
+            let cwd = message_cwd(&params);
+            tokio::task::spawn_blocking(move || read_remote_file(&path, cwd.as_deref()))
+                .await
+                .map_err(|err| format!("File read task failed: {err}"))?
         });
 
         let create_sessions = sessions.clone();
@@ -408,6 +417,68 @@ fn complete_directories(input: &str, limit: usize) -> Result<Value, String> {
     }))
 }
 
+/// Max bytes of a file served to the remote panel; the native messaging
+/// transport itself caps messages at 10 MB.
+const FILE_READ_MAX_BYTES: u64 = 8 * 1024 * 1024;
+
+fn read_remote_file(path: &str, cwd: Option<&Path>) -> Result<Value, String> {
+    // `~` expands against the home directory, everything else against the cwd.
+    let base_dir = if path.trim_start().starts_with('~') {
+        dirs::home_dir()
+    } else {
+        cwd.map(Path::to_path_buf)
+    };
+    let resolved = resolve_directory_path(path, base_dir.as_deref().unwrap_or(Path::new("/")));
+    let metadata = std::fs::metadata(&resolved)
+        .map_err(|err| format!("Failed to read {}: {err}", resolved.display()))?;
+    if metadata.is_dir() {
+        return Err(format!("{} is a directory", resolved.display()));
+    }
+    if metadata.len() > FILE_READ_MAX_BYTES {
+        return Err(format!(
+            "{} is too large ({} bytes, limit is {FILE_READ_MAX_BYTES})",
+            resolved.display(),
+            metadata.len()
+        ));
+    }
+    let bytes = std::fs::read(&resolved)
+        .map_err(|err| format!("Failed to read {}: {err}", resolved.display()))?;
+    let path = resolved.to_string_lossy().into_owned();
+    let mime_type = mime_from_extension(&resolved);
+    match mime_type {
+        Some(mime_type) => Ok(json!({
+            "path": path,
+            "type": "image",
+            "data": general_purpose::STANDARD.encode(&bytes),
+            "mimeType": mime_type,
+        })),
+        // Text files are rejected if they contain a NUL byte within the first
+        // 8 KB, a cheap heuristic against serving binary blobs as text.
+        None if bytes.contains(&0) => {
+            Err(format!("Unsupported binary file: {}", resolved.display()))
+        }
+        None => Ok(json!({
+            "path": path,
+            "type": "text",
+            "text": String::from_utf8_lossy(&bytes),
+        })),
+    }
+}
+
+fn mime_from_extension(path: &Path) -> Option<&'static str> {
+    let extension = path.extension()?.to_string_lossy().to_lowercase();
+    match extension.as_str() {
+        "png" => Some("image/png"),
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "gif" => Some("image/gif"),
+        "webp" => Some("image/webp"),
+        "svg" => Some("image/svg+xml"),
+        "bmp" => Some("image/bmp"),
+        "ico" => Some("image/x-icon"),
+        _ => None,
+    }
+}
+
 fn resolve_directory_path(input: &str, base_dir: &Path) -> PathBuf {
     if input.is_empty() || input == "~" {
         base_dir.to_path_buf()
@@ -556,7 +627,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use super::{complete_directories, message_panel_system_prompt, resolve_directory_path};
+    use super::{complete_directories, message_panel_system_prompt, read_remote_file, resolve_directory_path};
 
     #[test]
     fn builds_devtools_panel_system_prompt() {
@@ -613,5 +684,53 @@ mod tests {
         assert_eq!(resolve_directory_path("~", &home), home);
         assert_eq!(resolve_directory_path("~/test", &home), home.join("test"));
         assert_eq!(resolve_directory_path("~\\test", &home), home.join("test"));
+    }
+
+    #[test]
+    fn reads_text_and_image_files() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("browser4agent-file-{unique}"));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        let text_path = root.join("note.txt");
+        std::fs::write(&text_path, b"hello").expect("write text file");
+        let png_path = root.join("pixel.png");
+        std::fs::write(&png_path, [0x89, b'P', b'N', b'G', 0, 0, 0, 0]).expect("write png file");
+        let binary_path = root.join("blob.bin");
+        std::fs::write(&binary_path, [0x00, 0x01, 0x02]).expect("write binary file");
+
+        let text = read_remote_file(&text_path.to_string_lossy(), None).expect("read text file");
+        let image = read_remote_file(&png_path.to_string_lossy(), None).expect("read image file");
+        let err = read_remote_file(&binary_path.to_string_lossy(), None).expect_err("reject binary file");
+        let missing = read_remote_file(&root.join("missing.txt").to_string_lossy(), None)
+            .expect_err("reject missing file");
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+
+        assert_eq!(text["type"], "text");
+        assert_eq!(text["text"], "hello");
+        assert_eq!(image["type"], "image");
+        assert_eq!(image["mimeType"], "image/png");
+        assert!(err.contains("Unsupported binary file"));
+        assert!(missing.contains("Failed to read"));
+    }
+
+    #[test]
+    fn resolves_relative_path_against_cwd() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("browser4agent-cwd-file-{unique}"));
+        std::fs::create_dir_all(&root).expect("create test directory");
+        std::fs::write(root.join("note.md"), b"# hi").expect("write file");
+
+        let file = read_remote_file("note.md", Some(&root)).expect("read relative file");
+        std::fs::remove_dir_all(&root).expect("remove test directory");
+
+        assert_eq!(file["type"], "text");
+        assert_eq!(file["text"], "# hi");
+        assert!(file["path"].as_str().unwrap().ends_with("note.md"));
     }
 }

@@ -360,6 +360,7 @@ dependencies = [
  "agent-client-protocol",
  "anyhow",
  "axum",
+ "base64",
  "chrono",
  "clap",
  "dialoguer",
