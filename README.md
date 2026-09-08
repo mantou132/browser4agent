@@ -90,6 +90,10 @@ Managed agent runtimes and logs live together in the platform's local applicatio
 - Windows: `%LOCALAPPDATA%\browser4agent`
 - Linux: `${XDG_DATA_HOME:-~/.local/share}/browser4agent`
 
+Troubleshooting & FAQs:
+- [macOS: "Apple could not verify '.<hash>-0.node'" on image attachments](./docs/troubleshooting.md#1-macos-apple-could-not-verify-hash-0node-security-warning-on-image-attachments)
+- [View all troubleshooting guides & FAQs](./docs/troubleshooting.md)
+
 ## Build from source
 
 ```bash

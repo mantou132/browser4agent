@@ -90,6 +90,10 @@ browser4agent --tool read_tab --help   # 查看工具的入参 schema
 - Windows：`%LOCALAPPDATA%\browser4agent`
 - Linux：`${XDG_DATA_HOME:-~/.local/share}/browser4agent`
 
+常见问题与排查指南：
+- [macOS: 发送图片附件时弹出「Apple could not verify ".<hash>-0.node"」安全警告](./docs/troubleshooting.zh-CN.md#1-macos-发送图片附件时弹出-apple-could-not-verify-hash-0node-安全警告)
+- [查看更多故障排查与 FAQ](./docs/troubleshooting.zh-CN.md)
+
 ## 从源码构建
 
 ```bash

@@ -52,6 +52,7 @@
 - `src/acp_agent/`：受支持 Agent 目录以及用户 CLI 探测、托管运行时安装和启动命令准备
 - `cf/`：扩展中的工具集市场后端
 - `toolset-parser/`：工具集解析器
+- `docs/`：实战案例与故障排查文档（如 Gatekeeper 原生模块拦截等）
 
 ## 关键文件
 
