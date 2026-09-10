@@ -61,9 +61,24 @@ export function createAgentApi() {
       hostReconnectedHandler = typeof handler === 'function' ? handler : null;
     },
 
-    completeCwd(input = '', options = {}) {
-      const params = { input, limit: options.limit, timeoutSeconds: options.timeoutSeconds };
-      return rpc().call('agent_cwd_complete', params, options);
+    browseFiles(path = '', options = {}) {
+      const params = {
+        path,
+        cwd: options.cwd,
+        type: options.type,
+        limit: options.limit,
+        timeoutSeconds: options.timeoutSeconds,
+      };
+      return rpc().call('file_browse', params, options);
+    },
+
+    readFile(path, options = {}) {
+      const params = {
+        path,
+        cwd: options.cwd,
+        timeoutSeconds: options.timeoutSeconds,
+      };
+      return rpc().call('file_read', params, options);
     },
 
     /** List supported ACP agents available for explicit selection. */

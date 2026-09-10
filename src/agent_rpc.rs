@@ -97,6 +97,7 @@ impl AgentService {
             Ok(json!({ "agents": agents }))
         });
 
+        // Deprecated: use `file_browse` instead.
         peer.handle("agent_cwd_complete", move |params, _ctx| async move {
             let input = params
                 .get("input")
@@ -111,6 +112,30 @@ impl AgentService {
             tokio::task::spawn_blocking(move || complete_directories(&input, limit))
                 .await
                 .map_err(|err| format!("Directory completion task failed: {err}"))?
+        });
+
+        peer.handle("file_browse", move |params, _ctx| async move {
+            let path = params
+                .get("path")
+                .or_else(|| params.get("input"))
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string();
+            let cwd = message_cwd(&params);
+            let filter_type = params
+                .get("type")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(200)
+                .clamp(1, 500) as usize;
+            tokio::task::spawn_blocking(move || {
+                browse_files(&path, cwd.as_deref(), filter_type.as_deref(), limit)
+            })
+            .await
+            .map_err(|err| format!("File browse task failed: {err}"))?
         });
 
         peer.handle("file_read", move |params, _ctx| async move {
@@ -370,6 +395,7 @@ impl AgentService {
     }
 }
 
+/// Deprecated: use `file_browse` instead.
 fn complete_directories(input: &str, limit: usize) -> Result<Value, String> {
     let current_dir = std::env::current_dir()
         .map_err(|err| format!("Failed to resolve current directory: {err}"))?;
@@ -407,6 +433,7 @@ fn complete_directories(input: &str, limit: usize) -> Result<Value, String> {
         })
         .map(|entry| entry.path().to_string_lossy().into_owned())
         .collect::<Vec<_>>();
+
     directories.sort_by_key(|path| path.to_lowercase());
     directories.truncate(limit);
 
@@ -414,6 +441,96 @@ fn complete_directories(input: &str, limit: usize) -> Result<Value, String> {
         "value": path.to_string_lossy(),
         "isDirectory": is_directory,
         "directories": directories,
+    }))
+}
+
+fn browse_files(
+    path: &str,
+    cwd: Option<&Path>,
+    filter_type: Option<&str>,
+    limit: usize,
+) -> Result<Value, String> {
+    let current_dir = std::env::current_dir()
+        .map_err(|err| format!("Failed to resolve current directory: {err}"))?;
+    let base_dir = if path.trim_start().starts_with('~') {
+        dirs::home_dir().unwrap_or_else(|| current_dir.clone())
+    } else {
+        cwd.map(Path::to_path_buf)
+            .or_else(dirs::home_dir)
+            .unwrap_or(current_dir)
+    };
+    let target = resolve_directory_path(path.trim(), &base_dir);
+    if !target.is_dir() {
+        return Err(format!("{} is not a directory", target.display()));
+    }
+
+    let filter_dirs = match filter_type {
+        Some("file" | "files") => false,
+        _ => true,
+    };
+    let filter_files = match filter_type {
+        Some("directory" | "directories" | "dir") => false,
+        _ => true,
+    };
+
+    struct Entry {
+        name: String,
+        path: String,
+        is_directory: bool,
+    }
+
+    let mut entries = Vec::new();
+    let read_entries = std::fs::read_dir(&target)
+        .map_err(|err| format!("Failed to read {}: {err}", target.display()))?;
+
+    for entry in read_entries.filter_map(|entry| entry.ok()) {
+        let entry_path = entry.path();
+        let is_dir = entry_path.is_dir();
+        if is_dir && !filter_dirs {
+            continue;
+        }
+        if !is_dir && !filter_files {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let path_str = entry_path.to_string_lossy().into_owned();
+        entries.push(Entry {
+            name,
+            path: path_str,
+            is_directory: is_dir,
+        });
+    }
+
+    entries.sort_by(|a, b| {
+        let dir_order = (!a.is_directory).cmp(&(!b.is_directory));
+        if dir_order != std::cmp::Ordering::Equal {
+            return dir_order;
+        }
+        let a_dot = a.name.starts_with('.');
+        let b_dot = b.name.starts_with('.');
+        if a_dot != b_dot {
+            return a_dot.cmp(&b_dot);
+        }
+        a.name.to_lowercase().cmp(&b.name.to_lowercase())
+    });
+    entries.truncate(limit);
+
+    let home = dirs::home_dir().map(|h| h.to_string_lossy().into_owned());
+    let entries_json = entries
+        .into_iter()
+        .map(|e| {
+            json!({
+                "name": e.name,
+                "path": e.path,
+                "isDirectory": e.is_directory,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(json!({
+        "path": target.to_string_lossy(),
+        "home": home,
+        "entries": entries_json,
     }))
 }
 
@@ -627,7 +744,10 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use super::{complete_directories, message_panel_system_prompt, read_remote_file, resolve_directory_path};
+    use super::{
+        browse_files, complete_directories, message_panel_system_prompt, read_remote_file,
+        resolve_directory_path,
+    };
 
     #[test]
     fn builds_devtools_panel_system_prompt() {
@@ -665,16 +785,42 @@ mod tests {
         let alpine = root.join("alpine");
         std::fs::create_dir_all(&alpha).expect("create alpha directory");
         std::fs::create_dir_all(&alpine).expect("create alpine directory");
+        let note = alpha.join("note.txt");
+        std::fs::write(&note, b"hello").expect("write note file");
 
         let prefix = root.join("al").to_string_lossy().into_owned();
-        let completion = complete_directories(&prefix, 100).expect("complete directory prefix");
-        let exact =
-            complete_directories(&alpha.to_string_lossy(), 100).expect("validate exact directory");
-        std::fs::remove_dir_all(&root).expect("remove test directory");
+        let completion =
+            complete_directories(&prefix, 100).expect("complete directory prefix");
+        let exact = complete_directories(&alpha.to_string_lossy(), 100)
+            .expect("validate exact directory");
 
         assert_eq!(completion["isDirectory"], false);
         assert_eq!(completion["directories"].as_array().map(Vec::len), Some(2));
+        assert!(completion.get("files").is_none());
         assert_eq!(exact["isDirectory"], true);
+        assert!(exact.get("files").is_none());
+
+        let browsed =
+            browse_files(&alpha.to_string_lossy(), None, None, 100).expect("browse directory");
+        assert_eq!(browsed["path"], alpha.to_string_lossy().as_ref());
+        assert!(browsed["home"].is_string());
+        let entries = browsed["entries"].as_array().expect("entries array");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0]["name"], "note.txt");
+        assert_eq!(entries[0]["isDirectory"], false);
+
+        let dirs_only = browse_files(&root.to_string_lossy(), None, Some("directory"), 100)
+            .expect("browse directories only");
+        let dir_entries = dirs_only["entries"].as_array().expect("dir entries array");
+        assert_eq!(dir_entries.len(), 2);
+        assert!(dir_entries.iter().all(|e| e["isDirectory"] == true));
+
+        let files_only = browse_files(&root.to_string_lossy(), None, Some("file"), 100)
+            .expect("browse files only");
+        let file_entries = files_only["entries"].as_array().expect("file entries array");
+        assert_eq!(file_entries.len(), 0);
+
+        std::fs::remove_dir_all(&root).expect("remove test directory");
     }
 
     #[test]

@@ -27,7 +27,7 @@ const MARKET_URL = chrome.runtime.getURL('pages/market.html');
 const COMMON_TOOLSET_URL = chrome.runtime.getURL('toolsets/common.json');
 // Raise when the extension starts relying on host capabilities that older
 // native hosts don't have; hosts below this version get flagged incompatible.
-const MIN_HOST_VERSION = '0.2.4';
+const MIN_HOST_VERSION = '0.2.7';
 
 chrome.runtime.onInstalled.addListener((details) => {
   ensureAuthToken();
@@ -277,7 +277,8 @@ peer.handle('agent_permission_request', async (params) => {
  */
 const AGENT_METHODS = [
   'agent_list',
-  'agent_cwd_complete',
+  'file_browse',
+  'file_read',
   'agent_session_create',
   'agent_session_load',
   'agent_session_delete',

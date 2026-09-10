@@ -5,7 +5,7 @@ import { displayHomePath } from '../../shared/path.js';
 
 @customElement('agent-new-session-picker')
 class AgentNewSessionPickerElement extends GemElement {
-  @property complete;
+  @property browse;
   @property initialValue;
   @property home;
   @property agents;
@@ -45,11 +45,15 @@ class AgentNewSessionPickerElement extends GemElement {
       activeIndex: 0,
     });
     try {
-      const result = await this.complete?.(value);
-      const directories = [...(result.directories || [])];
-      if (result.isDirectory && result.value) directories.unshift(result.value);
+      const result = await this.browse?.(value);
+      const entries = result?.entries;
+      const directories = Array.isArray(entries) ? entries.filter((e) => e.isDirectory).map((e) => e.path) : [];
+      const resolvedPath = result?.path;
+      if (resolvedPath) {
+        directories.unshift(resolvedPath);
+      }
       this.#s({
-        value: value || this.#directoryInput(result.value),
+        value: value || this.#directoryInput(resolvedPath),
         directories,
         loading: false,
       });

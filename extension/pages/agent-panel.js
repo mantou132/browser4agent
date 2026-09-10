@@ -180,7 +180,7 @@ class AgentPanelPageElement extends GemElement {
         >
           <agent-new-session-picker
             class="block w-[calc(100vw-2rem)] max-w-2xl"
-            .complete=${(value) => agentApi.completeCwd(value)}
+            .browse=${(value) => agentApi.browseFiles(value, { type: 'directory' })}
             .initialValue=${displayHomePath(this.#recentCwd, home)}
             .home=${home}
             .agents=${agents}
