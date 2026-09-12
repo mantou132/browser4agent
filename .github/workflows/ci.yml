@@ -45,6 +45,8 @@ jobs:
 
       - run: cargo check --target ${{ matrix.target }}
 
+      - run: cargo test --target ${{ matrix.target }}
+
   extension:
     runs-on: ubuntu-latest
     steps:

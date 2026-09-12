@@ -340,7 +340,7 @@ class AgentComposerElement extends GemElement {
     const pending = this.turnPending;
     const configOptions = this.configOptions || [];
     const codexConfigOptions =
-      this.agent === 'codex' ? configOptions.filter((option) => CODEX_COMBINED_CONFIG_IDS.has(option.id)) : [];
+      this.agent === 'codex-acp' ? configOptions.filter((option) => CODEX_COMBINED_CONFIG_IDS.has(option.id)) : [];
     const standaloneConfigOptions = codexConfigOptions.length
       ? configOptions.filter((option) => !CODEX_COMBINED_CONFIG_IDS.has(option.id))
       : configOptions;

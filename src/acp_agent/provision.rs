@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::HashMap,
     env,
     ffi::OsString,
     fs::{self, File},
@@ -7,18 +7,16 @@ use std::{
     path::{Component, Path, PathBuf},
     process::Command,
     sync::Mutex as StdMutex,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use super::catalog::{AgentCandidate, AgentLaunch, ManagedCli};
+use super::catalog::{AgentCandidate, AgentLaunch, RegistryBinaryTarget};
 use crate::{app_data, logger};
 
 static AGENT_INSTALL_LOCK: StdMutex<()> = StdMutex::new(());
-const ACP_REGISTRY_URL: &str =
-    "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 
 /// Browsers launched from Finder/Dock only inherit macOS' minimal PATH, which
 /// hides CLIs installed under Homebrew or user-local tool managers. Extend the
@@ -116,183 +114,6 @@ fn find_working_command(name: &str) -> Option<PathBuf> {
         .find(|executable| executable_works(executable, &path_entries))
 }
 
-fn adapter_bin_path(runtime_dir: &Path, adapter_bin: &str) -> PathBuf {
-    let name = if cfg!(windows) {
-        format!("{adapter_bin}.cmd")
-    } else {
-        adapter_bin.to_string()
-    };
-    runtime_dir.join("node_modules").join(".bin").join(name)
-}
-
-fn adapter_works(adapter: &Path) -> bool {
-    let mut path_entries = user_path_entries();
-    if let Some(bin_dir) = adapter.parent()
-        && !path_entries.iter().any(|path| path == bin_dir)
-    {
-        path_entries.push(bin_dir.to_path_buf());
-    }
-    executable_works(adapter, &path_entries)
-}
-
-fn write_runtime_manifest(
-    candidate: AgentCandidate,
-    runtime_dir: &Path,
-    install_managed_cli: bool,
-) -> Result<()> {
-    let AgentLaunch::Adapter {
-        package,
-        managed_cli,
-        ..
-    } = candidate.launch
-    else {
-        anyhow::bail!("{} does not use an npm ACP adapter", candidate.name);
-    };
-    let mut dependencies = BTreeMap::from([(package, "latest")]);
-    if install_managed_cli && let ManagedCli::NpmPackage(package) = managed_cli {
-        dependencies.insert(package, "latest");
-    }
-    let manifest = serde_json::to_vec_pretty(&serde_json::json!({
-        "private": true,
-        "dependencies": dependencies,
-    }))
-    .context("failed to serialize the managed agent package manifest")?;
-    let path = runtime_dir.join("package.json");
-    if fs::read(&path).ok().as_deref() != Some(manifest.as_slice()) {
-        fs::write(&path, manifest).with_context(|| {
-            format!(
-                "failed to write managed agent package manifest: {}",
-                path.display()
-            )
-        })?;
-    }
-    Ok(())
-}
-
-fn install_adapter(
-    candidate: AgentCandidate,
-    runtime_dir: &Path,
-    require_managed_cli: bool,
-) -> Result<PathBuf> {
-    let AgentLaunch::Adapter {
-        package,
-        bin,
-        managed_cli,
-        ..
-    } = candidate.launch
-    else {
-        anyhow::bail!("{} does not use an npm ACP adapter", candidate.name);
-    };
-    let adapter = adapter_bin_path(runtime_dir, bin);
-    let managed_cli_marker = runtime_dir.join(".managed-cli-installed");
-    let managed_cli_works = || match managed_cli {
-        ManagedCli::AdapterOptionalDependency => managed_cli_marker.is_file(),
-        ManagedCli::NpmPackage(_) => {
-            managed_cli_marker.is_file()
-                && adapter_works(&adapter_bin_path(runtime_dir, candidate.cli))
-        }
-    };
-    if adapter_works(&adapter) && (!require_managed_cli || managed_cli_works()) {
-        return Ok(adapter);
-    }
-
-    let _guard = AGENT_INSTALL_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if adapter_works(&adapter) && (!require_managed_cli || managed_cli_works()) {
-        return Ok(adapter);
-    }
-    // Preserve an already provisioned fallback even when a user CLI is
-    // currently available and the adapter itself needs repair.
-    let install_managed_cli = require_managed_cli || managed_cli_marker.is_file();
-    write_runtime_manifest(candidate, runtime_dir, install_managed_cli)?;
-
-    let npm = find_working_command("npm").with_context(|| {
-        format!(
-            "npm was not found; install Node.js to set up {} automatically",
-            candidate.name
-        )
-    })?;
-    logger::info(&format!(
-        "Installing {}{} in {}",
-        package,
-        if install_managed_cli {
-            " with its managed CLI"
-        } else {
-            ""
-        },
-        runtime_dir.display()
-    ));
-    let mut command = executable_command(&npm);
-    command.args([
-        "install",
-        "--no-package-lock",
-        "--no-audit",
-        "--no-fund",
-        "--loglevel=error",
-        "--prefix",
-    ]);
-    command.arg(runtime_dir).arg(if install_managed_cli {
-        "--include=optional"
-    } else {
-        "--omit=optional"
-    });
-    command.env("npm_config_cache", app_data::npm_cache_dir()?);
-    if let Ok(path) = joined_path(&user_path_entries()) {
-        command.env("PATH", path);
-    }
-    let output = command
-        .output()
-        .with_context(|| format!("failed to start npm while installing {package}"))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        let detail = if stderr.is_empty() { stdout } else { stderr };
-        anyhow::bail!(
-            "npm failed to install {}{}",
-            package,
-            if detail.is_empty() {
-                String::new()
-            } else {
-                format!(": {detail}")
-            }
-        );
-    }
-    if !adapter.is_file() {
-        anyhow::bail!(
-            "{} was installed without the expected executable: {}",
-            package,
-            adapter.display()
-        );
-    }
-    if !adapter_works(&adapter) {
-        anyhow::bail!(
-            "{} was installed but cannot run; ensure Node.js 22 or newer is available",
-            package
-        );
-    }
-    if install_managed_cli {
-        if let ManagedCli::NpmPackage(cli_package) = managed_cli {
-            let cli = adapter_bin_path(runtime_dir, candidate.cli);
-            if !adapter_works(&cli) {
-                anyhow::bail!(
-                    "{} was installed without a working {} executable",
-                    cli_package,
-                    candidate.cli
-                );
-            }
-        }
-        fs::write(&managed_cli_marker, package).with_context(|| {
-            format!(
-                "failed to record the managed {} CLI installation",
-                candidate.name
-            )
-        })?;
-    }
-    logger::info(&format!("Installed {package}"));
-    Ok(adapter)
-}
-
 fn append_program(command: &mut Vec<String>, executable: &Path, args: &[String]) {
     if cfg!(windows)
         && executable.extension().is_some_and(|extension| {
@@ -305,114 +126,21 @@ fn append_program(command: &mut Vec<String>, executable: &Path, args: &[String])
     command.extend(args.iter().cloned());
 }
 
-fn prepare_adapter_command(
-    candidate: AgentCandidate,
-    user_cli: Option<PathBuf>,
-) -> Result<Vec<String>> {
-    let AgentLaunch::Adapter {
-        cli_override_env,
-        managed_cli,
-        log_env,
-        ..
-    } = candidate.launch
-    else {
-        anyhow::bail!("{} does not use an npm ACP adapter", candidate.name);
-    };
-    let runtime_dir = app_data::agent_runtime_dir(candidate.id)?;
-    let adapter = install_adapter(candidate, &runtime_dir, user_cli.is_none())?;
-    let managed_bin_dir = adapter
-        .parent()
-        .context("managed ACP adapter has no parent directory")?;
-    let mut path_entries = user_path_entries();
-    if !path_entries.iter().any(|path| path == managed_bin_dir) {
-        path_entries.push(managed_bin_dir.to_path_buf());
-    }
-
-    let mut command = vec![format!(
-        "PATH={}",
-        joined_path(&path_entries)?.to_string_lossy()
-    )];
-    let cli = if let Some(user_cli) = user_cli {
-        logger::info(&format!(
-            "Using user-installed {} CLI: {}",
-            candidate.name,
-            user_cli.display()
-        ));
-        Some(user_cli)
-    } else {
-        logger::info(&format!(
-            "Using managed {} CLI from {}",
-            candidate.name,
-            runtime_dir.display()
-        ));
-        match managed_cli {
-            ManagedCli::AdapterOptionalDependency => None,
-            ManagedCli::NpmPackage(_) => Some(adapter_bin_path(&runtime_dir, candidate.cli)),
-        }
-    };
-    if let (Some(cli_override_env), Some(cli)) = (cli_override_env, cli) {
-        command.push(format!("{cli_override_env}={}", cli.to_string_lossy()));
-    }
-    if let Some(log_env) = log_env {
-        let log_dir = app_data::log_dir()?.join(candidate.id);
-        fs::create_dir_all(&log_dir).with_context(|| {
-            format!("failed to create ACP log directory: {}", log_dir.display())
-        })?;
-        command.push(format!("{log_env}={}", log_dir.to_string_lossy()));
-    }
-    append_program(&mut command, &adapter, &[]);
-    Ok(command)
-}
-
-#[derive(Debug, Deserialize)]
-struct Registry {
-    agents: Vec<RegistryAgent>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RegistryAgent {
-    id: String,
-    version: String,
-    distribution: RegistryDistribution,
-}
-
-#[derive(Debug, Deserialize)]
-struct RegistryDistribution {
-    #[serde(default)]
-    binary: HashMap<String, RegistryBinary>,
-}
-
-#[derive(Debug, Deserialize)]
-struct RegistryBinary {
-    archive: String,
-    cmd: String,
-    #[serde(default)]
-    args: Vec<String>,
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ManagedBinaryManifest {
     version: String,
     command: String,
+    #[serde(default)]
     args: Vec<String>,
+    #[serde(default)]
+    env: HashMap<String, String>,
 }
 
 struct PreparedProgram {
     executable: PathBuf,
     args: Vec<String>,
-}
-
-fn registry_platform() -> Result<&'static str> {
-    match (env::consts::OS, env::consts::ARCH) {
-        ("macos", "aarch64") => Ok("darwin-aarch64"),
-        ("macos", "x86_64") => Ok("darwin-x86_64"),
-        ("linux", "aarch64") => Ok("linux-aarch64"),
-        ("linux", "x86_64") => Ok("linux-x86_64"),
-        ("windows", "aarch64") => Ok("windows-aarch64"),
-        ("windows", "x86_64") => Ok("windows-x86_64"),
-        (os, arch) => anyhow::bail!("unsupported managed agent platform: {os}-{arch}"),
-    }
+    env: HashMap<String, String>,
 }
 
 fn safe_join(root: &Path, relative: &str) -> Result<PathBuf> {
@@ -436,44 +164,45 @@ fn safe_join(root: &Path, relative: &str) -> Result<PathBuf> {
     Ok(path)
 }
 
-fn cached_managed_binary(runtime_dir: &Path) -> Option<PreparedProgram> {
-    let manifest: ManagedBinaryManifest =
-        serde_json::from_slice(&fs::read(runtime_dir.join("managed-binary.json")).ok()?).ok()?;
+fn cached_managed_binary(runtime_dir: &Path, version: &str) -> Option<PreparedProgram> {
+    let manifest_bytes = fs::read(runtime_dir.join("managed-binary.json")).ok()?;
+    let manifest: ManagedBinaryManifest = serde_json::from_slice(&manifest_bytes).ok()?;
+    if manifest.version != version {
+        return None;
+    }
     let executable = safe_join(runtime_dir, &manifest.command).ok()?;
-    if !executable_works(&executable, &user_path_entries()) {
+    if !executable.is_file() {
         return None;
     }
     Some(PreparedProgram {
         executable,
         args: manifest.args,
+        env: manifest.env,
     })
 }
 
-#[cfg(windows)]
 fn extract_zip(archive_path: &Path, destination: &Path) -> Result<()> {
     let file = File::open(archive_path)
         .with_context(|| format!("failed to open agent archive: {}", archive_path.display()))?;
-    let mut archive = zip::ZipArchive::new(file).context("failed to read agent zip archive")?;
+    let mut archive = zip::ZipArchive::new(file)
+        .with_context(|| format!("failed to read zip archive: {}", archive_path.display()))?;
     for index in 0..archive.len() {
         let mut entry = archive
             .by_index(index)
-            .context("failed to read an entry from the agent zip archive")?;
-        let relative = entry
-            .enclosed_name()
-            .with_context(|| format!("unsafe path in agent archive: {}", entry.name()))?;
-        let output_path = destination.join(relative);
+            .context("failed to read zip entry")?;
+        let Some(enclosed_name) = entry.enclosed_name() else {
+            continue;
+        };
+        let output_path = destination.join(enclosed_name);
         if entry.is_dir() {
             fs::create_dir_all(&output_path).with_context(|| {
-                format!(
-                    "failed to create archive directory: {}",
-                    output_path.display()
-                )
+                format!("failed to create directory: {}", output_path.display())
             })?;
             continue;
         }
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create archive directory: {}", parent.display())
+                format!("failed to create parent directory: {}", parent.display())
             })?;
         }
         let mut output = File::create(&output_path).with_context(|| {
@@ -481,178 +210,187 @@ fn extract_zip(archive_path: &Path, destination: &Path) -> Result<()> {
         })?;
         io::copy(&mut entry, &mut output)
             .with_context(|| format!("failed to extract agent file: {}", output_path.display()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Some(mode) = entry.unix_mode() {
+                let _ = fs::set_permissions(&output_path, fs::Permissions::from_mode(mode));
+            }
+        }
     }
     Ok(())
 }
 
 fn extract_agent_archive(archive_path: &Path, archive_url: &str, destination: &Path) -> Result<()> {
-    let path = archive_url
-        .split('?')
-        .next()
-        .unwrap_or(archive_url)
-        .to_ascii_lowercase();
-    #[cfg(unix)]
+    let path = archive_url.split('?').next().unwrap_or(archive_url);
     if path.ends_with(".tar.gz") || path.ends_with(".tgz") {
         let file = File::open(archive_path)
             .with_context(|| format!("failed to open agent archive: {}", archive_path.display()))?;
-        let decoder = flate2::read::GzDecoder::new(file);
-        tar::Archive::new(decoder)
+        let tar = flate2::read::GzDecoder::new(file);
+        let mut archive = tar::Archive::new(tar);
+        archive
             .unpack(destination)
             .context("failed to extract agent tar archive")?;
         return Ok(());
     }
-    #[cfg(windows)]
     if path.ends_with(".zip") {
         return extract_zip(archive_path, destination);
     }
-    anyhow::bail!("unsupported managed agent archive: {archive_url}")
+    #[cfg(unix)]
+    if path.ends_with(".tar.bz2") || path.ends_with(".tbz") {
+        let status = std::process::Command::new("tar")
+            .arg("-xjf")
+            .arg(archive_path)
+            .arg("-C")
+            .arg(destination)
+            .status()
+            .context("failed to run tar -xjf")?;
+        if !status.success() {
+            anyhow::bail!("tar -xjf failed with status: {status}");
+        }
+        return Ok(());
+    }
+    // Single uncompressed binary or .exe
+    let file_name = Path::new(&path).file_name().unwrap_or_default();
+    let dest_file = destination.join(file_name);
+    fs::copy(archive_path, &dest_file).context("failed to copy agent binary")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&dest_file, fs::Permissions::from_mode(0o755));
+    }
+    Ok(())
 }
 
-fn install_registry_binary(runtime_dir: &Path, registry_id: &str) -> Result<PreparedProgram> {
-    if let Some(program) = cached_managed_binary(runtime_dir) {
-        return Ok(program);
-    }
+fn install_registry_binary(
+    runtime_dir: &Path,
+    registry_id: &str,
+    version: &str,
+    binary: &RegistryBinaryTarget,
+) -> Result<PreparedProgram> {
     let _guard = AGENT_INSTALL_LOCK
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    if let Some(program) = cached_managed_binary(runtime_dir) {
+        .expect("agent install lock poisoned");
+
+    if let Some(program) = cached_managed_binary(runtime_dir, version) {
+        logger::info(&format!("Reusing cached managed {registry_id} binary"));
         return Ok(program);
     }
+
+    let archive_url = reqwest::Url::parse(&binary.archive)
+        .context("ACP registry returned an invalid agent archive URL")?;
+
+    let version_dir = runtime_dir.join("versions").join(version);
+    let install_root = runtime_dir
+        .join("install")
+        .join(format!("{registry_id}-{version}"));
+    let unpack_dir = install_root.join("unpack");
+    let downloaded_archive = install_root.join(
+        archive_url
+            .path_segments()
+            .and_then(|segments| segments.last())
+            .filter(|last| !last.is_empty())
+            .unwrap_or("agent-archive"),
+    );
+
+    let _ = fs::remove_dir_all(&install_root);
+    fs::create_dir_all(&unpack_dir).with_context(|| {
+        format!(
+            "failed to create managed agent install directory: {}",
+            unpack_dir.display()
+        )
+    })?;
 
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(120))
         .user_agent(format!("browser4agent/{}", env!("CARGO_PKG_VERSION")))
         .build()
         .context("failed to create the managed agent downloader")?;
-    let response = client
-        .get(ACP_REGISTRY_URL)
-        .send()
-        .context("failed to download the ACP registry")?
-        .error_for_status()
-        .context("the ACP registry returned an error")?;
-    let registry: Registry =
-        serde_json::from_reader(response).context("failed to parse the ACP registry")?;
-    let agent = registry
-        .agents
-        .into_iter()
-        .find(|agent| agent.id == registry_id)
-        .with_context(|| format!("ACP registry has no {registry_id} agent"))?;
-    if agent.version.is_empty()
-        || agent.version == "."
-        || agent.version == ".."
-        || !agent
-            .version
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_'))
-    {
-        anyhow::bail!("ACP registry returned an unsafe agent version");
-    }
-    let platform = registry_platform()?;
-    let binary = agent
-        .distribution
-        .binary
-        .into_iter()
-        .find_map(|(target, binary)| (target == platform).then_some(binary))
-        .with_context(|| format!("{registry_id} has no managed binary for {platform}"))?;
-    let archive_url = reqwest::Url::parse(&binary.archive)
-        .context("ACP registry returned an invalid agent archive URL")?;
-    if archive_url.scheme() != "https" {
-        anyhow::bail!("managed agent archives must use HTTPS");
-    }
-
-    logger::info(&format!(
-        "Installing {registry_id} {} from the ACP registry in {}",
-        agent.version,
-        runtime_dir.display()
-    ));
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    let install_root = runtime_dir.join(format!(".install-{}-{nonce}", std::process::id()));
-    let extracted_dir = install_root.join("extracted");
-    let archive_path = install_root.join("agent.archive");
-    fs::create_dir_all(&extracted_dir).with_context(|| {
-        format!(
-            "failed to create managed agent staging directory: {}",
-            extracted_dir.display()
-        )
-    })?;
 
     let result = (|| {
         let mut response = client
             .get(archive_url)
             .send()
-            .context("failed to download the managed agent")?
+            .context("failed to download the managed agent binary")?
             .error_for_status()
-            .context("the managed agent download returned an error")?;
-        let mut archive_file = File::create(&archive_path).with_context(|| {
+            .context("the agent download returned an error")?;
+        let mut archive_file = File::create(&downloaded_archive).with_context(|| {
             format!(
-                "failed to create managed agent archive: {}",
-                archive_path.display()
+                "failed to create download file: {}",
+                downloaded_archive.display()
             )
         })?;
         io::copy(&mut response, &mut archive_file)
             .context("failed to save the managed agent archive")?;
-        drop(archive_file);
-        extract_agent_archive(&archive_path, binary.archive.as_str(), &extracted_dir)?;
+        archive_file
+            .sync_all()
+            .context("failed to flush the agent archive to disk")?;
 
-        let staged_executable = safe_join(&extracted_dir, &binary.cmd)?;
-        if !executable_works(&staged_executable, &user_path_entries()) {
+        logger::info(&format!(
+            "Extracting managed {registry_id} binary to {}",
+            unpack_dir.display()
+        ));
+        extract_agent_archive(&downloaded_archive, &binary.archive, &unpack_dir)?;
+
+        let source_executable = safe_join(&unpack_dir, &binary.cmd)?;
+        if !source_executable.is_file() {
             anyhow::bail!(
-                "managed {registry_id} was downloaded without a working executable: {}",
-                staged_executable.display()
+                "managed agent archive did not extract the expected executable: {}",
+                source_executable.display()
             );
         }
-        let versions_dir = runtime_dir.join("versions");
-        fs::create_dir_all(&versions_dir).with_context(|| {
-            format!(
-                "failed to create managed agent versions directory: {}",
-                versions_dir.display()
-            )
-        })?;
-        let version_dir = versions_dir.join(&agent.version);
-        if version_dir.exists() {
-            fs::remove_dir_all(&version_dir).with_context(|| {
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&source_executable, fs::Permissions::from_mode(0o755));
+        }
+
+        if version_dir.is_dir() {
+            let _ = fs::remove_dir_all(&version_dir);
+        }
+        if let Some(parent) = version_dir.parent() {
+            fs::create_dir_all(parent).with_context(|| {
                 format!(
-                    "failed to replace invalid managed agent version: {}",
-                    version_dir.display()
+                    "failed to create runtime version parent directory: {}",
+                    parent.display()
                 )
             })?;
         }
-        fs::rename(&extracted_dir, &version_dir).with_context(|| {
-            format!(
-                "failed to activate managed agent version: {}",
-                version_dir.display()
-            )
+        fs::rename(&unpack_dir, &version_dir).with_context(|| {
+            format!("failed to move managed agent to {}", version_dir.display())
         })?;
+
         let executable = safe_join(&version_dir, &binary.cmd)?;
         let relative_command = executable
             .strip_prefix(runtime_dir)
-            .context("managed agent executable escaped its runtime directory")?
+            .context("failed to construct the managed agent relative command")?
             .to_string_lossy()
             .into_owned();
+
         let manifest = ManagedBinaryManifest {
-            version: agent.version,
+            version: version.to_string(),
             command: relative_command,
-            args: binary.args,
+            args: binary.args.clone(),
+            env: binary.env.clone(),
         };
         let manifest_path = runtime_dir.join("managed-binary.json");
         fs::write(
             &manifest_path,
             serde_json::to_vec_pretty(&manifest)
-                .context("failed to serialize managed agent metadata")?,
+                .context("failed to serialize the managed agent manifest")?,
         )
         .with_context(|| {
             format!(
-                "failed to write managed agent metadata: {}",
+                "failed to write managed agent manifest: {}",
                 manifest_path.display()
             )
         })?;
-        logger::info(&format!("Installed managed {registry_id}"));
+
         Ok(PreparedProgram {
             executable,
             args: manifest.args,
+            env: manifest.env,
         })
     })();
     let _ = fs::remove_dir_all(&install_root);
@@ -660,10 +398,10 @@ fn install_registry_binary(runtime_dir: &Path, registry_id: &str) -> Result<Prep
 }
 
 fn prepare_native_command(
-    candidate: AgentCandidate,
+    candidate: &AgentCandidate,
     user_cli: Option<PathBuf>,
-    user_args: &[&str],
-    registry_id: &str,
+    version: &str,
+    binary: &RegistryBinaryTarget,
 ) -> Result<Vec<String>> {
     let program = if let Some(executable) = user_cli {
         logger::info(&format!(
@@ -673,94 +411,168 @@ fn prepare_native_command(
         ));
         PreparedProgram {
             executable,
-            args: user_args.iter().map(|arg| (*arg).to_string()).collect(),
+            args: binary.args.clone(),
+            env: binary.env.clone(),
         }
     } else {
-        let runtime_dir = app_data::agent_runtime_dir(candidate.id)?;
+        let runtime_dir = app_data::agent_runtime_dir(&candidate.id)?;
         logger::info(&format!(
             "Using managed {} CLI from {}",
             candidate.name,
             runtime_dir.display()
         ));
-        install_registry_binary(&runtime_dir, registry_id)?
+        install_registry_binary(&runtime_dir, &candidate.id, version, binary)?
     };
-    let mut path_entries = user_path_entries();
-    if let Some(bin_dir) = program.executable.parent()
-        && !path_entries.iter().any(|path| path == bin_dir)
-    {
-        path_entries.push(bin_dir.to_path_buf());
-    }
+
+    let path_entries = user_path_entries();
     let mut command = vec![format!(
         "PATH={}",
         joined_path(&path_entries)?.to_string_lossy()
     )];
+    for (k, v) in &program.env {
+        command.push(format!("{k}={v}"));
+    }
     append_program(&mut command, &program.executable, &program.args);
     Ok(command)
 }
 
+fn prepare_npx_command(
+    candidate: &AgentCandidate,
+    package: &str,
+    args: &[String],
+    env: &HashMap<String, String>,
+) -> Result<Vec<String>> {
+    let npx = find_working_command("npx").with_context(|| {
+        format!(
+            "npx was not found; install Node.js to run {} ({})",
+            candidate.name, candidate.id
+        )
+    })?;
+    let path_entries = user_path_entries();
+    let mut command = vec![format!(
+        "PATH={}",
+        joined_path(&path_entries)?.to_string_lossy()
+    )];
+    for (k, v) in env {
+        command.push(format!("{k}={v}"));
+    }
+    let mut npx_args = vec!["-y".to_string(), package.to_string()];
+    npx_args.extend(args.iter().cloned());
+    append_program(&mut command, &npx, &npx_args);
+    Ok(command)
+}
+
+fn prepare_uvx_command(
+    candidate: &AgentCandidate,
+    package: &str,
+    args: &[String],
+    env: &HashMap<String, String>,
+) -> Result<Vec<String>> {
+    let uvx = find_working_command("uvx").with_context(|| {
+        format!(
+            "uvx was not found; install uv (Python package runner) to run {} ({})",
+            candidate.name, candidate.id
+        )
+    })?;
+    let path_entries = user_path_entries();
+    let mut command = vec![format!(
+        "PATH={}",
+        joined_path(&path_entries)?.to_string_lossy()
+    )];
+    for (k, v) in env {
+        command.push(format!("{k}={v}"));
+    }
+    let mut uvx_args = vec![package.to_string()];
+    uvx_args.extend(args.iter().cloned());
+    append_program(&mut command, &uvx, &uvx_args);
+    Ok(command)
+}
+
 pub(super) fn prepare_agent_command(candidate: AgentCandidate) -> Result<Vec<String>> {
-    let user_cli = find_working_command(candidate.cli);
-    match candidate.launch {
-        AgentLaunch::Adapter { .. } => prepare_adapter_command(candidate, user_cli),
-        AgentLaunch::NativeAcp { args, registry_id } => {
-            prepare_native_command(candidate, user_cli, args, registry_id)
+    let user_cli = candidate.cli.as_deref().and_then(find_working_command);
+    match &candidate.launch {
+        AgentLaunch::Binary { version, target } => {
+            prepare_native_command(&candidate, user_cli, version, target)
+        }
+        AgentLaunch::Npx { package, args, env } => {
+            prepare_npx_command(&candidate, package, args, env)
+        }
+        AgentLaunch::Uvx { package, args, env } => {
+            prepare_uvx_command(&candidate, package, args, env)
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use super::{safe_join, write_runtime_manifest};
-    use crate::acp_agent::catalog::{AgentLaunch, agent_candidates};
+    use super::{cached_managed_binary, extract_agent_archive, safe_join};
 
     #[test]
-    fn writes_managed_runtime_manifest() {
+    fn extracts_tar_gz_zip_and_standalone_agents() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("clock should be after unix epoch")
+            .unwrap()
             .as_nanos();
-        let runtime_dir = std::env::temp_dir().join(format!("browser4agent-runtime-{unique}"));
-        std::fs::create_dir_all(&runtime_dir).expect("create runtime directory");
-        let candidate = agent_candidates()[0];
-        let AgentLaunch::Adapter { package, .. } = candidate.launch else {
-            panic!("Claude should use an adapter")
-        };
+        let root = std::env::temp_dir().join(format!("browser4agent-archives-{unique}"));
+        std::fs::create_dir_all(&root).unwrap();
+        let content = b"agent fixture";
+        let executable = "bin/agent.exe";
 
-        write_runtime_manifest(candidate, &runtime_dir, false).expect("write runtime manifest");
-        let manifest: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(runtime_dir.join("package.json")).expect("read runtime manifest"),
-        )
-        .expect("parse runtime manifest");
-        std::fs::remove_dir_all(&runtime_dir).expect("remove runtime directory");
-
-        assert_eq!(manifest["private"], true);
-        assert_eq!(manifest["dependencies"][package], "latest");
-    }
-
-    #[test]
-    fn managed_pi_manifest_installs_adapter_and_cli_together() {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("clock should be after unix epoch")
-            .as_nanos();
-        let runtime_dir = std::env::temp_dir().join(format!("browser4agent-pi-{unique}"));
-        std::fs::create_dir_all(&runtime_dir).expect("create runtime directory");
-        let candidate = agent_candidates()[3];
-
-        write_runtime_manifest(candidate, &runtime_dir, true).expect("write runtime manifest");
-        let manifest: serde_json::Value = serde_json::from_slice(
-            &std::fs::read(runtime_dir.join("package.json")).expect("read runtime manifest"),
-        )
-        .expect("parse runtime manifest");
-        std::fs::remove_dir_all(&runtime_dir).expect("remove runtime directory");
-
-        assert_eq!(manifest["dependencies"]["pi-acp"], "latest");
-        assert_eq!(
-            manifest["dependencies"]["@earendil-works/pi-coding-agent"],
-            "latest"
+        let archive_path = root.join("agent.tar.gz");
+        let gzip = flate2::write::GzEncoder::new(
+            std::fs::File::create(&archive_path).unwrap(),
+            flate2::Compression::default(),
         );
+        let mut archive = tar::Builder::new(gzip);
+        let mut header = tar::Header::new_gnu();
+        header.set_size(content.len() as u64);
+        header.set_mode(0o755);
+        header.set_cksum();
+        archive
+            .append_data(&mut header, executable, &content[..])
+            .unwrap();
+        archive.into_inner().unwrap().finish().unwrap();
+        let destination = root.join("tar");
+        extract_agent_archive(
+            &archive_path,
+            "https://example.com/agent.tar.gz?download=1",
+            &destination,
+        )
+        .unwrap();
+        assert_eq!(
+            std::fs::read(destination.join(executable)).unwrap(),
+            content
+        );
+
+        let archive_path = root.join("agent.zip");
+        let mut archive = zip::ZipWriter::new(std::fs::File::create(&archive_path).unwrap());
+        archive
+            .start_file(executable, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(content).unwrap();
+        archive.finish().unwrap();
+        let destination = root.join("zip");
+        extract_agent_archive(&archive_path, "https://example.com/agent.zip", &destination)
+            .unwrap();
+        assert_eq!(
+            std::fs::read(destination.join(executable)).unwrap(),
+            content
+        );
+
+        let archive_path = root.join("agent.exe");
+        std::fs::write(&archive_path, content).unwrap();
+        let destination = root.join("standalone");
+        std::fs::create_dir_all(&destination).unwrap();
+        extract_agent_archive(&archive_path, "https://example.com/agent.exe", &destination)
+            .unwrap();
+        assert_eq!(
+            std::fs::read(destination.join("agent.exe")).unwrap(),
+            content
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -768,9 +580,49 @@ mod tests {
         let runtime = std::env::temp_dir().join("browser4agent-runtime-root");
         assert_eq!(
             safe_join(&runtime, "./dist-package/cursor-agent").expect("safe path"),
-            runtime.join("dist-package/cursor-agent")
+            runtime.join("dist-package").join("cursor-agent")
         );
-        assert!(safe_join(&runtime, "../cursor-agent").is_err());
-        assert!(safe_join(&runtime, "/cursor-agent").is_err());
+    }
+
+    #[test]
+    fn loads_cached_managed_binary_manifest() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        let runtime_dir = std::env::temp_dir().join(format!("browser4agent-cursor-{unique}"));
+        let binary_dir = runtime_dir.join("versions").join("1.0.0");
+        std::fs::create_dir_all(&binary_dir).expect("create binary directory");
+        let executable = binary_dir.join(if cfg!(windows) {
+            "cursor.cmd"
+        } else {
+            "cursor"
+        });
+        std::fs::write(&executable, "").expect("write stub executable");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755))
+                .expect("mark stub executable");
+        }
+        let manifest = serde_json::json!({
+            "version": "1.0.0",
+            "command": executable.strip_prefix(&runtime_dir).unwrap().to_string_lossy(),
+            "args": ["acp"],
+            "env": { "TEST_ENV": "1" }
+        });
+        std::fs::write(
+            runtime_dir.join("managed-binary.json"),
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .expect("write binary manifest");
+
+        let cached = cached_managed_binary(&runtime_dir, "1.0.0").expect("find cached binary");
+        assert!(cached_managed_binary(&runtime_dir, "2.0.0").is_none());
+        std::fs::remove_dir_all(&runtime_dir).expect("remove runtime directory");
+
+        assert_eq!(cached.executable, executable);
+        assert_eq!(cached.args, vec!["acp".to_string()]);
+        assert_eq!(cached.env.get("TEST_ENV"), Some(&"1".to_string()));
     }
 }

@@ -8,8 +8,8 @@ const { agentSessionKey, readAgentPanelState, updateAgentPanelState, upsertStore
 describe('agent session storage', () => {
   it('keeps agent session keys distinct', () => {
     const sessions = [
-      { agent: 'claude', sessionId: 'same' },
-      { agent: 'codex', sessionId: 'same' },
+      { agent: 'claude-acp', sessionId: 'same' },
+      { agent: 'codex-acp', sessionId: 'same' },
       { agent: 'a:b', sessionId: 'c' },
       { agent: 'a', sessionId: 'b:c' },
     ];
@@ -29,7 +29,7 @@ describe('agent session storage', () => {
       },
     };
 
-    await updateAgentPanelState((state) => upsertStoredSession(state, { agent: 'claude', title: '', draft: true }));
+    await updateAgentPanelState((state) => upsertStoredSession(state, { agent: 'claude-acp', title: '', draft: true }));
 
     assert.deepEqual((await readAgentPanelState()).sessions, []);
   });
@@ -46,12 +46,12 @@ describe('agent session storage', () => {
     };
 
     await updateAgentPanelState((state) =>
-      upsertStoredSession(state, { agent: 'claude', sessionId: 'one', title: 'First' }),
+      upsertStoredSession(state, { agent: 'claude-acp', sessionId: 'one', title: 'First' }),
     );
     await updateAgentPanelState((state) => ({
       ...state,
       defaults: {
-        agent: 'claude',
+        agent: 'claude-acp',
         configOptionsByAgent: {
           claude: [{ id: 'mode', type: 'select', currentValue: 'plan', options: [] }],
           codex: [{ id: 'mode', type: 'select', currentValue: 'default', options: [] }],

@@ -1,93 +1,180 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-#[derive(Clone, Copy)]
-pub(super) enum ManagedCli {
-    /// The ACP adapter declares its compatible CLI as an optional dependency.
-    AdapterOptionalDependency,
-    /// Install a separate npm CLI package beside the adapter.
-    NpmPackage(&'static str),
-}
+pub(super) const REGISTRY_JSON: &str = include_str!("registry.json");
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Debug)]
 pub(super) enum AgentLaunch {
-    Adapter {
-        package: &'static str,
-        bin: &'static str,
-        cli_override_env: Option<&'static str>,
-        managed_cli: ManagedCli,
-        log_env: Option<&'static str>,
+    Binary {
+        version: String,
+        target: RegistryBinaryTarget,
     },
-    NativeAcp {
-        args: &'static [&'static str],
-        registry_id: &'static str,
+    Npx {
+        package: String,
+        args: Vec<String>,
+        env: HashMap<String, String>,
+    },
+    Uvx {
+        package: String,
+        args: Vec<String>,
+        env: HashMap<String, String>,
     },
 }
 
 /// A supported agent, its user CLI, and how to launch or provision ACP.
-#[derive(Clone, Copy)]
+#[derive(Clone, Debug)]
 pub(super) struct AgentCandidate {
-    pub(super) id: &'static str,
-    pub(super) name: &'static str,
-    pub(super) cli: &'static str,
+    pub(super) id: String,
+    pub(super) name: String,
+    pub(super) cli: Option<String>,
     pub(super) launch: AgentLaunch,
 }
 
-/// Supported ACP agents in display order.
-pub(super) fn agent_candidates() -> [AgentCandidate; 4] {
-    [
-        AgentCandidate {
-            id: "claude",
-            name: "Claude Code",
-            cli: "claude",
-            launch: AgentLaunch::Adapter {
-                package: "@agentclientprotocol/claude-agent-acp",
-                bin: "claude-agent-acp",
-                cli_override_env: Some("CLAUDE_CODE_EXECUTABLE"),
-                managed_cli: ManagedCli::AdapterOptionalDependency,
-                log_env: None,
-            },
-        },
-        AgentCandidate {
-            id: "codex",
-            name: "Codex",
-            cli: "codex",
-            launch: AgentLaunch::Adapter {
-                package: "@agentclientprotocol/codex-acp",
-                bin: "codex-acp",
-                cli_override_env: Some("CODEX_PATH"),
-                managed_cli: ManagedCli::AdapterOptionalDependency,
-                log_env: Some("APP_SERVER_LOGS"),
-            },
-        },
-        AgentCandidate {
-            id: "cursor",
-            name: "Cursor",
-            cli: "cursor-agent",
-            launch: AgentLaunch::NativeAcp {
-                args: &["acp"],
-                registry_id: "cursor",
-            },
-        },
-        AgentCandidate {
-            id: "pi",
-            name: "pi",
-            cli: "pi",
-            launch: AgentLaunch::Adapter {
-                package: "pi-acp",
-                bin: "pi-acp",
-                cli_override_env: Some("PI_ACP_PI_COMMAND"),
-                managed_cli: ManagedCli::NpmPackage("@earendil-works/pi-coding-agent"),
-                log_env: None,
-            },
-        },
-    ]
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub(super) struct Registry {
+    pub(super) version: String,
+    pub(super) agents: Vec<RegistryAgent>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub(super) struct RegistryAgent {
+    pub(super) id: String,
+    pub(super) name: String,
+    pub(super) version: String,
+    pub(super) description: Option<String>,
+    pub(super) icon: Option<String>,
+    pub(super) distribution: RegistryDistribution,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub(super) struct RegistryDistribution {
+    pub(super) binary: Option<HashMap<String, RegistryBinaryTarget>>,
+    pub(super) npx: Option<RegistryNpxTarget>,
+    pub(super) uvx: Option<RegistryUvxTarget>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub(super) struct RegistryBinaryTarget {
+    pub(super) archive: String,
+    pub(super) cmd: String,
+    #[serde(default)]
+    pub(super) args: Vec<String>,
+    #[serde(default)]
+    pub(super) env: HashMap<String, String>,
+    pub(super) sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub(super) struct RegistryNpxTarget {
+    pub(super) package: String,
+    #[serde(default)]
+    pub(super) args: Vec<String>,
+    #[serde(default)]
+    pub(super) env: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
+pub(super) struct RegistryUvxTarget {
+    pub(super) package: String,
+    #[serde(default)]
+    pub(super) args: Vec<String>,
+    #[serde(default)]
+    pub(super) env: HashMap<String, String>,
+}
+
+pub(super) fn bundled_registry() -> Result<Registry, serde_json::Error> {
+    serde_json::from_str(REGISTRY_JSON)
+}
+
+fn registry_platform() -> String {
+    let os = match std::env::consts::OS {
+        "macos" => "darwin",
+        os => os,
+    };
+    format!("{os}-{}", std::env::consts::ARCH)
+}
+
+/// Select a distribution for the host before deriving its CLI or launch args.
+fn candidates_for_platform(platform: &str) -> Vec<AgentCandidate> {
+    let mut candidates = Vec::new();
+    if let Ok(registry) = bundled_registry() {
+        for agent in registry.agents {
+            if let Some(binary) = agent
+                .distribution
+                .binary
+                .and_then(|mut targets| targets.remove(platform))
+            {
+                // Registry Windows paths can mix '/' and '\\', including when
+                // inspecting another platform's catalog in a test.
+                let cmd_name = binary.cmd.rsplit(['/', '\\']).next().unwrap_or_default();
+                // Let PATHEXT probe both native executables and package-manager
+                // shims (for example, kilo.exe or kilo.cmd) on Windows.
+                let cmd_name = if platform.starts_with("windows-") {
+                    cmd_name
+                        .rsplit_once('.')
+                        .filter(|(_, extension)| {
+                            ["exe", "cmd", "bat", "com"]
+                                .iter()
+                                .any(|suffix| extension.eq_ignore_ascii_case(suffix))
+                        })
+                        .map_or(cmd_name, |(name, _)| name)
+                } else {
+                    cmd_name
+                };
+                let cli = (!cmd_name.is_empty()).then(|| cmd_name.to_string());
+                candidates.push(AgentCandidate {
+                    id: agent.id.clone(),
+                    name: agent.name,
+                    cli,
+                    launch: AgentLaunch::Binary {
+                        version: agent.version,
+                        target: binary,
+                    },
+                });
+            } else if let Some(npx) = agent.distribution.npx {
+                candidates.push(AgentCandidate {
+                    id: agent.id,
+                    name: agent.name,
+                    cli: None,
+                    launch: AgentLaunch::Npx {
+                        package: npx.package,
+                        args: npx.args,
+                        env: npx.env,
+                    },
+                });
+            } else if let Some(uvx) = agent.distribution.uvx {
+                candidates.push(AgentCandidate {
+                    id: agent.id,
+                    name: agent.name,
+                    cli: None,
+                    launch: AgentLaunch::Uvx {
+                        package: uvx.package,
+                        args: uvx.args,
+                        env: uvx.env,
+                    },
+                });
+            }
+        }
+    }
+    candidates
+}
+
+/// Agents with a usable distribution for this host (binary, then npx/uvx).
+pub(super) fn agent_candidates() -> Vec<AgentCandidate> {
+    candidates_for_platform(&registry_platform())
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AvailableAgent {
-    pub id: &'static str,
-    pub name: &'static str,
+    pub id: String,
+    pub name: String,
 }
 
 pub fn available_agents() -> Vec<AvailableAgent> {
@@ -102,14 +189,52 @@ pub fn available_agents() -> Vec<AvailableAgent> {
 
 #[cfg(test)]
 mod tests {
-    use super::available_agents;
+    use super::{
+        AgentLaunch, agent_candidates, available_agents, bundled_registry, candidates_for_platform,
+    };
 
     #[test]
-    fn lists_supported_agents_without_local_cli_detection() {
+    fn parses_bundled_registry() {
+        let registry = bundled_registry().expect("valid bundled registry");
+        assert!(!registry.agents.is_empty());
+    }
+
+    #[test]
+    fn lists_all_available_agents() {
         let agents = available_agents();
-        assert_eq!(
-            agents.iter().map(|agent| agent.id).collect::<Vec<_>>(),
-            ["claude", "codex", "cursor", "pi"]
+        assert_eq!(agents.len(), agent_candidates().len());
+    }
+
+    #[test]
+    fn candidates_use_the_selected_platform_command() {
+        for (platform, cursor_cli, poolside_cli) in [
+            ("darwin-aarch64", "cursor-agent", "pool-darwin-arm64"),
+            ("windows-x86_64", "cursor-agent", "pool-windows-amd64"),
+        ] {
+            let candidates = candidates_for_platform(platform);
+            for (id, expected) in [("cursor", cursor_cli), ("poolside", poolside_cli)] {
+                let candidate = candidates
+                    .iter()
+                    .find(|candidate| candidate.id == id)
+                    .unwrap();
+                assert_eq!(candidate.cli.as_deref(), Some(expected));
+                assert!(matches!(candidate.launch, AgentLaunch::Binary { .. }));
+            }
+        }
+    }
+
+    #[test]
+    fn falls_back_to_npx_when_the_platform_has_no_binary() {
+        let candidates = candidates_for_platform("windows-aarch64");
+        let kilo = candidates
+            .iter()
+            .find(|candidate| candidate.id == "kilo")
+            .unwrap();
+        assert!(
+            matches!(&kilo.launch, AgentLaunch::Npx { package, args, .. }
+            if package.starts_with("@kilocode/cli@") && args == &["acp"])
         );
+        assert!(kilo.cli.is_none());
+        assert!(!candidates.iter().any(|candidate| candidate.id == "goose"));
     }
 }

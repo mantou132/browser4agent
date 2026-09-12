@@ -67,7 +67,7 @@ export function reduceSessionEvent(state, event, { agent } = {}) {
         : null;
 
   if (role && update.content?.type === 'text') {
-    if (agent === 'claude' && role === 'user' && update.content.text.trim() === CLAUDE_INTERRUPTED_USER_MESSAGE) {
+    if (agent === 'claude-acp' && role === 'user' && update.content.text.trim() === CLAUDE_INTERRUPTED_USER_MESSAGE) {
       return currentMessages === messages ? null : { pane: { messages: currentMessages } };
     }
     return {

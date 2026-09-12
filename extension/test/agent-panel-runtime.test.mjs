@@ -92,8 +92,8 @@ describe('agent panel runtime', () => {
       },
     };
 
-    assert.equal(reduceSessionEvent(state, interrupted, { agent: 'claude' }), null);
-    assert.deepEqual(reduceSessionEvent(state, interrupted, { agent: 'codex' })?.pane.messages, [
+    assert.equal(reduceSessionEvent(state, interrupted, { agent: 'claude-acp' }), null);
+    assert.deepEqual(reduceSessionEvent(state, interrupted, { agent: 'codex-acp' })?.pane.messages, [
       { role: 'user', text: '[Request interrupted by user]' },
     ]);
     assert.deepEqual(
@@ -106,7 +106,7 @@ describe('agent panel runtime', () => {
             content: { type: 'text', text: 'Why did Claude show [Request interrupted by user]?' },
           },
         },
-        { agent: 'claude' },
+        { agent: 'claude-acp' },
       )?.pane.messages,
       [{ role: 'user', text: 'Why did Claude show [Request interrupted by user]?' }],
     );
@@ -139,7 +139,7 @@ describe('agent panel runtime', () => {
     });
     controller = createSessionController({ state, runtime, turns, api });
 
-    controller.confirmNewSession({ agent: 'codex', cwd: '/repo' });
+    controller.confirmNewSession({ agent: 'codex-acp', cwd: '/repo' });
     const starting = turns.send({ prompt: 'First prompt', attachments: [] });
 
     assert.equal(state.sessionKey, 'draft');
@@ -153,7 +153,7 @@ describe('agent panel runtime', () => {
     resolveCreate({ sessionId: 'acp-1', title: 'ACP title', configOptions: [] });
     await starting;
 
-    const key = agentSessionKey('codex', 'acp-1');
+    const key = agentSessionKey('codex-acp', 'acp-1');
     assert.equal(state.draftSession, null);
     assert.equal(state.sessionKey, key);
     assert.equal(state.sessions[0].title, 'ACP title');
@@ -181,9 +181,9 @@ describe('agent panel runtime', () => {
   });
 
   it('ignores a stale load after reconnect and allows the session to be loaded again', async () => {
-    const key = agentSessionKey('codex', 'acp-1');
+    const key = agentSessionKey('codex-acp', 'acp-1');
     const state = createPanelState({
-      sessions: [{ key, agent: 'codex', sessionId: 'acp-1', cwd: '/repo' }],
+      sessions: [{ key, agent: 'codex-acp', sessionId: 'acp-1', cwd: '/repo' }],
     });
     const runtime = createSessionRuntime(state);
     let resolveFirstLoad;
@@ -225,11 +225,11 @@ describe('agent panel runtime', () => {
   });
 
   it('stays on the selected session and records the error when loadSession fails', async () => {
-    const previousKey = agentSessionKey('codex', 'prev');
-    const targetKey = agentSessionKey('codex', 'target');
+    const previousKey = agentSessionKey('codex-acp', 'prev');
+    const targetKey = agentSessionKey('codex-acp', 'target');
     const sessions = [
-      { key: previousKey, agent: 'codex', sessionId: 'prev' },
-      { key: targetKey, agent: 'codex', sessionId: 'target' },
+      { key: previousKey, agent: 'codex-acp', sessionId: 'prev' },
+      { key: targetKey, agent: 'codex-acp', sessionId: 'target' },
     ];
     const state = createPanelState({ sessions, sessionKey: previousKey });
     const runtime = createSessionRuntime(state);
@@ -274,17 +274,17 @@ describe('agent panel runtime', () => {
   });
 
   it('activates the previous list item when deleting the current session', async () => {
-    const previousKey = agentSessionKey('codex', 'previous');
-    const currentKey = agentSessionKey('codex', 'current');
-    const nextKey = agentSessionKey('codex', 'next');
+    const previousKey = agentSessionKey('codex-acp', 'previous');
+    const currentKey = agentSessionKey('codex-acp', 'current');
+    const nextKey = agentSessionKey('codex-acp', 'next');
     const sessions = [
-      { key: previousKey, agent: 'codex', sessionId: 'previous' },
-      { key: currentKey, agent: 'codex', sessionId: 'current' },
-      { key: nextKey, agent: 'codex', sessionId: 'next' },
+      { key: previousKey, agent: 'codex-acp', sessionId: 'previous' },
+      { key: currentKey, agent: 'codex-acp', sessionId: 'current' },
+      { key: nextKey, agent: 'codex-acp', sessionId: 'next' },
     ];
     storage[localStorageKeys.agentPanelState] = {
       sessions,
-      defaults: { agent: 'codex', configOptionsByAgent: {} },
+      defaults: { agent: 'codex-acp', configOptionsByAgent: {} },
     };
     const state = createPanelState({ sessions, sessionKey: currentKey });
     const runtime = createSessionRuntime(state);
@@ -315,15 +315,15 @@ describe('agent panel runtime', () => {
   });
 
   it('removes the session locally and activates fallback even if agent deleteSession fails', async () => {
-    const previousKey = agentSessionKey('codex', 'previous');
-    const currentKey = agentSessionKey('codex', 'current');
+    const previousKey = agentSessionKey('codex-acp', 'previous');
+    const currentKey = agentSessionKey('codex-acp', 'current');
     const sessions = [
-      { key: previousKey, agent: 'codex', sessionId: 'previous' },
-      { key: currentKey, agent: 'codex', sessionId: 'current' },
+      { key: previousKey, agent: 'codex-acp', sessionId: 'previous' },
+      { key: currentKey, agent: 'codex-acp', sessionId: 'current' },
     ];
     storage[localStorageKeys.agentPanelState] = {
       sessions,
-      defaults: { agent: 'codex', configOptionsByAgent: {} },
+      defaults: { agent: 'codex-acp', configOptionsByAgent: {} },
     };
     const state = createPanelState({
       sessions,
@@ -360,9 +360,9 @@ describe('agent panel runtime', () => {
   });
 
   it('keeps queued prompts after cancel instead of auto-draining them', async () => {
-    const key = agentSessionKey('codex', 'acp-1');
+    const key = agentSessionKey('codex-acp', 'acp-1');
     const state = createPanelState({
-      sessions: [{ key, agent: 'codex', sessionId: 'acp-1', title: 'Session' }],
+      sessions: [{ key, agent: 'codex-acp', sessionId: 'acp-1', title: 'Session' }],
       sessionKey: key,
     });
     const runtime = createSessionRuntime(state);

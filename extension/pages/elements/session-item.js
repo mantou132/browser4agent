@@ -1,13 +1,7 @@
+import { getAgentName } from '../../shared/agents.js';
 import { t } from '../../shared/i18n.js';
-import { getAgentIcon, icons } from '../../shared/icons.js';
+import { icons } from '../../shared/icons.js';
 import { displayHomePath } from '../../shared/path.js';
-
-const agentNames = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  cursor: 'Cursor',
-  pi: 'pi',
-};
 
 @customElement('agent-session-item')
 class AgentSessionItemElement extends GemElement {
@@ -40,7 +34,7 @@ class AgentSessionItemElement extends GemElement {
 
     const updatedAt = session.updatedAt ? new Date(session.updatedAt).toLocaleString() : '';
     const title = session.title || t('devtoolsPanelNewSession');
-    const agentName = agentNames[session.agent] || session.agent;
+    const agentName = getAgentName(session.agent);
 
     return html`
       <li
@@ -55,11 +49,11 @@ class AgentSessionItemElement extends GemElement {
       >
         <span class="min-w-0 flex-1">
           <span class="flex min-w-0 items-center gap-1.5 font-medium text-highlight">
-            <dy-use
-              class="size-3.5 shrink-0 text-describe"
-              .element=${getAgentIcon(session.agent)}
+            <agent-icon
+              class="size-3.5 shrink-0"
+              .agent=${session.agent}
               title=${agentName || session.agent}
-            ></dy-use>
+            ></agent-icon>
             <span class="min-w-0 truncate">${title}</span>
           </span>
           <span v-if=${session.cwd} class="mt-0.5 block truncate font-mono text-xs text-describe" title=${session.cwd}>

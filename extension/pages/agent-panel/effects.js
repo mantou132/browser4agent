@@ -6,15 +6,6 @@ export function mountBootstrap({ state, api }) {
   let active = true;
   const update = (patch) => active && state(patch);
 
-  const loadAgents = async () => {
-    try {
-      const { agents } = await api.listAgents();
-      update({ agents: agents || [] });
-    } catch (e) {
-      update({ error: e.message });
-    }
-  };
-
   const loadHome = async () => {
     try {
       const { home, path } = await api.browseFiles('', { type: 'directory' });
@@ -32,7 +23,7 @@ export function mountBootstrap({ state, api }) {
       } catch (e) {
         update({ error: e.message });
       }
-      await Promise.all([loadHome(), loadAgents()]);
+      await loadHome();
     } finally {
       update({ booting: false });
     }
