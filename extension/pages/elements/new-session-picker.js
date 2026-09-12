@@ -1,6 +1,5 @@
 import { hotkeys } from 'duoyun-ui/lib/hotkeys';
 import { t } from '../../shared/i18n.js';
-import { getAgentIcon } from '../../shared/icons.js';
 import { displayHomePath } from '../../shared/path.js';
 
 @customElement('agent-new-session-picker')
@@ -102,34 +101,35 @@ class AgentNewSessionPickerElement extends GemElement {
   #content = () => {
     const { value, directories, loading, error, activeIndex, agent } = this.#s;
     const agents = this.agents || [];
+    const agentOptions = agents.map((item) => ({
+      label: html`
+        <agent-option-label
+          .agent=${item.id}
+          .name=${item.name}
+          .icon=${item.icon}
+        ></agent-option-label>
+      `,
+      value: item.id,
+    }));
+
     return html`
       <section class="w-full rounded-lg border border-border bg-bg shadow-lg">
         <header class="border-b border-border px-4 py-3">
           <h2 class="m-0 text-sm font-semibold text-highlight">${t('devtoolsNewSessionTitle')}</h2>
         </header>
         <div class="px-4 py-3">
-          <fieldset class="m-0 mb-3 min-w-0 border-0 p-0">
-            <legend class="mb-1.5 p-0 text-xs font-medium text-describe">${t('devtoolsAgentLabel')}</legend>
-            <div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              ${agents.map(
-                (item) => html`
-                  <button
-                    type="button"
-                    aria-pressed=${agent === item.id}
-                    class=${classMap({
-                      'flex min-w-0 cursor-pointer items-center gap-2 rounded border px-3 py-2 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus': true,
-                      'border-primary bg-primary/10 text-highlight': agent === item.id,
-                      'border-border bg-bg-light/40 text-text hover:bg-bg-hover': agent !== item.id,
-                    })}
-                    @click=${() => this.#s({ agent: item.id })}
-                  >
-                    <dy-use class="size-4 shrink-0" .element=${getAgentIcon(item.id)}></dy-use>
-                    <span class="truncate font-medium">${item.name}</span>
-                  </button>
-                `,
-              )}
-            </div>
-          </fieldset>
+          <div class="mb-3">
+            <label class="mb-1.5 block text-xs font-medium text-describe" for="agent-new-session-agent-select">
+              ${t('devtoolsAgentLabel')}
+            </label>
+            <dy-select
+              id="agent-new-session-agent-select"
+              class="w-full"
+              .value=${agent}
+              .options=${agentOptions}
+              @change=${(event) => this.#s({ agent: event.detail })}
+            ></dy-select>
+          </div>
           <label class="mb-1.5 block text-xs font-medium text-describe" for="agent-new-session-cwd-input">
             ${t('devtoolsCwdTitle')}
           </label>

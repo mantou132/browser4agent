@@ -7,8 +7,8 @@ const style = css`
   }
 
   agent-icon {
-    width: 1em;
-    height: 1em;
+    width: 1.15em;
+    height: 1.15em;
     flex-shrink: 0;
   }
 
@@ -19,16 +19,17 @@ const style = css`
   }
 `;
 
-@customElement('agent-session-option-label')
+@customElement('agent-option-label')
 @adoptedStyle(style)
 @shadow()
-class AgentSessionOptionLabelElement extends GemElement {
-  @property sessionAgent;
-  @property sessionTitle;
+export class AgentOptionLabelElement extends GemElement {
+  @property agent;
+  @property name;
+  @property icon;
 
   @template()
   #content = () => html`
-    <agent-icon .agent=${this.sessionAgent}></agent-icon>
-    <span>${this.sessionTitle}</span>
+    <agent-icon .src=${this.icon} .agent=${this.agent}></agent-icon>
+    <span>${this.name}</span>
   `;
 }

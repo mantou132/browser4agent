@@ -1,4 +1,5 @@
 import { createAgentApi } from '../shared/agent-api.js';
+import { POPULAR_AGENTS } from '../shared/agents.js';
 import { setPageI18n, t } from '../shared/i18n.js';
 import { displayHomePath } from '../shared/path.js';
 import { mountAgentApi, mountBootstrap, mountCompactMode, mountStoredState } from './agent-panel/effects.js';
@@ -28,7 +29,7 @@ class AgentPanelPageElement extends GemElement {
     sessions: [], // persisted local records: { key, agent, sessionId, title?, cwd?, updatedAt? }
     draftSession: null, // at most one local session without an ACP session id; never persisted
     defaults: { agent: '', configOptionsByAgent: {} },
-    agents: [], // supported ACP agents reported by the Native Host
+    agents: POPULAR_AGENTS, // curated popular ACP agents aligned with AgentDeck
     sessionKey: null, // unique local key of the displayed session
     messages: [], // text messages, thought blocks, tool calls, or raw events
     configOptions: [], // draft composer settings, or a live session's applied ACP options

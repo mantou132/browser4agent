@@ -35,10 +35,3 @@ pub fn log_dir() -> Result<PathBuf> {
         .with_context(|| format!("failed to create log directory: {}", dir.display()))?;
     Ok(dir)
 }
-
-pub fn npm_cache_dir() -> Result<PathBuf> {
-    let dir = root_dir()?.join("npm-cache");
-    fs::create_dir_all(&dir)
-        .with_context(|| format!("failed to create npm cache directory: {}", dir.display()))?;
-    Ok(dir)
-}

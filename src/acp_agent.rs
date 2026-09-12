@@ -144,7 +144,7 @@ impl AcpRuntime {
     }
 
     async fn serve_connection(&self, generation: u64) -> Result<()> {
-        let candidate = self.candidate;
+        let candidate = self.candidate.clone();
         let command = tokio::task::spawn_blocking(move || prepare_agent_command(candidate))
             .await
             .context("ACP runtime preparation task failed")??;
@@ -509,6 +509,7 @@ impl AgentSessionManager {
     fn runtime(&self, agent: &str) -> Result<AcpRuntime> {
         self.runtimes
             .get(agent)
+            .or_else(|| self.runtimes.get(agent.strip_suffix("-acp")?))
             .cloned()
             .with_context(|| format!("Unknown ACP agent: {agent}"))
     }

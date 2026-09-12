@@ -81,11 +81,6 @@ export function createAgentApi() {
       return rpc().call('file_read', params, options);
     },
 
-    /** List supported ACP agents available for explicit selection. */
-    listAgents(options = {}) {
-      return rpc().call('agent_list', {}, options);
-    },
-
     /** Create a persistent agent session. `options.agent` is required.
      * Returns `{ agent, sessionId, title?, updatedAt?, modes, configOptions }`;
      * `sessionId` is the agent-side ACP session id. */
