@@ -102,6 +102,11 @@
 - `cargo build --release`：构建 Native Host
 - `cargo test`：运行 Native Host 的 Rust 测试
 
+## 发布
+
+- 修改 Cargo.toml, Cargo.lock, extension/package.json 版本号
+- Commit & Tag vX.X.X & Push 触发 Actions
+
 ## 维护要求
 
 - 改入口、目录职责、运行链路、构建方式时，优先同步更新这里
