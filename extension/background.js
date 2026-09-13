@@ -27,7 +27,7 @@ const MARKET_URL = chrome.runtime.getURL('pages/market.html');
 const COMMON_TOOLSET_URL = chrome.runtime.getURL('toolsets/common.json');
 // Raise when the extension starts relying on host capabilities that older
 // native hosts don't have; hosts below this version get flagged incompatible.
-const MIN_HOST_VERSION = '0.2.7';
+const MIN_HOST_VERSION = '0.3.0';
 
 chrome.runtime.onInstalled.addListener((details) => {
   ensureAuthToken();

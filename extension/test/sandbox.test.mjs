@@ -139,4 +139,51 @@ describe('execute_script_in_background sandbox', () => {
       return true;
     });
   });
+
+  it('automatically groups created tabs into B4A tab group with quiet background default', async () => {
+    const updates = [];
+    const existingGroups = [];
+
+    globalThis.chrome.tabGroups = {
+      query: async (q) => existingGroups.filter((g) => g.title === q.title),
+      update: async (groupId, props) => {
+        updates.push({ groupId, ...props });
+        return { groupId, ...props };
+      },
+    };
+    globalThis.chrome.tabs.group = async ({ tabIds, groupId, createProperties }) => {
+      if (groupId != null) return groupId;
+      const newGroup = { id: 101, ...createProperties };
+      existingGroups.push({ id: 101, title: 'B4A', ...createProperties });
+      return 101;
+    };
+
+    // Default call without active defaults to active: false and collapses the group
+    const res1 = await run(`async () => await chrome.tabs.create({ url: 'https://a.com' })`);
+    assert.equal(res1.value.id, 7);
+    assert.equal(res1.value.groupId, 101);
+    assert.equal(res1.value.active, false);
+    assert.ok(updates.some((u) => u.groupId === 101 && u.title === 'B4A' && u.color === 'blue'));
+    assert.ok(updates.some((u) => u.groupId === 101 && u.collapsed === true));
+
+    // Next tab creation joins the existing group
+    let joinedExistingGroup = false;
+    globalThis.chrome.tabs.group = async ({ tabIds, groupId }) => {
+      if (groupId === 101) joinedExistingGroup = true;
+      return groupId;
+    };
+    const res2 = await run(`async () => await chrome.tabs.create({ url: 'https://b.com' })`);
+    assert.equal(res2.value.groupId, 101);
+    assert.equal(res2.value.active, false);
+    assert.equal(joinedExistingGroup, true);
+
+    // Explicit active: true expands the group
+    updates.length = 0;
+    const res3 = await run(`async () => await chrome.tabs.create({ url: 'https://c.com', active: true })`);
+    assert.equal(res3.value.active, true);
+    assert.ok(updates.some((u) => u.groupId === 101 && u.collapsed === false));
+
+    delete globalThis.chrome.tabGroups;
+    delete globalThis.chrome.tabs.group;
+  });
 });

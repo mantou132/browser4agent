@@ -280,7 +280,10 @@ impl BrowserMcpServer {
         description = "Run a JavaScript function in the extension's background service worker and \
                        return its result. Use this for one-shot browser-level operations such as \
                        opening/closing tabs and windows (chrome.tabs.create/remove, \
-                       chrome.windows.create/remove) or controlling downloads. Both chrome.* and \
+                       chrome.windows.create/remove) or controlling downloads. Tabs created via \
+                       chrome.tabs.create are automatically organized into the 'B4A' tab group \
+                       and default to quiet background tabs (active: false, collapsed: true) \
+                       unless active: true is explicitly requested. Both chrome.* and \
                        browser.* namespaces are proxied for Promise-style calls whose arguments \
                        and results are JSON-serializable. Event-listener callbacks and persistent \
                        background work are not supported; timers are dropped when the function \

@@ -11,6 +11,45 @@ const QuickJSPromise = getQuickJS();
 // chrome.* / browser.*, keyed by the first path segment.
 const handlers = { debuggerEvents: debuggerSnapshot };
 
+let groupingQueue = Promise.resolve();
+
+async function groupTabToB4A(tab) {
+  if (!tab || typeof tab.id !== 'number') return;
+  const tabGroups = globalThis.chrome?.tabGroups;
+  const tabsApi = globalThis.chrome?.tabs;
+  if (!tabGroups?.query || !tabGroups?.update || !tabsApi?.group) return;
+
+  groupingQueue = groupingQueue
+    .then(async () => {
+      try {
+        const windowId = tab.windowId;
+        const query = windowId != null ? { windowId, title: 'B4A' } : { title: 'B4A' };
+        const groups = await tabGroups.query(query);
+        let groupId;
+        if (groups && groups.length > 0) {
+          groupId = groups[0].id;
+          await tabsApi.group({ tabIds: tab.id, groupId });
+        } else {
+          groupId = await tabsApi.group({
+            tabIds: tab.id,
+            createProperties: windowId != null ? { windowId } : undefined,
+          });
+          await tabGroups.update(groupId, { title: 'B4A', color: 'blue' });
+        }
+        tab.groupId = groupId;
+        if (tab.active === false) {
+          await tabGroups.update(groupId, { collapsed: true });
+        } else if (tab.active === true) {
+          await tabGroups.update(groupId, { collapsed: false });
+        }
+      } catch (e) {
+        // Tab grouping might fail if tab was closed immediately or permissions lack; do not break tab creation
+      }
+    })
+    .catch(() => {});
+  await groupingQueue;
+}
+
 function invoke(path, args) {
   const [head, ...rest] = path.split('.');
   let parent = head === 'browser' ? (globalThis.browser ?? chrome) : head === 'chrome' ? chrome : null;
@@ -21,7 +60,22 @@ function invoke(path, args) {
       target = target?.[part];
     }
     if (typeof target !== 'function') return undefined;
-    return target.apply(parent, args);
+    const isTabCreate = path === 'chrome.tabs.create' || path === 'browser.tabs.create';
+    let callArgs = args;
+    if (isTabCreate) {
+      const props = args[0];
+      if (props && typeof props === 'object' && props.active === undefined) {
+        callArgs = [{ ...props, active: false }, ...args.slice(1)];
+      }
+    }
+    const result = target.apply(parent, callArgs);
+    if (isTabCreate && result && typeof result.then === 'function') {
+      return result.then(async (tab) => {
+        await groupTabToB4A(tab);
+        return tab;
+      });
+    }
+    return result;
   }
   const handler = handlers[head];
   if (!handler) throw new Error(`Unknown sandbox API: ${path}`);
