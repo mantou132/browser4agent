@@ -11,6 +11,7 @@ mod native_message_setup;
 mod native_messaging;
 mod peer;
 mod relay_client;
+mod relay_encryption;
 mod skill_setup;
 
 use std::{env, ffi::OsString};

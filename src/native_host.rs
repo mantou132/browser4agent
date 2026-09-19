@@ -26,7 +26,10 @@ async fn native_message_loop(peer: Peer) {
 
     loop {
         if let Some(msg) = read_native_message() {
-            logger::log(&format!("Received from extension: {:?}", msg));
+            // Capabilities include the pairing secret; never write them to logs.
+            if msg.get("method").and_then(serde_json::Value::as_str) != Some("capabilities") {
+                logger::log(&format!("Received from extension: {:?}", msg));
+            }
             peer.dispatch(msg).await;
         } else {
             logger::info("Stdin closed, browser disconnected");

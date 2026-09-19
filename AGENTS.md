@@ -35,7 +35,7 @@
   1. `src/cli.rs` 解析 `--tool` / `--input`（或 stdin JSON）
   2. 转发单次工具调用到后台 MCP HTTP 服务 `127.0.0.1:39271/mcp`，打印结果后退出
 8. 远端 Agent 模式：
-  1. `extension/background.js` 在 `chrome.storage.local` 生成并持久化配对 id，通过 `capabilities` 通知发送给 Native Host
+  1. `extension/background.js` 在 `chrome.storage.local` 生成并持久化配对 id（新安装使用 `adk1_` 加密 ID，已有 UUID 保持明文），通过 `capabilities` 通知发送给 Native Host
   2. `src/native_host.rs` 收到配对 id 后让 `src/relay_client.rs` 启动 `RemotePeerManager`；debug/test 使用本机 `ws://127.0.0.1:39371/ws`，release 使用 `wss://agent-deck.xianqiao.wang/ws`，客户端在进程内维护 outbox/接收游标并自动重连
   3. 多移动端通过 `peer_attach` 获取自增 `peerId`（如 Phone A 为 1、Phone B 为 2），`RemotePeerManager` 为每个设备维护独立的 `Peer` 并接入 `AgentService`，消息与权限确认携带 `peerId` 并在各端过滤，互不串线
 
@@ -82,6 +82,8 @@
 - `src/app_data.rs`：统一解析并创建 `browser4agent` 的跨平台本地应用数据目录；托管原生 Agent 运行时放在 `agents/`，程序日志放在 `logs/`
 - `src/native_messaging.rs`：Native Messaging 基础消息读写
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
+- `src/relay_encryption.rs`：可选 PSK 消息加密与持久化防重放；协议见 `docs/relay-encryption.md`，配对秘密不发送至 Relay、不写入日志。
+- `extension/shared/relay-id.js`：新安装生成加密 ID，保留已有配对模式。
 - `src/relay_client.rs`：Native Host 远端传输与 `RemotePeerManager`；通过 `peerId` 多路复用手机 A/B 等多设备，统一接入 `AgentService`
 - `src/agent_rpc.rs`：`AgentService` 业务服务层，负责会话创建、加载与关闭、流式事件转发与端点权限绑定
 - `src/acp_agent.rs`：共享的长生命周期 ACP connection、持续会话 actor、agent 事件转换；close 通过独立取消信号打断 actor，等待权限与本地会话清理后返回，远端 close 最多等待 5 秒；ACP 输入关闭会结束连接流程并使旧 actor 退出

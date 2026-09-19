@@ -14,7 +14,12 @@ use anyhow::Result;
 use relay_client::{Client, ClientHandler, memory::MemoryStore, relay_frame::Endpoint};
 use serde_json::{Value, json};
 
-use crate::{agent_rpc::AgentService, app_data, logger, peer::Peer};
+use crate::{
+    agent_rpc::AgentService,
+    app_data, logger,
+    peer::Peer,
+    relay_encryption::{RelayEncryption, is_plain_id},
+};
 
 #[cfg(debug_assertions)]
 const RELAY_URL: &str = "ws://127.0.0.1:39371/ws";
@@ -183,10 +188,76 @@ impl RemotePeerManager {
 
 struct Handler {
     manager: Arc<RemotePeerManager>,
+    encryption: Option<Arc<RelayEncryption>>,
+}
+
+fn encrypt_for_relay(
+    encryption: &RelayEncryption,
+    message: Value,
+    target_device_id: Option<&str>,
+) -> Result<Value> {
+    let oversized_reply = if message.get("id").is_some() && message.get("method").is_none() {
+        Some(json!({
+            "id": message["id"],
+            "peerId": message["peerId"],
+            "error": "Response is too large for encrypted Relay transport. Request a smaller file or result."
+        }))
+    } else {
+        None
+    };
+    let payload = encryption.seal(message)?;
+    // MemoryStore generates UUID message IDs. Count the actual Relay envelope,
+    // including targeting, without copying the potentially large ciphertext.
+    let empty_frame = relay_client::relay_frame::ClientFrame::Message {
+        message_id: "00000000-0000-0000-0000-000000000000".into(),
+        payload: Value::Null,
+        target_device_id: target_device_id.map(str::to_owned),
+    };
+    let size = serde_json::to_vec(&empty_frame)?.len() - 4 + serde_json::to_vec(&payload)?.len();
+    if size > 10 * 1024 * 1024 {
+        return encryption.seal(
+            oversized_reply
+                .ok_or_else(|| anyhow::anyhow!("Encrypted relay message is too large"))?,
+        );
+    }
+    Ok(payload)
 }
 
 impl ClientHandler for Handler {
     fn on_payload(&self, payload: Value) {
+        let payload = if let Some(encryption) = &self.encryption {
+            let decrypted = encryption.open(payload);
+            match decrypted {
+                Ok((sender, message)) => {
+                    // Bind the RPC peer to the authenticated sender, never the outer Relay route.
+                    let attached =
+                        if message.get("method").and_then(Value::as_str) == Some("peer_attach") {
+                            message.pointer("/params/deviceId").and_then(Value::as_str)
+                                == Some(sender.as_str())
+                        } else {
+                            let peers = self
+                                .manager
+                                .device_to_peer_id
+                                .lock()
+                                .expect("lock poisoned");
+                            peers.get(&sender).is_some_and(|id| {
+                                message.get("peerId").and_then(Value::as_u64) == Some(*id)
+                            })
+                        };
+                    if !attached {
+                        logger::info("Rejected encrypted RPC with mismatched device identity");
+                        return;
+                    }
+                    message
+                }
+                Err(error) => {
+                    logger::info(&format!("Rejected encrypted relay message: {error:#}"));
+                    return;
+                }
+            }
+        } else {
+            payload
+        };
         let manager = self.manager.clone();
         tokio::spawn(async move {
             manager.dispatch(payload).await;
@@ -217,7 +288,15 @@ impl ClientHandler for Handler {
 /// Start the remote RPC transport with the pairing id supplied by the
 /// extension. The service endpoint is the built-in local relay URL.
 pub fn start(relay_id: &str, service: &AgentService) -> Result<Arc<RemotePeerManager>> {
-    validate_relay_id(relay_id)?;
+    let encryption = if is_plain_id(relay_id) {
+        None
+    } else {
+        Some(Arc::new(RelayEncryption::new(relay_id)?))
+    };
+    let route_id = encryption
+        .as_ref()
+        .map(|codec| codec.route_id.clone())
+        .unwrap_or_else(|| relay_id.to_owned());
     let store = Arc::new(MemoryStore::new());
 
     // `Peer`'s writer is a sync callback on arbitrary threads; bridge it to
@@ -228,17 +307,29 @@ pub fn start(relay_id: &str, service: &AgentService) -> Result<Arc<RemotePeerMan
     let manager = Arc::new(RemotePeerManager::new(service.clone(), outbound_tx));
 
     let client = Client::new_with_ack_head(
-        endpoint_url(relay_id),
+        endpoint_url(&route_id),
         true,
         store,
         Arc::new(Handler {
             manager: manager.clone(),
+            encryption: encryption.clone(),
         }),
     );
 
     let send_client = client.clone();
     tokio::spawn(async move {
         while let Some((payload, target_device_id)) = outbound_rx.recv().await {
+            let payload = if let Some(encryption) = &encryption {
+                match encrypt_for_relay(encryption, payload, target_device_id.as_deref()) {
+                    Ok(payload) => payload,
+                    Err(error) => {
+                        logger::info(&format!("Failed to encrypt relay message: {error:#}"));
+                        continue;
+                    }
+                }
+            } else {
+                payload
+            };
             if let Err(error) = send_client.send_targeted(payload, target_device_id).await {
                 logger::info(&format!("Failed to queue relay message: {error:#}"));
             }
@@ -249,22 +340,70 @@ pub fn start(relay_id: &str, service: &AgentService) -> Result<Arc<RemotePeerMan
     Ok(manager)
 }
 
-fn validate_relay_id(relay_id: &str) -> Result<()> {
-    let valid = relay_id.len() == 36
-        && relay_id.bytes().enumerate().all(|(index, byte)| {
-            if matches!(index, 8 | 13 | 18 | 23) {
-                byte == b'-'
-            } else {
-                byte.is_ascii_hexdigit()
-            }
-        });
-    anyhow::ensure!(valid, "relay id must be a UUID");
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn encrypted_file_response_over_limit_becomes_a_small_authenticated_error() {
+        let vector: Value =
+            serde_json::from_str(include_str!("../test/fixtures/e2ee-v1.json")).unwrap();
+        let codec = RelayEncryption::new(vector["id"].as_str().unwrap()).unwrap();
+        let frame = encrypt_for_relay(
+            &codec,
+            json!({"id": "file-1", "peerId": 1, "result": {"text": "x".repeat(8 * 1024 * 1024)}}),
+            Some("test-phone"),
+        )
+        .unwrap();
+        assert_eq!(frame["e2ee"], 1);
+        assert!(serde_json::to_vec(&frame).unwrap().len() < 1024);
+        assert!(!serde_json::to_string(&frame).unwrap().contains("file-1"));
+        assert!(frame.get("sequence").is_none());
+    }
+
+    #[tokio::test]
+    async fn encrypted_handler_routes_authenticated_devices() {
+        let vector: Value =
+            serde_json::from_str(include_str!("../test/fixtures/e2ee-v1.json")).unwrap();
+        let (outbound_tx, mut outbound_rx) = tokio::sync::mpsc::unbounded_channel();
+        // A known device keeps this test independent from user pairing files.
+        let manager = Arc::new(RemotePeerManager {
+            service: AgentService::new(),
+            outbound_tx,
+            device_to_peer_id: Arc::new(Mutex::new(HashMap::from([("test-phone".into(), 1)]))),
+            peer_to_device_id: Arc::new(Mutex::new(HashMap::from([(1, "test-phone".into())]))),
+            peers: Arc::default(),
+            next_peer_id: Arc::new(AtomicU64::new(2)),
+        });
+        let handler = Handler {
+            manager,
+            encryption: Some(Arc::new(
+                RelayEncryption::new(vector["id"].as_str().unwrap()).unwrap(),
+            )),
+        };
+        handler.on_payload(vector["attachFrame"].clone());
+        let (attached, target) =
+            tokio::time::timeout(std::time::Duration::from_secs(1), outbound_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(attached["result"]["peerId"], 1);
+        assert_eq!(target.as_deref(), Some("test-phone"));
+        handler.on_payload(vector["listFrame"].clone());
+        let (result, target) =
+            tokio::time::timeout(std::time::Duration::from_secs(1), outbound_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(result["id"], "list-1");
+        assert!(result["result"]["agents"].is_array());
+        assert_eq!(target.as_deref(), Some("test-phone"));
+        handler.on_payload(vector["wrongPeerFrame"].clone());
+        handler.on_payload(vector["wrongDeviceFrame"].clone());
+        handler.on_payload(json!({"id":"plain", "method":"agent_list", "peerId":1}));
+        tokio::task::yield_now().await;
+        assert!(outbound_rx.try_recv().is_err());
+    }
 
     #[test]
     fn endpoint_url_adds_identity_to_built_in_url() {
@@ -273,8 +412,8 @@ mod tests {
             endpoint_url(relay_id),
             format!("{RELAY_URL}?id={relay_id}&endpoint=1&device_id=host")
         );
-        assert!(validate_relay_id(relay_id).is_ok());
-        assert!(validate_relay_id("not-a-uuid&endpoint=2").is_err());
+        assert!(is_plain_id(relay_id));
+        assert!(!is_plain_id("not-a-uuid&endpoint=2"));
     }
 
     #[tokio::test]

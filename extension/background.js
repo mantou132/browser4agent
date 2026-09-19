@@ -4,6 +4,7 @@ import { trackDevtoolsPort } from './shared/devtools-tracker.js';
 import { t } from './shared/i18n.js';
 import { loadToolset } from './shared/loader.js';
 import { ensureAuthToken } from './shared/market-api.js';
+import { loadRelayId } from './shared/relay-id.js';
 import { RpcPeer } from './shared/rpc.js';
 import { localStorageKeys } from './shared/storage-keys.js';
 import { getToolConfig, persist } from './shared/tool-store.js';
@@ -185,14 +186,7 @@ let relayIdPromise;
 
 function ensureRelayId() {
   if (relayIdPromise) return relayIdPromise;
-  relayIdPromise = (async () => {
-    const key = localStorageKeys.relayId;
-    const stored = (await chrome.storage.local.get(key))[key];
-    if (typeof stored === 'string' && stored) return stored;
-    const relayId = crypto.randomUUID();
-    await chrome.storage.local.set({ [key]: relayId });
-    return relayId;
-  })().catch((error) => {
+  relayIdPromise = loadRelayId(chrome.storage.local, localStorageKeys.relayId).catch((error) => {
     relayIdPromise = undefined;
     throw error;
   });
