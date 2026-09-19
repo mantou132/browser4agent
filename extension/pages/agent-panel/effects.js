@@ -8,8 +8,8 @@ export function mountBootstrap({ state, api }) {
 
   const loadHome = async () => {
     try {
-      const { home, path } = await api.browseFiles('', { type: 'directory' });
-      update({ home: home || path || '' });
+      const { value } = await api.completeCwd('');
+      update({ home: value || '' });
     } catch {
       // Home shortening is optional; absolute paths remain usable.
     }

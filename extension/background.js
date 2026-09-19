@@ -277,7 +277,7 @@ peer.handle('agent_permission_request', async (params) => {
  */
 const AGENT_METHODS = [
   'agent_list',
-  'file_browse',
+  'agent_cwd_complete',
   'file_read',
   'agent_session_create',
   'agent_session_load',

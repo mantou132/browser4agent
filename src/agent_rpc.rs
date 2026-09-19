@@ -97,19 +97,19 @@ impl AgentService {
             Ok(json!({ "agents": agents }))
         });
 
-        // Deprecated: use `file_browse` instead.
         peer.handle("agent_cwd_complete", move |params, _ctx| async move {
             let input = params
                 .get("input")
                 .and_then(|v| v.as_str())
                 .unwrap_or_default()
                 .to_string();
+            let cwd = message_cwd(&params);
             let limit = params
                 .get("limit")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(100)
                 .clamp(1, 200) as usize;
-            tokio::task::spawn_blocking(move || complete_directories(&input, limit))
+            tokio::task::spawn_blocking(move || complete_directories(&input, cwd.as_deref(), limit))
                 .await
                 .map_err(|err| format!("Directory completion task failed: {err}"))?
         });
@@ -395,12 +395,26 @@ impl AgentService {
     }
 }
 
-/// Deprecated: use `file_browse` instead.
-fn complete_directories(input: &str, limit: usize) -> Result<Value, String> {
+fn resolve_base_dir(path: &str, cwd: Option<&Path>) -> Result<PathBuf, String> {
     let current_dir = std::env::current_dir()
         .map_err(|err| format!("Failed to resolve current directory: {err}"))?;
-    let base_dir = dirs::home_dir().unwrap_or_else(|| current_dir.clone());
+    if path.trim_start().starts_with('~') {
+        Ok(dirs::home_dir().unwrap_or(current_dir))
+    } else {
+        Ok(cwd
+            .map(Path::to_path_buf)
+            .or_else(dirs::home_dir)
+            .unwrap_or(current_dir))
+    }
+}
+
+fn complete_directories(
+    input: &str,
+    cwd: Option<&Path>,
+    limit: usize,
+) -> Result<Value, String> {
     let input = input.trim();
+    let base_dir = resolve_base_dir(input, cwd)?;
     let path = resolve_directory_path(input, &base_dir);
     let is_directory = path.is_dir();
     let (directory, prefix) = if is_directory {
@@ -450,15 +464,7 @@ fn browse_files(
     filter_type: Option<&str>,
     limit: usize,
 ) -> Result<Value, String> {
-    let current_dir = std::env::current_dir()
-        .map_err(|err| format!("Failed to resolve current directory: {err}"))?;
-    let base_dir = if path.trim_start().starts_with('~') {
-        dirs::home_dir().unwrap_or_else(|| current_dir.clone())
-    } else {
-        cwd.map(Path::to_path_buf)
-            .or_else(dirs::home_dir)
-            .unwrap_or(current_dir)
-    };
+    let base_dir = resolve_base_dir(path, cwd)?;
     let target = resolve_directory_path(path.trim(), &base_dir);
     if !target.is_dir() {
         return Err(format!("{} is not a directory", target.display()));
@@ -539,13 +545,8 @@ fn browse_files(
 const FILE_READ_MAX_BYTES: u64 = 8 * 1024 * 1024;
 
 fn read_remote_file(path: &str, cwd: Option<&Path>) -> Result<Value, String> {
-    // `~` expands against the home directory, everything else against the cwd.
-    let base_dir = if path.trim_start().starts_with('~') {
-        dirs::home_dir()
-    } else {
-        cwd.map(Path::to_path_buf)
-    };
-    let resolved = resolve_directory_path(path, base_dir.as_deref().unwrap_or(Path::new("/")));
+    let base_dir = resolve_base_dir(path, cwd)?;
+    let resolved = resolve_directory_path(path.trim(), &base_dir);
     let metadata = std::fs::metadata(&resolved)
         .map_err(|err| format!("Failed to read {}: {err}", resolved.display()))?;
     if metadata.is_dir() {
@@ -790,9 +791,14 @@ mod tests {
 
         let prefix = root.join("al").to_string_lossy().into_owned();
         let completion =
-            complete_directories(&prefix, 100).expect("complete directory prefix");
-        let exact = complete_directories(&alpha.to_string_lossy(), 100)
+            complete_directories(&prefix, None, 100).expect("complete directory prefix");
+        let exact = complete_directories(&alpha.to_string_lossy(), None, 100)
             .expect("validate exact directory");
+
+        let rel_completion =
+            complete_directories("al", Some(&root), 100).expect("complete relative prefix");
+        assert_eq!(rel_completion["isDirectory"], false);
+        assert_eq!(rel_completion["directories"].as_array().map(Vec::len), Some(2));
 
         assert_eq!(completion["isDirectory"], false);
         assert_eq!(completion["directories"].as_array().map(Vec::len), Some(2));

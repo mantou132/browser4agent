@@ -61,15 +61,14 @@ export function createAgentApi() {
       hostReconnectedHandler = typeof handler === 'function' ? handler : null;
     },
 
-    browseFiles(path = '', options = {}) {
+    completeCwd(input = '', options = {}) {
       const params = {
-        path,
+        input,
         cwd: options.cwd,
-        type: options.type,
         limit: options.limit,
         timeoutSeconds: options.timeoutSeconds,
       };
-      return rpc().call('file_browse', params, options);
+      return rpc().call('agent_cwd_complete', params, options);
     },
 
     readFile(path, options = {}) {
