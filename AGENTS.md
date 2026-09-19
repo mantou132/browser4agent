@@ -106,7 +106,7 @@
 
 ## 发布
 
-- 修改 Cargo.toml, Cargo.lock, extension/package.json 版本号
+- 修改 Cargo.toml, Cargo.lock, extension/manifest.json 版本号
 - Commit & Tag vX.X.X & Push 触发 Actions
 
 ## 维护要求
