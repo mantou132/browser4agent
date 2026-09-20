@@ -12,12 +12,14 @@ use std::{
 
 use anyhow::Result;
 use relay_client::{Client, ClientHandler, memory::MemoryStore, relay_frame::Endpoint};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::{
     agent_rpc::AgentService,
     app_data, logger,
     peer::Peer,
+    push,
     relay_encryption::{RelayEncryption, is_plain_id},
 };
 
@@ -27,13 +29,21 @@ const RELAY_URL: &str = "ws://127.0.0.1:39371/ws";
 const RELAY_URL: &str = "wss://agent-deck.xianqiao.wang/ws";
 
 const HOST_DEVICE_ID: &str = "host";
-const REMOTE_PEERS_FILE: &str = "remote_peers.json";
+const REMOTE_PEERS_FILE: &str = "remote_peers_v1.json";
 
 fn endpoint_url(relay_id: &str) -> String {
     relay_client::transport::endpoint_url(RELAY_URL, relay_id, Endpoint::One, HOST_DEVICE_ID)
 }
 
-fn load_persisted_peers() -> HashMap<String, u64> {
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteDevice {
+    peer_id: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    fcm_token: Option<String>,
+}
+
+fn load_persisted_peers() -> HashMap<String, RemoteDevice> {
     let Ok(path) = app_data::root_dir().map(|dir| dir.join(REMOTE_PEERS_FILE)) else {
         return HashMap::new();
     };
@@ -43,7 +53,7 @@ fn load_persisted_peers() -> HashMap<String, u64> {
     serde_json::from_str(&content).unwrap_or_default()
 }
 
-fn save_persisted_peers(map: &HashMap<String, u64>) {
+fn save_persisted_peers(map: &HashMap<String, RemoteDevice>) {
     let Ok(path) = app_data::root_dir().map(|dir| dir.join(REMOTE_PEERS_FILE)) else {
         return;
     };
@@ -57,10 +67,10 @@ fn save_persisted_peers(map: &HashMap<String, u64>) {
 pub struct RemotePeerManager {
     service: AgentService,
     outbound_tx: tokio::sync::mpsc::UnboundedSender<(Value, Option<String>)>,
-    device_to_peer_id: Arc<Mutex<HashMap<String, u64>>>,
-    peer_to_device_id: Arc<Mutex<HashMap<u64, String>>>,
+    devices: Arc<Mutex<HashMap<String, RemoteDevice>>>,
     peers: Arc<Mutex<HashMap<u64, Peer>>>,
     next_peer_id: Arc<AtomicU64>,
+    push_client: reqwest::Client,
 }
 
 impl RemotePeerManager {
@@ -69,18 +79,18 @@ impl RemotePeerManager {
         outbound_tx: tokio::sync::mpsc::UnboundedSender<(Value, Option<String>)>,
     ) -> Self {
         let initial_dev_map = load_persisted_peers();
-        let max_id = initial_dev_map.values().copied().max().unwrap_or(0);
-        let mut initial_peer_map = HashMap::new();
-        for (dev, &peer_id) in &initial_dev_map {
-            initial_peer_map.insert(peer_id, dev.clone());
-        }
+        let max_id = initial_dev_map
+            .values()
+            .map(|device| device.peer_id)
+            .max()
+            .unwrap_or(0);
         Self {
             service,
             outbound_tx,
-            device_to_peer_id: Arc::new(Mutex::new(initial_dev_map)),
-            peer_to_device_id: Arc::new(Mutex::new(initial_peer_map)),
+            devices: Arc::new(Mutex::new(initial_dev_map)),
             peers: Arc::default(),
             next_peer_id: Arc::new(AtomicU64::new(max_id + 1)),
+            push_client: reqwest::Client::new(),
         }
     }
 
@@ -91,35 +101,71 @@ impl RemotePeerManager {
         }
 
         let outbound_tx = self.outbound_tx.clone();
-        let peer_to_device_id = self.peer_to_device_id.clone();
+        let devices = self.devices.clone();
         let peer = Peer::new(move |mut message| {
             if let Value::Object(ref mut map) = message {
                 map.insert("peerId".to_string(), json!(peer_id));
             }
-            let target_device_id = peer_to_device_id
-                .lock()
-                .ok()
-                .and_then(|map| map.get(&peer_id).cloned());
+            let target_device_id = devices.lock().ok().and_then(|devs| {
+                devs.iter()
+                    .find(|(_, d)| d.peer_id == peer_id)
+                    .map(|(k, _)| k.clone())
+            });
             if outbound_tx.send((message, target_device_id)).is_err() {
                 logger::info(&format!(
                     "Relay client stopped; peer {peer_id} message dropped"
                 ));
             }
         });
-        self.service.attach(&peer);
+        self.service
+            .attach_with_completion(&peer, Some(self.completion_handler(peer_id)));
         peers.insert(peer_id, peer.clone());
         peer
     }
 
-    fn resolve_peer_id(&self, device_id: &str, requested_peer_id: Option<u64>) -> u64 {
-        let mut dev_map = self.device_to_peer_id.lock().expect("lock poisoned");
+    fn completion_handler(&self, peer_id: u64) -> crate::agent_rpc::PromptCompletion {
+        let devices = self.devices.clone();
+        let client = self.push_client.clone();
+        Arc::new(move |agent, session_id| {
+            let token = devices.lock().ok().and_then(|devs| {
+                devs.values()
+                    .find(|d| d.peer_id == peer_id)
+                    .and_then(|d| d.fcm_token.clone())
+            });
+            let Some(token) = token else { return };
+            let client = client.clone();
+            let agent = agent.to_owned();
+            let session_id = session_id.to_owned();
+            tokio::spawn(async move {
+                push::send(&client, &token, &agent, &session_id).await;
+            });
+        })
+    }
+
+    fn resolve_peer_id(
+        &self,
+        device_id: &str,
+        requested_peer_id: Option<u64>,
+        token: Option<&Value>,
+    ) -> u64 {
+        let mut dev_map = self.devices.lock().expect("lock poisoned");
         if !device_id.is_empty() {
-            if let Some(&existing) = dev_map.get(device_id) {
-                return existing;
+            if let Some(existing) = dev_map.get_mut(device_id) {
+                let peer_id = existing.peer_id;
+                let new_token = match token {
+                    Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+                    Some(Value::Null) => None,
+                    _ => existing.fcm_token.clone(),
+                };
+                if existing.fcm_token != new_token {
+                    existing.fcm_token = new_token;
+                    save_persisted_peers(&dev_map);
+                }
+                return peer_id;
             }
         }
         let assigned = match requested_peer_id {
-            Some(id) if id > 0 && !dev_map.values().any(|&v| v == id) => {
+            Some(id) if id > 0 && !dev_map.values().any(|v| v.peer_id == id) => {
                 let next = self.next_peer_id.load(Ordering::SeqCst);
                 if id >= next {
                     self.next_peer_id.store(id + 1, Ordering::SeqCst);
@@ -129,10 +175,17 @@ impl RemotePeerManager {
             _ => self.next_peer_id.fetch_add(1, Ordering::SeqCst),
         };
         if !device_id.is_empty() {
-            dev_map.insert(device_id.to_string(), assigned);
-            if let Ok(mut peer_to_dev) = self.peer_to_device_id.lock() {
-                peer_to_dev.insert(assigned, device_id.to_string());
-            }
+            let fcm_token = match token {
+                Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+                _ => None,
+            };
+            dev_map.insert(
+                device_id.to_string(),
+                RemoteDevice {
+                    peer_id: assigned,
+                    fcm_token,
+                },
+            );
             save_persisted_peers(&dev_map);
         }
         assigned
@@ -162,7 +215,7 @@ impl RemotePeerManager {
             .to_string();
         let requested_peer_id = params.get("peerId").and_then(Value::as_u64);
 
-        let peer_id = self.resolve_peer_id(&device_id, requested_peer_id);
+        let peer_id = self.resolve_peer_id(&device_id, requested_peer_id, params.get("fcmToken"));
         let _peer = self.get_or_create_peer(peer_id);
 
         let response = match id {
@@ -235,13 +288,9 @@ impl ClientHandler for Handler {
                             message.pointer("/params/deviceId").and_then(Value::as_str)
                                 == Some(sender.as_str())
                         } else {
-                            let peers = self
-                                .manager
-                                .device_to_peer_id
-                                .lock()
-                                .expect("lock poisoned");
+                            let peers = self.manager.devices.lock().expect("lock poisoned");
                             peers.get(&sender).is_some_and(|id| {
-                                message.get("peerId").and_then(Value::as_u64) == Some(*id)
+                                message.get("peerId").and_then(Value::as_u64) == Some(id.peer_id)
                             })
                         };
                     if !attached {
@@ -344,6 +393,55 @@ pub fn start(relay_id: &str, service: &AgentService) -> Result<Arc<RemotePeerMan
 mod tests {
     use super::*;
 
+    #[tokio::test]
+    async fn repeated_attach_updates_fcm_token() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let manager = RemotePeerManager::new(AgentService::new(), tx);
+        manager
+            .dispatch(json!({
+                "id": "1",
+                "method": "peer_attach",
+                "params": { "deviceId": "phone-a", "fcmToken": "token-1" }
+            }))
+            .await;
+        let _ = rx.recv().await.unwrap();
+        assert_eq!(
+            manager.devices.lock().unwrap()["phone-a"]
+                .fcm_token
+                .as_deref(),
+            Some("token-1")
+        );
+
+        manager
+            .dispatch(json!({
+                "id": "2",
+                "method": "peer_attach",
+                "params": { "deviceId": "phone-a", "fcmToken": "token-2" }
+            }))
+            .await;
+        let _ = rx.recv().await.unwrap();
+        assert_eq!(
+            manager.devices.lock().unwrap()["phone-a"]
+                .fcm_token
+                .as_deref(),
+            Some("token-2")
+        );
+
+        manager
+            .dispatch(json!({
+                "id": "3",
+                "method": "peer_attach",
+                "params": { "deviceId": "phone-a", "fcmToken": null }
+            }))
+            .await;
+        let _ = rx.recv().await.unwrap();
+        assert!(
+            manager.devices.lock().unwrap()["phone-a"]
+                .fcm_token
+                .is_none()
+        );
+    }
+
     #[test]
     fn encrypted_file_response_over_limit_becomes_a_small_authenticated_error() {
         let vector: Value =
@@ -370,10 +468,16 @@ mod tests {
         let manager = Arc::new(RemotePeerManager {
             service: AgentService::new(),
             outbound_tx,
-            device_to_peer_id: Arc::new(Mutex::new(HashMap::from([("test-phone".into(), 1)]))),
-            peer_to_device_id: Arc::new(Mutex::new(HashMap::from([(1, "test-phone".into())]))),
+            devices: Arc::new(Mutex::new(HashMap::from([(
+                "test-phone".into(),
+                RemoteDevice {
+                    peer_id: 1,
+                    fcm_token: None,
+                },
+            )]))),
             peers: Arc::default(),
             next_peer_id: Arc::new(AtomicU64::new(2)),
+            push_client: reqwest::Client::new(),
         });
         let handler = Handler {
             manager,

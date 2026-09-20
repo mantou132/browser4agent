@@ -49,6 +49,8 @@ async fn settle_forwarder(
     }
 }
 
+pub type PromptCompletion = Arc<dyn Fn(&str, &str) + Send + Sync>;
+
 /// Central host service managing ACP agent sessions and exposing RPC routes.
 #[derive(Clone)]
 pub struct AgentService {
@@ -80,6 +82,10 @@ impl AgentService {
 
     /// Attach this service's RPC handlers to a duplex Peer endpoint.
     pub fn attach(&self, peer: &Peer) {
+        self.attach_with_completion(peer, None);
+    }
+
+    pub fn attach_with_completion(&self, peer: &Peer, on_complete: Option<PromptCompletion>) {
         let notify_peer = peer.clone();
         self.end_listeners
             .lock()
@@ -292,6 +298,7 @@ impl AgentService {
         let prompt_sessions = sessions.clone();
         let prompt_peer = peer.clone();
         peer.handle("agent_prompt", move |params, ctx| {
+            let on_complete = on_complete.clone();
             let sessions = prompt_sessions.clone();
             let peer = prompt_peer.clone();
             async move {
@@ -356,6 +363,11 @@ impl AgentService {
                     .await;
 
                 settle_forwarder(forwarder, result.is_ok()).await;
+                if result.is_ok() {
+                    if let Some(on_complete) = on_complete {
+                        on_complete(agent, session_id);
+                    }
+                }
 
                 result
                 .map(|answer| json!({ "answer": answer, "agent": agent, "sessionId": session_id }))

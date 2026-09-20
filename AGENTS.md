@@ -84,7 +84,8 @@
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
 - `src/relay_encryption.rs`：可选 PSK 消息加密与持久化防重放；协议见 `docs/relay-encryption.md`，配对秘密不发送至 Relay、不写入日志。
 - `extension/shared/relay-id.js`：新安装生成加密 ID，保留已有配对模式。
-- `src/relay_client.rs`：Native Host 远端传输与 `RemotePeerManager`；通过 `peerId` 多路复用手机 A/B 等多设备，统一接入 `AgentService`
+- `src/relay_client.rs`：Native Host 远端传输与 `RemotePeerManager`；通过 `peerId` 多路复用手机 A/B 等多设备，统一接入 `AgentService`；`remote_peers_v1.json` 保存设备 peerId 和可选 FCM token，重复 `peer_attach` 可更新 token。
+- `src/push.rs`：远端 prompt 完成后调用 Gorush，仅通知发起设备；推送异步执行，不阻塞 RPC 返回；Firebase 服务账号只在推送服务器保存。
 - `src/agent_rpc.rs`：`AgentService` 业务服务层，负责会话创建、加载与关闭、流式事件转发与端点权限绑定
 - `src/acp_agent.rs`：共享的长生命周期 ACP connection、持续会话 actor、agent 事件转换；close 通过独立取消信号打断 actor，等待权限与本地会话清理后返回，远端 close 最多等待 5 秒；ACP 输入关闭会结束连接流程并使旧 actor 退出
 - `src/acp_agent/lifecycle_tests.rs`：真实 manager/actor/ACP SDK 与内存 mock ACP 的生命周期回归测试，覆盖 close/load、关闭卡住、并发调用与断线恢复
