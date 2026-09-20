@@ -152,6 +152,26 @@ impl AgentService {
                 .map_err(|err| format!("File read task failed: {err}"))?
         });
 
+        peer.handle("git_status", move |params, _ctx| async move {
+            let cwd = message_cwd(&params)
+                .or_else(|| params.get("path").and_then(Value::as_str).map(PathBuf::from));
+            tokio::task::spawn_blocking(move || git_status(cwd.as_deref()))
+                .await
+                .map_err(|err| format!("Git status task failed: {err}"))?
+        });
+
+        peer.handle("git_diff", move |params, _ctx| async move {
+            let cwd = message_cwd(&params)
+                .or_else(|| params.get("cwd").and_then(Value::as_str).map(PathBuf::from));
+            let path = params
+                .get("path")
+                .and_then(Value::as_str)
+                .map(str::to_string);
+            tokio::task::spawn_blocking(move || git_diff(cwd.as_deref(), path.as_deref()))
+                .await
+                .map_err(|err| format!("Git diff task failed: {err}"))?
+        });
+
         let create_sessions = sessions.clone();
         peer.handle("agent_session_create", move |params, _ctx| {
             let sessions = create_sessions.clone();
@@ -609,6 +629,176 @@ fn mime_from_extension(path: &Path) -> Option<&'static str> {
     }
 }
 
+fn git_status(cwd: Option<&Path>) -> Result<Value, String> {
+    let current_dir = std::env::current_dir()
+        .map_err(|err| format!("Failed to resolve current directory: {err}"))?;
+    let base_dir = cwd
+        .map(Path::to_path_buf)
+        .or_else(dirs::home_dir)
+        .unwrap_or(current_dir);
+
+    let repo = git2::Repository::discover(&base_dir)
+        .map_err(|err| format!("Failed to find git repository: {err}"))?;
+
+    let repo_path = repo
+        .workdir()
+        .unwrap_or_else(|| repo.path())
+        .to_string_lossy()
+        .into_owned();
+
+    let branch = repo
+        .head()
+        .ok()
+        .and_then(|h| h.shorthand().map(str::to_string).ok());
+
+    let mut opts = git2::StatusOptions::new();
+    opts.include_untracked(true);
+    opts.recurse_untracked_dirs(true);
+    opts.renames_head_to_index(true);
+    opts.renames_index_to_workdir(true);
+
+    let statuses = repo
+        .statuses(Some(&mut opts))
+        .map_err(|err| format!("Failed to get repository status: {err}"))?;
+
+    let mut files = Vec::new();
+    for entry in statuses.iter() {
+        let path = entry.path().unwrap_or_default().to_string();
+        let s = entry.status();
+
+        let staged = s.is_index_new()
+            || s.is_index_modified()
+            || s.is_index_deleted()
+            || s.is_index_renamed()
+            || s.is_index_typechange();
+        let unstaged = s.is_wt_new()
+            || s.is_wt_modified()
+            || s.is_wt_deleted()
+            || s.is_wt_renamed()
+            || s.is_wt_typechange();
+
+        let status = if s.is_conflicted() {
+            "conflicted"
+        } else if s.is_wt_new() {
+            "untracked"
+        } else if s.is_index_new() {
+            "added"
+        } else if s.is_wt_deleted() || s.is_index_deleted() {
+            "deleted"
+        } else if s.is_wt_renamed() || s.is_index_renamed() {
+            "renamed"
+        } else if s.is_wt_typechange() || s.is_index_typechange() {
+            "typechange"
+        } else if s.is_wt_modified() || s.is_index_modified() {
+            "modified"
+        } else {
+            "modified"
+        };
+
+        files.push(json!({
+            "path": path,
+            "status": status,
+            "staged": staged,
+            "unstaged": unstaged,
+        }));
+    }
+
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+    let mut diff_opts = git2::DiffOptions::new();
+    diff_opts.include_untracked(true);
+    diff_opts.recurse_untracked_dirs(true);
+    diff_opts.show_untracked_content(true);
+
+    let stats = match repo.diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts)) {
+        Ok(diff) => diff.stats().ok().map(|s| {
+            json!({
+                "insertions": s.insertions(),
+                "deletions": s.deletions(),
+                "filesChanged": s.files_changed(),
+            })
+        }),
+        Err(_) => None,
+    };
+
+    Ok(json!({
+        "repo": repo_path,
+        "branch": branch,
+        "files": files,
+        "stats": stats,
+    }))
+}
+
+fn git_diff(cwd: Option<&Path>, path: Option<&str>) -> Result<Value, String> {
+    let current_dir = std::env::current_dir()
+        .map_err(|err| format!("Failed to resolve current directory: {err}"))?;
+    let base_dir = cwd
+        .map(Path::to_path_buf)
+        .or_else(dirs::home_dir)
+        .unwrap_or(current_dir);
+
+    let repo = git2::Repository::discover(&base_dir)
+        .map_err(|err| format!("Failed to find git repository: {err}"))?;
+
+    let head_tree = repo.head().ok().and_then(|h| h.peel_to_tree().ok());
+    let mut diff_opts = git2::DiffOptions::new();
+    diff_opts.include_untracked(true);
+    diff_opts.recurse_untracked_dirs(true);
+    diff_opts.show_untracked_content(true);
+
+    let normalized_path = path.and_then(|p| {
+        let p = p.trim();
+        if p.is_empty() {
+            return None;
+        }
+        let target = Path::new(p);
+        if target.is_absolute() {
+            if let Some(workdir) = repo.workdir() {
+                if let Ok(rel) = target.strip_prefix(workdir) {
+                    return Some(rel.to_string_lossy().into_owned());
+                }
+            }
+        }
+        Some(p.to_string())
+    });
+
+    if let Some(ref target) = normalized_path {
+        diff_opts.pathspec(target);
+    }
+
+    let diff = repo
+        .diff_tree_to_workdir_with_index(head_tree.as_ref(), Some(&mut diff_opts))
+        .map_err(|err| format!("Failed to compute git diff: {err}"))?;
+
+    let mut patch = String::new();
+    diff.print(git2::DiffFormat::Patch, |_delta, _hunk, line| {
+        match line.origin() {
+            '+' | '-' | ' ' => {
+                patch.push(line.origin());
+                patch.push_str(&String::from_utf8_lossy(line.content()));
+            }
+            _ => {
+                patch.push_str(&String::from_utf8_lossy(line.content()));
+            }
+        }
+        true
+    })
+    .map_err(|err| format!("Failed to format git diff: {err}"))?;
+
+    let stats = diff.stats().ok().map(|s| {
+        json!({
+            "insertions": s.insertions(),
+            "deletions": s.deletions(),
+            "filesChanged": s.files_changed(),
+        })
+    });
+
+    Ok(json!({
+        "diff": patch,
+        "path": normalized_path,
+        "stats": stats,
+    }))
+}
+
 fn resolve_directory_path(input: &str, base_dir: &Path) -> PathBuf {
     if input.is_empty() || input == "~" {
         base_dir.to_path_buf()
@@ -896,5 +1086,65 @@ mod tests {
         assert_eq!(file["type"], "text");
         assert_eq!(file["text"], "# hi");
         assert!(file["path"].as_str().unwrap().ends_with("note.md"));
+    }
+    #[test]
+    fn git_status_and_diff_operations() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after unix epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("browser4agent-git-{unique}"));
+        std::fs::create_dir_all(&root).expect("create root directory");
+
+        let repo = git2::Repository::init(&root).expect("git init");
+        let file_path = root.join("hello.txt");
+        std::fs::write(&file_path, b"line1
+line2
+").expect("write hello");
+
+        let mut index = repo.index().expect("get index");
+        index.add_path(std::path::Path::new("hello.txt")).expect("add hello");
+        index.write().expect("write index");
+        let tree_id = index.write_tree().expect("write tree");
+        let tree = repo.find_tree(tree_id).expect("find tree");
+        let sig = git2::Signature::now("tester", "tester@example.com").expect("create signature");
+        repo.commit(Some("HEAD"), &sig, &sig, "initial commit", &tree, &[]).expect("commit");
+
+        // Modify hello.txt and add untracked new.txt
+        std::fs::write(&file_path, b"line1
+line2 modified
+line3
+").expect("modify hello");
+        let untracked_path = root.join("new.txt");
+        std::fs::write(&untracked_path, b"new file content
+").expect("write new.txt");
+
+        let status_val = super::git_status(Some(&root)).expect("git_status succeeds");
+        assert!(status_val["branch"].is_string());
+        let files = status_val["files"].as_array().expect("files array");
+        assert_eq!(files.len(), 2);
+
+        let hello_entry = files.iter().find(|f| f["path"] == "hello.txt").expect("hello.txt found");
+        assert_eq!(hello_entry["status"], "modified");
+        assert_eq!(hello_entry["unstaged"], true);
+
+        let new_entry = files.iter().find(|f| f["path"] == "new.txt").expect("new.txt found");
+        assert_eq!(new_entry["status"], "untracked");
+
+        // Full diff
+        let diff_all = super::git_diff(Some(&root), None).expect("git_diff full succeeds");
+        let diff_text = diff_all["diff"].as_str().expect("diff string");
+        assert!(diff_text.contains("diff --git a/hello.txt b/hello.txt"));
+        assert!(diff_text.contains("line2 modified"));
+        assert!(diff_text.contains("diff --git a/new.txt b/new.txt"));
+        assert!(diff_text.contains("new file content"));
+
+        // Single file diff
+        let diff_single = super::git_diff(Some(&root), Some("hello.txt")).expect("git_diff single succeeds");
+        let diff_single_text = diff_single["diff"].as_str().expect("diff string");
+        assert!(diff_single_text.contains("hello.txt"));
+        assert!(!diff_single_text.contains("new.txt"));
+
+        std::fs::remove_dir_all(&root).expect("cleanup");
     }
 }
