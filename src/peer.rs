@@ -15,11 +15,13 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// Event emitter passed to request handlers for streaming intermediate frames
 /// back to the caller before the final result.
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct CallCtx {
     emit: Arc<dyn Fn(Value) + Send + Sync>,
 }
 
+#[allow(dead_code)]
 impl CallCtx {
     pub fn emit(&self, event: Value) {
         (self.emit)(event);
@@ -122,6 +124,7 @@ impl Peer {
 
     /// Register an async handler for requests from the peer. The handler's
     /// result becomes the response; use `CallCtx::emit` to stream events.
+    #[allow(dead_code)]
     pub fn handle<F, Fut>(&self, method: &str, f: F)
     where
         F: Fn(Value, CallCtx) -> Fut + Send + Sync + 'static,

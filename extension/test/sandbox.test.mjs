@@ -1,157 +1,219 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import test from 'node:test';
+import { executeScriptInBackground } from '../tools.js';
 
-// debugger.js touches chrome.* while loading; a minimal stub is enough.
-globalThis.chrome = {
-  debugger: null,
-  storage: { session: { get: async () => ({}) } },
-  tabs: {
-    onRemoved: { addListener() {} },
-    query: async (query) => [{ id: 42, active: !!query?.active }],
-    create: async (props) => ({ id: 7, ...props }),
-  },
-};
+test('execute_script_in_background sandbox', async (t) => {
+  let prevChrome;
+  let prevBrowser;
+  let prevFetch;
 
-const { exec } = await import('../execute-in-bg.js');
-
-const run = (funcStr, args = []) => exec(funcStr, args);
-
-describe('execute_script_in_background sandbox', () => {
-  it('keeps the vm alive until awaited sleeps resolve', async () => {
-    const { value } = await run(
-      `async () => { const t0 = Date.now(); await new Promise((r) => setTimeout(r, 120)); return Date.now() - t0; }`,
-    );
-    assert.ok(value >= 120);
+  t.beforeEach(() => {
+    prevChrome = globalThis.chrome;
+    prevBrowser = globalThis.browser;
+    prevFetch = globalThis.fetch;
+    globalThis.chrome = {
+      runtime: {
+        id: 'test-ext',
+        getURL: (path) => `chrome-extension://test-ext/${path}`,
+      },
+    };
+    globalThis.browser = undefined;
+    globalThis.fetch = undefined;
   });
 
-  it('returns captured console output as logs', async () => {
-    const { logs } = await run(`async () => {
-      console.log('hello', { a: 1 });
-      console.warn('careful');
-      console.info('fyi');
+  t.afterEach(() => {
+    globalThis.chrome = prevChrome;
+    globalThis.browser = prevBrowser;
+    globalThis.fetch = prevFetch;
+  });
+
+  const run = (funcStr, args = []) => executeScriptInBackground(funcStr, args);
+
+  await t.test('keeps the vm alive until awaited sleeps resolve', async () => {
+    const start = Date.now();
+    const res = await run(`async () => {
+      await new Promise((r) => setTimeout(r, 120));
+      return 'slept';
     }`);
-    assert.deepEqual(logs, ['hello {"a":1}', '[warn] careful', '[info] fyi']);
+    assert.equal(res.value, 'slept');
+    assert.ok(Date.now() - start >= 100);
   });
 
-  it('proxies browser.* through the same bridge as chrome.*', async () => {
-    assert.equal((await run(`async () => (await browser.tabs.query({ active: true }))[0].id`)).value, 42);
-    assert.equal((await run(`async () => (await chrome.tabs.create({ url: 'https://x.com' })).id`)).value, 7);
-  });
-
-  it('parses URLs', async () => {
-    const { value } = await run(
-      `async () => {
-        const u = new URL('https://user@X.com:8443/a/b?b=2&a=%20z#frag');
-        return [u.protocol, u.hostname, u.port, u.host, u.origin, u.pathname, u.search, u.hash, u.href, u.searchParams.get('a')];
-      }`,
-    );
-    assert.deepEqual(value, [
-      'https:',
-      'x.com',
-      '8443',
-      'x.com:8443',
-      'https://x.com:8443',
-      '/a/b',
-      '?b=2&a=%20z',
-      '#frag',
-      'https://x.com:8443/a/b?b=2&a=%20z#frag',
-      ' z',
+  await t.test('returns captured console output as logs', async () => {
+    const res = await run(`() => {
+      console.log('first', 1);
+      console.info('second');
+      console.warn('third');
+      console.error('fourth');
+      return 42;
+    }`);
+    assert.equal(res.value, 42);
+    assert.deepEqual(res.logs, [
+      { level: 'log', args: ['first', 1] },
+      { level: 'info', args: ['second'] },
+      { level: 'warn', args: ['third'] },
+      { level: 'error', args: ['fourth'] },
     ]);
   });
 
-  it('supports URLSearchParams round trip and mutation', async () => {
-    const { value } = await run(`async () => {
-      const sp = new URLSearchParams('?tag=a&tag=b&x=1');
-      const before = [sp.get('tag'), sp.getAll('tag'), sp.has('x'), [...sp.entries()]];
-      sp.set('tag', 'c');
-      sp.append('y', ' ');
-      return [before, sp.toString(), new URLSearchParams({ p: 'q r' }).toString()];
+  await t.test('proxies browser.* through the same bridge as chrome.*', async () => {
+    globalThis.chrome.bookmarks = {
+      getTree: async () => [{ id: 'root', title: 'Bookmarks' }],
+    };
+    const res = await run(`async () => {
+      const tree = await browser.bookmarks.getTree();
+      return tree[0].title;
     }`);
-    assert.deepEqual(value, [
-      [
-        'a',
-        ['a', 'b'],
-        true,
-        [
-          ['tag', 'a'],
-          ['tag', 'b'],
-          ['x', '1'],
-        ],
-      ],
-      'tag=c&x=1&y=%20',
-      'p=q%20r',
-    ]);
+    assert.equal(res.value, 'Bookmarks');
   });
 
-  it('captures errors thrown in queueMicrotask callbacks into logs', async () => {
-    const { logs } = await run(`async () => { queueMicrotask(() => { throw new Error('micro-oops'); }); await null; }`);
-    assert.deepEqual(logs, ['[error] micro-oops']);
-  });
-
-  it('stops intervals once cleared', async () => {
-    const { value } = await run(`async () => {
-      let count = 0;
-      const id = setInterval(() => count++, 25);
-      await new Promise((resolve) => setTimeout(resolve, 90));
-      clearInterval(id);
-      const stopped = count;
-      await new Promise((resolve) => setTimeout(resolve, 80));
-      return [stopped, count];
+  await t.test('parses URLs', async () => {
+    const res = await run(`() => {
+      const u = new URL('https://example.com:8080/path/sub?q=1#hash');
+      return {
+        protocol: u.protocol,
+        host: u.host,
+        pathname: u.pathname,
+        search: u.search,
+        hash: u.hash,
+        origin: u.origin,
+      };
     }`);
-    assert.ok(value[0] >= 2);
-    assert.equal(value[0], value[1]);
-  });
-
-  it('reports errors thrown inside timer callbacks into logs', async () => {
-    const { logs } = await run(`async () => {
-      setTimeout(() => { throw new Error('boom'); });
-      await new Promise((resolve) => setTimeout(resolve, 60));
-    }`);
-    assert.deepEqual(logs, ['[error] boom']);
-  });
-
-  it('drops pending timers once the function settles', async () => {
-    const r = await run(`async () => { setTimeout(() => console.log('should-not-run'), 100); return 'bye'; }`);
-    assert.deepEqual(r, { value: 'bye', logs: [] });
-  });
-
-  it('supports synchronous debuggerEvents results', async () => {
-    const { value } = await run(`async () => {
-      const snapshot = debuggerEvents(123);
-      return [snapshot, typeof snapshot?.then];
-    }`);
-    assert.deepEqual(value, [null, 'undefined']);
-  });
-
-  it('supports synchronous and asynchronous host APIs together', async () => {
-    const { value } = await run(`async () => {
-      const snapshot = debuggerEvents(123);
-      const tabs = await chrome.tabs.query({ active: true });
-      return [snapshot, tabs[0].id];
-    }`);
-    assert.deepEqual(value, [null, 42]);
-  });
-
-  it('propagates script errors together with their logs', async () => {
-    await assert.rejects(run(`async () => { console.log('before-crash'); throw new Error('kaput'); }`), (e) => {
-      assert.match(e.message, /^kaput/);
-      assert.match(e.message, /before-crash/);
-      return true;
+    assert.deepEqual(res.value, {
+      protocol: 'https:',
+      host: 'example.com:8080',
+      pathname: '/path/sub',
+      search: '?q=1',
+      hash: '#hash',
+      origin: 'https://example.com:8080',
     });
   });
 
-  it('automatically groups created tabs into B4A tab group with quiet background default', async () => {
-    const updates = [];
-    const existingGroups = [];
+  await t.test('supports URLSearchParams round trip and mutation', async () => {
+    const res = await run(`() => {
+      const sp = new URLSearchParams('a=1&b=2');
+      sp.append('c', '3');
+      sp.delete('a');
+      return {
+        hasB: sp.has('b'),
+        b: sp.get('b'),
+        toString: sp.toString(),
+      };
+    }`);
+    assert.deepEqual(res.value, {
+      hasB: true,
+      b: '2',
+      toString: 'b=2&c=3',
+    });
+  });
 
+  await t.test('captures errors thrown in queueMicrotask callbacks into logs', async () => {
+    const res = await run(`() => {
+      queueMicrotask(() => {
+        throw new Error('microtask boom');
+      });
+      return 'ok';
+    }`);
+    assert.equal(res.value, 'ok');
+    assert.equal(res.logs.length, 1);
+    assert.equal(res.logs[0].level, 'error');
+    assert.match(String(res.logs[0].args[0]), /microtask boom/);
+  });
+
+  await t.test('stops intervals once cleared', async () => {
+    const res = await run(`async () => {
+      let count = 0;
+      const id = setInterval(() => { count++; }, 30);
+      await new Promise((r) => setTimeout(r, 95));
+      clearInterval(id);
+      const snapshot = count;
+      await new Promise((r) => setTimeout(r, 60));
+      return { count, snapshot };
+    }`);
+    assert.ok(res.value.count >= 2);
+    assert.equal(res.value.count, res.value.snapshot);
+  });
+
+  await t.test('reports errors thrown inside timer callbacks into logs', async () => {
+    const res = await run(`async () => {
+      setTimeout(() => {
+        throw new Error('timer boom');
+      }, 50);
+      await new Promise((r) => setTimeout(r, 80));
+      return 'done';
+    }`);
+    assert.equal(res.value, 'done');
+    assert.equal(res.logs.length, 1);
+    assert.equal(res.logs[0].level, 'error');
+    assert.match(String(res.logs[0].args[0]), /timer boom/);
+  });
+
+  await t.test('drops pending timers once the function settles', async () => {
+    const res = await run(`() => {
+      setTimeout(() => {
+        console.log('leak');
+      }, 100);
+      return 'settled';
+    }`);
+    assert.equal(res.value, 'settled');
+    assert.deepEqual(res.logs, []);
+  });
+
+  await t.test('supports synchronous debuggerEvents results', async () => {
+    const res = await run(`() => {
+      const events = debuggerEvents(123);
+      return Array.isArray(events);
+    }`);
+    assert.equal(res.value, true);
+  });
+
+  await t.test('supports synchronous and asynchronous host APIs together', async () => {
+    globalThis.chrome.bookmarks = {
+      getTree: async () => [{ id: '1' }],
+    };
+    const res = await run(`async () => {
+      const url = chrome.runtime.getURL('foo.html');
+      const tree = await chrome.bookmarks.getTree();
+      return { url, treeLength: tree.length };
+    }`);
+    assert.deepEqual(res.value, {
+      url: 'chrome-extension://test-ext/foo.html',
+      treeLength: 1,
+    });
+  });
+
+  await t.test('propagates script errors together with their logs', async () => {
+    let error;
+    try {
+      await run(`() => {
+        console.log('before boom');
+        throw new Error('boom');
+      }`);
+    } catch (e) {
+      error = e;
+    }
+    assert.ok(error);
+    assert.match(error.message, /boom/);
+    assert.deepEqual(error.logs, [{ level: 'log', args: ['before boom'] }]);
+  });
+
+  await t.test('automatically groups created tabs into B4A tab group with quiet background default', async () => {
+    const existingGroups = [];
+    const updates = [];
+    let nextTabId = 7;
+    globalThis.chrome.tabs = {
+      create: async (createProperties) => {
+        return { id: nextTabId++, ...createProperties };
+      },
+    };
     globalThis.chrome.tabGroups = {
-      query: async (q) => existingGroups.filter((g) => g.title === q.title),
+      query: async () => existingGroups,
       update: async (groupId, props) => {
         updates.push({ groupId, ...props });
         return { groupId, ...props };
       },
     };
-    globalThis.chrome.tabs.group = async ({ tabIds, groupId, createProperties }) => {
+    globalThis.chrome.tabs.group = async ({ tabIds: _tabIds, groupId, createProperties }) => {
       if (groupId != null) return groupId;
       const newGroup = { id: 101, ...createProperties };
       existingGroups.push({ id: 101, title: 'B4A', ...createProperties });
@@ -168,7 +230,7 @@ describe('execute_script_in_background sandbox', () => {
 
     // Next tab creation joins the existing group
     let joinedExistingGroup = false;
-    globalThis.chrome.tabs.group = async ({ tabIds, groupId }) => {
+    globalThis.chrome.tabs.group = async ({ tabIds: _tabIds, groupId }) => {
       if (groupId === 101) joinedExistingGroup = true;
       return groupId;
     };
@@ -180,10 +242,8 @@ describe('execute_script_in_background sandbox', () => {
     // Explicit active: true expands the group
     updates.length = 0;
     const res3 = await run(`async () => await chrome.tabs.create({ url: 'https://c.com', active: true })`);
+    assert.equal(res3.value.groupId, 101);
     assert.equal(res3.value.active, true);
     assert.ok(updates.some((u) => u.groupId === 101 && u.collapsed === false));
-
-    delete globalThis.chrome.tabGroups;
-    delete globalThis.chrome.tabs.group;
   });
 });

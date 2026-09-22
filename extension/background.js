@@ -1,12 +1,9 @@
 import { debuggerDetach, debuggerSendCommand } from './debugger.js';
-import { agentSessionKey } from './shared/agent-session-store.js';
 import { trackDevtoolsPort } from './shared/devtools-tracker.js';
 import { t } from './shared/i18n.js';
 import { loadToolset } from './shared/loader.js';
 import { ensureAuthToken } from './shared/market-api.js';
-import { loadRelayId } from './shared/relay-id.js';
 import { RpcPeer } from './shared/rpc.js';
-import { localStorageKeys } from './shared/storage-keys.js';
 import { getToolConfig, persist } from './shared/tool-store.js';
 import { getToolsetId } from './shared/toolsets.js';
 import {
@@ -83,12 +80,6 @@ chrome.contextMenus.create({
   contexts: ['action'],
 });
 
-chrome.contextMenus.create({
-  id: 'copy-relay-id',
-  title: t('contextCopyRelayId'),
-  contexts: ['action'],
-});
-
 chrome.contextMenus.onClicked.addListener((info) => {
   switch (info.menuItemId) {
     case 'open-welcome':
@@ -96,9 +87,6 @@ chrome.contextMenus.onClicked.addListener((info) => {
       break;
     case 'open-market':
       chrome.tabs.create({ url: MARKET_URL });
-      break;
-    case 'copy-relay-id':
-      copyRelayId().catch((error) => console.error('Failed to copy relay id:', error));
       break;
   }
 });
@@ -135,6 +123,8 @@ peer.handle('save_page_as_mhtml', (p) => chrome.pageCapture.saveAsMHTML({ tabId:
 peer.handle('get_favicon_url', (p) =>
   chrome.runtime.getURL(`/_favicon/?pageUrl=${encodeURIComponent(p.pageUrl)}&size=${p.size}`),
 );
+peer.handle('open_side_panel', (p) => chrome.sidePanel?.open?.(p || {}));
+peer.handle('write_clipboard', (p) => navigator.clipboard?.writeText?.(p?.text || ''));
 
 // MCP tool handlers served to the native host
 peer.handle('list_tabs', () => getAllTabs());
@@ -149,15 +139,6 @@ peer.handle('get_local_storage', (p) => getLocalStorage(p.tabId));
 peer.handle('screenshot_tab', (p) => screenshotTab(p.tabId));
 peer.handle('debugger_send_command', (p) => debuggerSendCommand(p.tabId, p.method, p.params));
 peer.handle('debugger_detach', (p) => debuggerDetach(p.tabId));
-
-const agentSessionOwners = new Map();
-const agentPanelPeers = new Set();
-
-function agentTargetKey(target) {
-  return typeof target?.agent === 'string' && typeof target?.sessionId === 'string'
-    ? agentSessionKey(target.agent, target.sessionId)
-    : '';
-}
 
 function compareVersions(a, b) {
   const pa = a.split('.').map(Number);
@@ -182,150 +163,23 @@ async function updateHostCompat(version) {
   await chrome.action.setTitle({ title: t('hostIncompatTitle') });
 }
 
-let relayIdPromise;
-
-function ensureRelayId() {
-  if (relayIdPromise) return relayIdPromise;
-  relayIdPromise = loadRelayId(chrome.storage.local, localStorageKeys.relayId).catch((error) => {
-    relayIdPromise = undefined;
-    throw error;
-  });
-  return relayIdPromise;
-}
-
-let copyRelayIdPromise;
-
-function copyRelayId() {
-  // Repeated clicks share one operation so offscreen creation/cleanup cannot race.
-  if (copyRelayIdPromise) return copyRelayIdPromise;
-  copyRelayIdPromise = (async () => {
-    const text = await ensureRelayId();
-    // Firefox's background page can access the clipboard directly.
-    if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(text);
-
-    const url = chrome.runtime.getURL('pages/clipboard.html');
-    const contexts = await chrome.runtime.getContexts({
-      contextTypes: ['OFFSCREEN_DOCUMENT'],
-      documentUrls: [url],
-    });
-    if (!contexts.length) {
-      await chrome.offscreen.createDocument({
-        url,
-        reasons: ['CLIPBOARD'],
-        justification: 'Copy the relay id from the action menu.',
-      });
-    }
-    try {
-      const result = await chrome.runtime.sendMessage({ target: 'clipboard', text });
-      if (!result?.ok) throw new Error(result?.error || 'Clipboard write failed');
-    } finally {
-      await chrome.offscreen.closeDocument();
-    }
-  })().finally(() => {
-    copyRelayIdPromise = undefined;
-  });
-  return copyRelayIdPromise;
-}
-
 async function reportCapabilities() {
   // Firefox exposes getBrowserInfo; Chromium doesn't.
   const isFirefox = typeof chrome.runtime.getBrowserInfo === 'function';
-  const relayId = await ensureRelayId();
   peer.notify('capabilities', {
     browser: isFirefox ? 'firefox' : 'chromium',
     debuggerAvailable: !isFirefox,
-    relayId,
   });
 }
 
 peer.onNotify('connected', (params) => {
   console.log('Connected to native host:', NATIVE_HOST_NAME);
   updateHostCompat(params?.version).catch((e) => console.error('Failed to check host compat:', e));
-  // Tell the host what this engine supports and provide the stable pairing id
-  // before the host starts its optional relay connection.
   reportCapabilities().catch((e) => console.error('Failed to report capabilities:', e));
-  // A (re)connected host process knows no live sessions; panels must drop
-  // their cached state.
-  agentSessionOwners.clear();
-  for (const panel of agentPanelPeers) panel.notify('host_reconnected', {});
-});
-peer.onNotify('agent_session_ended', (params) => {
-  const key = agentTargetKey(params);
-  console.log('Agent session ended:', params?.agent, params?.sessionId);
-  if (key) agentSessionOwners.delete(key);
-  // Panels keep per-session state for live sessions; let them drop dead ones.
-  for (const panel of agentPanelPeers) panel.notify('agent_session_ended', params);
 });
 
-peer.handle('agent_permission_request', async (params) => {
-  const owner = agentSessionOwners.get(agentTargetKey(params));
-  if (!owner) throw new Error('No Agent panel owns this session');
-  return owner.call('agent_permission_request', params);
-});
-
-/**
- * DevTools panel bridge: the panel (`shared/agent-api.js`) speaks the same
- * RPC protocol over a runtime port named `agent-rpc`. Forward its `agent_*`
- * requests to the native host peer and relay the `{ id, event }` stream
- * frames and final responses back unchanged.
- */
-const AGENT_METHODS = [
-  'agent_list',
-  'agent_cwd_complete',
-  'file_read',
-  'agent_session_create',
-  'agent_session_load',
-  'agent_session_delete',
-  'agent_session_close',
-  'agent_prompt',
-  'agent_prompt_cancel',
-  'agent_session_set_mode',
-  'agent_session_set_config_option',
-];
-
-chrome.runtime.onConnect.addListener((panelPort) => {
-  if (panelPort.name === 'devtools-alive') return trackDevtoolsPort(panelPort);
-  if (panelPort.name !== 'agent-rpc') return;
-  const panel = new RpcPeer((msg) => panelPort.postMessage(msg), 'p');
-  panelPort.onMessage.addListener((msg) => panel.dispatch(msg));
-  agentPanelPeers.add(panel);
-  // Live sessions opened by this panel instance; closed when the panel
-  // disconnects (devtools closed) so the agent subprocesses don't leak.
-  const liveSessions = new Map();
-  let disconnected = false;
-  panelPort.onDisconnect.addListener(() => {
-    disconnected = true;
-    agentPanelPeers.delete(panel);
-    panel.rejectAll(new Error('Agent panel disconnected'));
-    for (const [key, target] of liveSessions) {
-      if (agentSessionOwners.get(key) === panel) agentSessionOwners.delete(key);
-      peer.call('agent_session_close', target).catch(() => {});
-    }
-  });
-  for (const method of AGENT_METHODS) {
-    panel.handle(method, async (params, { emit }) => {
-      const result = await peer.call(method, params, {
-        onEvent: emit,
-        timeoutSeconds: params.timeoutSeconds,
-      });
-      if (method === 'agent_session_create' || method === 'agent_session_load') {
-        const target = { agent: result.agent, sessionId: result.sessionId };
-        const key = agentTargetKey(target);
-        // A create/load settling after disconnect would leak the session.
-        if (disconnected) {
-          peer.call('agent_session_close', target).catch(() => {});
-        } else {
-          liveSessions.set(key, target);
-          agentSessionOwners.set(key, panel);
-        }
-      } else if (method === 'agent_session_close') {
-        const key = agentTargetKey(params);
-        liveSessions.delete(key);
-        if (agentSessionOwners.get(key) === panel) agentSessionOwners.delete(key);
-      }
-      return result;
-    });
-  }
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'devtools-alive') trackDevtoolsPort(port);
 });
 
 function connectNativeHost() {

@@ -7,21 +7,9 @@
 [![Firefox Add-ons](https://img.shields.io/badge/Firefox%20Add--ons-install-FF7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/firefox/addon/browser4agent@xianqiao.wang)
 [![GitHub Release](https://img.shields.io/github/v/release/mantou132/browser4agent?style=for-the-badge&logo=github&color=181717)](https://github.com/mantou132/browser4agent/releases/latest)
 
-一个把浏览器和 AI Agent 双向连接起来的浏览器扩展。
+一个把浏览器和 AI Agent 通过 MCP / Skill 连接起来的浏览器扩展。
 
-| **[让任意 Agent 操控你的浏览器](#让任意-agent-操控你的浏览器mcp--skill)** | **[在浏览器中使用 Agent](#在浏览器中使用-agentacp)** |
-| --- | --- |
-| ![Claude Code 通过 browser4agent 操控浏览器](./docs/preview.png) | ![在 Agent 面板中和 Claude Code 对话](./docs/agent.png) |
-
-## 两种用法
-
-| | **[让任意 Agent 操控你的浏览器](#让任意-agent-操控你的浏览器mcp--skill)** | **[在浏览器中使用 Agent](#在浏览器中使用-agentacp)** |
-| --- | --- | --- |
-| **谁能用** | 任何支持 MCP、或能跑 shell 命令（经 [Skill](#命令行)）的 Agent | Claude Code、Codex、Cursor 和 pi；优先使用用户已安装且可用的 CLI，否则自动安装托管副本 |
-| **能得到什么** | Agent 可读取页面、Cookie、localStorage、报错和截图；管理标签页和窗口；执行脚本 | 在 DevTools 或浏览器侧边栏里，就在页面旁边和 Agent 聊当前页面 |
-| **怎么接入** | 欢迎页引导注册 Native Host，并自动配好 MCP 或安装 Skill | 注册 Native Host；使用适配器的 Agent 还需 Node.js 22+ 和 npm；每个托管运行时在首次使用时自动安装 |
-
-两种用法有同一个前置步骤：下载 `browser4agent` 并运行一次，将它注册为 Native Host（见[安装](#安装)）。之后区别只在 Agent 侧的接入方式：MCP/Skill 还是 [ACP][acp]。
+![Claude Code 通过 browser4agent 操控浏览器](./docs/preview.png)
 
 > ⚠️ **安全提示**
 > - 确保你的 AI Agent 环境不受提示词注入攻击，否则攻击者可以通过扩展读取你的浏览器数据。
@@ -78,22 +66,6 @@ browser4agent --tool read_tab --help   # 查看工具的入参 schema
 - [高频 UI 动画性能剖析与逐帧重构（Card 展开动画调优）](./docs/cases.zh-CN.md#案例一高频-ui-动画性能剖析与逐帧重构card-展开动画调优)
 - [查看更多实战案例](./docs/cases.zh-CN.md)
 
-## 在浏览器中使用 Agent（ACP）
-
-在 DevTools 打开 **Agent** 面板（或作为浏览器侧边栏），即可让编码 Agent 和你一起处理当前页面。会话实时流式输出，支持附件、权限确认，回合进行中可以排队输入，可以保留多个会话并随时切换。
-
-目前支持 Claude Code、Codex、Cursor 和 pi。Native Host 会优先使用 PATH（含常见用户级安装目录）中可用的 `claude`、`codex`、`cursor-agent` 或 `pi`。Claude Code 和 Codex 通过各自的 ACP 适配器运行，Cursor 直接使用原生的 `cursor-agent acp` 模式，pi 通过 `pi-acp` 运行。如果所选 CLI 不存在，则自动安装兼容的托管版本；Cursor 二进制来自官方 ACP Registry，使用适配器的 Agent 需要 Node.js 22 或更高版本和 npm。登录状态和 Agent 配置仍使用各 Agent 原有的用户级文件。
-
-托管的 Agent 运行时和日志统一存放在系统的本地应用数据目录：
-
-- macOS：`~/Library/Application Support/browser4agent`
-- Windows：`%LOCALAPPDATA%\browser4agent`
-- Linux：`${XDG_DATA_HOME:-~/.local/share}/browser4agent`
-
-常见问题与排查指南：
-- [macOS: 发送图片附件时弹出「Apple could not verify ".<hash>-0.node"」安全警告](./docs/troubleshooting.zh-CN.md#1-macos-发送图片附件时弹出-apple-could-not-verify-hash-0node-安全警告)
-- [查看更多故障排查与 FAQ](./docs/troubleshooting.zh-CN.md)
-
 ## 从源码构建
 
 ```bash
@@ -103,11 +75,10 @@ pnpm -C extension run build --browser=chrome
 cargo run
 ```
 
-将 `extension/dist/<browser>` 按上文「加载未打包扩展」加载。
+将 `extension/dist/<browser>` 按上述「加载未打包扩展」加载。
 
 ## 隐私政策
 
-Browser for AI Agent 仅为提供核心能力（MCP 浏览器自动化和浏览器内 Agent 面板）而处理浏览器数据。根据用户请求，扩展可能访问标签页元数据、页面内容、Cookie、localStorage、页面错误、截图和工具集配置。数据只发送给本地的 Native Messaging Host 和用户配置的 MCP 客户端 / AI Agent。我们不会出售用户数据、不会用于广告或其他无关用途。请只连接你信任的 AI Agent，只安装你信任的工具集。
+Browser for AI Agent 仅为提供核心能力（MCP 浏览器自动化）而处理浏览器数据。根据用户请求，扩展可能访问标签页元数据、页面内容、Cookie、localStorage、页面错误、截图和工具集配置。数据只发送给本地的 Native Messaging Host 和用户配置的 MCP 客户端 / AI Agent。我们不会出售用户数据、不会用于广告或其他无关用途。请只连接你信任的 AI Agent，只安装你信任的工具集。
 
-[acp]: https://agentclientprotocol.com/
 [webmcp]: https://webmachinelearning.github.io/webmcp/

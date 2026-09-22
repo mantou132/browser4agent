@@ -11,7 +11,7 @@
 1. `src/` 是 Rust Native Host + MCP Server
 2. `extension/` 是浏览器扩展，基于 Gem + duoyun-ui
 
-## 运行链路
+## 运行路径
 
 1. 浏览器扩展首次安装后自动订阅内置 `common` 工具集，并打开 `extension/pages/welcome.html`
 2. 扩展后台在 `extension/background.js` 里连接本地 Native Host
@@ -24,74 +24,40 @@
 5. MCP 模式：
   1. `src/native_host.rs` 负责本地消息循环和 MCP HTTP 服务；连接后发送的 `connected` 通知携带 host 版本（`CARGO_PKG_VERSION`），`extension/background.js` 的 `updateHostCompat` 用它和 `MIN_HOST_VERSION` 做兼容性检查，不兼容时在 action 图标上加警告徽标；扩展收到 `connected` 后回发 `capabilities` 通知（浏览器内核、debugger 可用性）
   2. `src/mcp_server.rs` MCP 服务端；按上报能力过滤工具列表（`CHROMIUM_ONLY_TOOLS`，能力未上报视为不可用）
-6. 浏览器端调用 Agent：
- 1. `extension/devtools/` 的 DevTools 面板通过 `extension/shared/agent-api.js` 调用 agent 会话 API
- 2. `extension/background.js` 里的 `agent-rpc` 端口桥把面板的 `agent_*` 请求透传给 Native Host，并原样转发流事件和最终响应
- 3. `src/native_messaging.rs` 负责 Native Messaging 基础读写
- 4. `src/peer.rs` 负责与扩展的双工 RPC 协议（请求/响应、流事件、通知），两端 API 对称
- 5. `src/agent_rpc.rs` 提供 `AgentService` 统一承载 Agent 业务逻辑与会话管理，将 RPC 接口挂载到各端连接
-  6. `src/acp_agent.rs` 负责 ACP connection 和会话管理，使用 Registry 中的 Agent ID；`src/acp_agent/catalog.rs` 从内置 `registry.json` 按当前平台选择 binary / npx / uvx 分发方式，只列出有可用分发方式的 Agent；`src/acp_agent/provision.rs` 优先探测对应平台的用户 CLI，否则按 Registry 版本安装原生二进制到应用数据目录，npm/Python 分发通过 npx/uvx 启动；Native Host 为每个 Agent 复用可重连的长生命周期 ACP connection，每个 ACP session 仍由独立 actor 串行处理
-7. CLI 模式：
+6. CLI 模式：
   1. `src/cli.rs` 解析 `--tool` / `--input`（或 stdin JSON）
   2. 转发单次工具调用到后台 MCP HTTP 服务 `127.0.0.1:39271/mcp`，打印结果后退出
-8. 远端 Agent 模式：
-  1. `extension/background.js` 在 `chrome.storage.local` 生成并持久化配对 id（新安装使用 `adk1_` 加密 ID，已有 UUID 保持明文），通过 `capabilities` 通知发送给 Native Host
-  2. `src/native_host.rs` 收到配对 id 后让 `src/relay_client.rs` 启动 `RemotePeerManager`；debug/test 使用本机 `ws://127.0.0.1:39371/ws`，release 使用 `wss://agent-deck.xianqiao.wang/ws`，客户端在进程内维护 outbox/接收游标并自动重连
-  3. 多移动端通过 `peer_attach` 获取自增 `peerId`（如 Phone A 为 1、Phone B 为 2），`RemotePeerManager` 为每个设备维护独立的 `Peer` 并接入 `AgentService`，消息与权限确认携带 `peerId` 并在各端过滤，互不串线
 
 ## 目录职责
 
-- `extension/pages/`：欢迎页、市场页、Agent 面板等独立页面
-- `extension/devtools/`：DevTools 页面入口，注册 Agent 会话测试面板（面板 UI 在 `pages/agent-panel.*`）
+- `extension/pages/`：欢迎页（welcome）、市场页（market）等独立页面
+- `extension/devtools/`：DevTools 页面入口，维护 `devtools-alive` 连接以支持 `read_tab` 探测 DevTools 开启状态
 - `extension/options/`：扩展设置页
 - `extension/popup/`：工具弹窗
 - `extension/shared/`：扩展侧公共状态、工具集加载、市场 API、帮助函数
 - `extension/_locales/`：扩展 i18n 文案，默认 `zh_CN`，同时维护英文 `en`
 - `extension/public/toolsets/`：内置工具集
 - `extension/read-content-hacks/`：特定站点的读取补丁
-- `src/acp_agent/`：受支持 Agent 目录以及用户 CLI 探测、托管运行时安装和启动命令准备
 - `cf/`：扩展中的工具集市场后端
 - `toolset-parser/`：工具集解析器
-- `docs/`：实战案例与故障排查文档（如 Gatekeeper 原生模块拦截等）
+- `docs/`：实战案例与故障排查文档
 
 ## 关键文件
 
 - `extension/extension.config.mjs`：扩展构建配置和 Gem SWC 插件
-- `extension/loaders/prism-local.mjs`：构建期把 dy-code-block 的 esm.sh Prism 地址改写为本地 vendor（`extension/public/vendor/prismjs/`），扩展 CSP 不允许远程脚本
-- `extension/loaders/diff2html-local.mjs`：构建期把 `@gem-bind/diff2html` 的远程样式地址（jsdelivr 的 diff2html、cdnjs 的 highlight.js 主题）改写为本地 vendor（`extension/public/vendor/`），避免运行时远程依赖
 - `extension/theme.js`：duoyun-ui 全局主题
 - `extension/tailwind.css`：扩展全局 Tailwind 主题和基础样式
 - `extension/shared/i18n.js`：扩展侧 `t()` 翻译帮助函数和页面语言/标题同步
-- `extension/shared/diff.js`：ACP tool call 的 diff 内容项转 unified diff 文本，配合 `<gem-bind-diff2html>` 在面板渲染文件编辑
-- `extension/shared/markdown.js`：Agent 消息的 Marked 扩展；把代码围栏、LaTeX 分隔符和 Mermaid 图表路由到 `@gem-bind/latex` / `@gem-bind/mermaid` 自定义元素
-- `extension/shared/icons.js`：通过 `extendIcons` 扩展 duoyun-ui 全局 icon store 的应用自定义图标（send/stop/file/edit/queueAdd/robot…）
-- `extension/shared/agents.js`：精选 Agent 列表定义（POPULAR_AGENTS）、图标 URL 与名称解析（图标统一使用 ACP Registry CDN SVG 并由 `<img>` 标签加载）
-- `extension/shared/rpc.js`：对称双工 RPC 对端（`call` / `handle` / `notify`），同时用于 Native Host 链路和面板链路
+- `extension/shared/rpc.js`：对称双工 RPC 对端（`call` / `handle` / `notify`），用于 Native Host 链路
 - `extension/shared/devtools-tracker.js`：追踪开着 DevTools 的 tab（devtools 页经 `devtools-alive` 端口上报，断开即关闭），`read_tab` 结果据此标注 `devtoolsOpen`
-- `extension/shared/agent-api.js`：面板侧 agent 会话 async API 客户端（经 background 的 `agent-rpc` 端口转发）
 - `extension/shared/storage-keys.js`：扩展全部 `chrome.storage.local` 键的集中注册表；显式列出旧工具键与带功能前缀/schema 版本的新键，并检查重复 value，禁止在功能模块中散落裸字符串键
 - `extension/shared/tool-store.js`：工具集、工具启用状态和收藏状态的共享 Store，并负责与 `chrome.storage.local` 双向同步
-- `extension/shared/agent-session-store.js`：Agent 面板的 `chrome.storage.local` 会话索引与按 Agent 隔离的 composer 默认配置；本地 session key 由 Agent 和 ACP session id 的 JSON 元组生成，避免跨 Agent 重名
-- `extension/pages/agent-panel.js`：DevTools 双栏 Agent 面板和侧边栏单列变体的根元素，仅负责响应式页面状态、功能控制器装配、effect 挂载和模板事件转发
-- `extension/pages/clipboard.html` / `clipboard.js`：Chrome 后台通过 offscreen document 写入剪贴板，供 browser action 的“复制 relay id”菜单使用；Firefox 直接使用后台页的 Clipboard API
-- `extension/pages/agent-panel/`：Agent 面板内部功能模块；`session-runtime.js` 统一 session pane/cache 与 ACP event 落地，`turn-controller.js` 管理发送/队列/取消/权限，`session-controller.js` 管理新建/加载/切换/删除/配置，`effects.js` 挂载初始化和外部订阅
-- `extension/pages/elements/` 中的 Agent 面板纯视图：新会话弹窗/选择器 `new-session-modal.js`（`agent-new-session-modal`）和 `new-session-picker.js`（`agent-new-session-picker`）、会话列表 `session-list.js`（`agent-session-list`）、聊天区+滚动跟随+聚焦 `chat-pane.js`（`agent-chat-pane`）、输入区+队列展示 `composer.js`（`agent-composer`）；`grouped-picker.js`（`agent-grouped-picker`）提供和 `dy-picker` 同 DOM/样式契约的多组独立单选组件，便于后续迁移到 duoyun-ui
 - `extension/tools.js`：MCP 工具实现
 - `extension/sandbox-globals.js`：execute_script_in_background 沙箱的全局安装函数（经 Function.toString() 注入 QuickJS，必须保持自包含，且在 extension.config.mjs 中排除 swc 转译）：`chrome`/`browser`/`debuggerEvents` 统一经单一 `__invoke` 桥、定时器（主函数返回即丢弃未触发的）、console 捕获（随结果以 `logs` 返回）、queueMicrotask、基础 URL/URLSearchParams
 - `extension/debugger.js`：CDP 调试会话，per-tab 事件 ring buffer 桥接 chrome.debugger 的 push 和 MCP 的 pull；快照以惰性函数暴露为 execute_script_in_background QuickJS 里的全局 `debuggerEvents()`，脚本调用时才序列化；attach 状态经 storage.session 在 SW 重启后恢复。MCP 侧只有 `debugger_send_command`（自动 attach）和 `debugger_detach` 两个工具（Chromium only，见 `CHROMIUM_ONLY_TOOLS`）
-- `src/app_data.rs`：统一解析并创建 `browser4agent` 的跨平台本地应用数据目录；托管原生 Agent 运行时放在 `agents/`，程序日志放在 `logs/`
+- `src/app_data.rs`：统一解析并创建 `browser4agent` 的跨平台本地应用数据目录；程序日志放在 `logs/`
 - `src/native_messaging.rs`：Native Messaging 基础消息读写
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
-- `src/relay_encryption.rs`：可选 PSK 消息加密与持久化防重放；协议见 `docs/relay-encryption.md`，配对秘密不发送至 Relay、不写入日志。
-- `extension/shared/relay-id.js`：新安装生成加密 ID，保留已有配对模式。
-- `src/relay_client.rs`：Native Host 远端传输与 `RemotePeerManager`；通过 `peerId` 多路复用手机 A/B 等多设备，统一接入 `AgentService`；`remote_peers_v1.json` 保存设备 peerId 和可选 FCM token，重复 `peer_attach` 可更新 token。
-- `src/push.rs`：远端 prompt 完成后调用 Gorush，仅通知发起设备；推送异步执行，不阻塞 RPC 返回；Firebase 服务账号只在推送服务器保存。
-- `src/agent_rpc.rs`：`AgentService` 业务服务层，负责会话创建、加载与关闭、流式事件转发与端点权限绑定
-- `src/acp_agent.rs`：共享的长生命周期 ACP connection、持续会话 actor、agent 事件转换；close 通过独立取消信号打断 actor，等待权限与本地会话清理后返回，远端 close 最多等待 5 秒；ACP 输入关闭会结束连接流程并使旧 actor 退出
-- `src/acp_agent/lifecycle_tests.rs`：真实 manager/actor/ACP SDK 与内存 mock ACP 的生命周期回归测试，覆盖 close/load、关闭卡住、并发调用与断线恢复
-- `src/acp_agent/catalog.rs`：按当前平台选择 Agent 分发方式、推导用户 CLI 名称
-- `src/acp_agent/registry.json`：内置 ACP Registry 快照，提供 Agent 展示信息、版本和各平台启动配置
-- `src/acp_agent/provision.rs`：跨平台用户 CLI 探测、按版本缓存的 ACP Registry 二进制安装，以及 binary / npx / uvx 启动命令准备
 - `src/logger.rs`：写入应用数据目录 `logs/browser4agent.log` 的 Native Host 日志
 - `src/cli.rs`：命令行单次工具调用入口
 - `src/skill.md`：Skill 模板内容，内容应该和 MCP server 的描述语义上同步
@@ -112,7 +78,7 @@
 
 ## 维护要求
 
-- 改入口、目录职责、运行链路、构建方式时，优先同步更新这里
+- 改入口、目录职责、运行路径、构建方式时，优先同步更新这里
 - 如果新增页面、模块或目录，先判断是否需要补到“目录职责”和“关键文件”
 - 这里不写细节实现，只写后续 Agent 需要的导航信息
 

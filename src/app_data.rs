@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 
 const APP_DIRECTORY: &str = "browser4agent";
 
-/// Per-user, machine-local storage for managed runtimes and logs.
+/// Per-user, machine-local storage for logs.
 pub fn root_dir() -> Result<PathBuf> {
     let dir = dirs::data_local_dir()
         .context("failed to resolve the local application data directory")?
@@ -12,17 +12,6 @@ pub fn root_dir() -> Result<PathBuf> {
     fs::create_dir_all(&dir).with_context(|| {
         format!(
             "failed to create application data directory: {}",
-            dir.display()
-        )
-    })?;
-    Ok(dir)
-}
-
-pub fn agent_runtime_dir(agent: &str) -> Result<PathBuf> {
-    let dir = root_dir()?.join("agents").join(agent);
-    fs::create_dir_all(&dir).with_context(|| {
-        format!(
-            "failed to create agent runtime directory: {}",
             dir.display()
         )
     })?;

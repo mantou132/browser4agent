@@ -1,6 +1,5 @@
 import { openExtensionPage } from '@/shared/tabs.js';
 import { setPageI18n, t } from '../shared/i18n.js';
-import { icons } from '../shared/icons.js';
 import { initStore, isToolEnabled, setToolEnabled, toolStore } from '../shared/tool-store.js';
 
 setPageI18n();
@@ -21,16 +20,6 @@ class AgentPopupPageElement extends GemElement {
   #openOptions = async () => {
     await openExtensionPage('options/index.html');
     window.close();
-  };
-
-  // open() 只能在用户输入处理器的同步调用链中调用，之前不能 await
-  #openAgentSidebar = () => {
-    const { tab } = this.#s;
-    const opening =
-      chrome.sidePanel?.open && tab?.windowId != null
-        ? chrome.sidePanel.open({ windowId: tab.windowId })
-        : chrome.sidebarAction?.open?.();
-    Promise.resolve(opening).finally(() => window.close());
   };
 
   #toggleTool = (toolsetId, toolName, e) => {
@@ -68,7 +57,6 @@ class AgentPopupPageElement extends GemElement {
             <img src=${icon} class="w-6 h-6" />
             <span>${manifest.name}</span>
           </span>
-          <dy-button .icon=${icons.robot} square color="cancel" title=${t('openAgentSidebar')} @click=${this.#openAgentSidebar}></dy-button>
         </header>
 
         <div class="pt-3 pb-2 px-3.5 border-b border-border">

@@ -64,9 +64,6 @@
   "configureNewTool": {
     "message": "配置新工具"
   },
-  "contextCopyRelayId": {
-    "message": "复制 relay id"
-  },
   "contextToolsetMarket": {
     "message": "工具集市场"
   },
@@ -99,111 +96,6 @@
   },
   "description": {
     "message": "描述"
-  },
-  "devtoolsPanelAttach": {
-    "message": "添加附件"
-  },
-  "devtoolsPanelAttachmentFailed": {
-    "message": "读取文件失败"
-  },
-  "devtoolsPanelAttachmentTooLarge": {
-    "message": "文本文件过大，上限 256 KB"
-  },
-  "devtoolsPanelAttachmentUnsupported": {
-    "message": "仅支持附加图片和文本文件"
-  },
-  "devtoolsPanelCancel": {
-    "message": "取消"
-  },
-  "devtoolsPanelDelete": {
-    "message": "删除会话"
-  },
-  "devtoolsPanelDropToAttach": {
-    "message": "松开以添加附件"
-  },
-  "devtoolsPanelEditHint": {
-    "message": "正在编辑队列消息，Enter 更新该条"
-  },
-  "devtoolsPanelEditPrompt": {
-    "message": "编辑"
-  },
-  "devtoolsPanelEmpty": {
-    "message": "点击「新建」或从左侧选择一个会话开始对话。部分 Agent 需要 Node.js 22+ 和 npm；请登录所选 Agent"
-  },
-  "devtoolsPanelEnqueue": {
-    "message": "加入队列"
-  },
-  "devtoolsPanelImageAttachment": {
-    "message": "图片"
-  },
-  "devtoolsPanelLoading": {
-    "message": "加载会话中…"
-  },
-  "devtoolsPanelHostReconnected": {
-    "message": "Native host 已重连，当前会话已失效，请重新打开或新建会话"
-  },
-  "devtoolsPanelNew": {
-    "message": "新建"
-  },
-  "devtoolsPanelNewSession": {
-    "message": "新会话"
-  },
-  "devtoolsPanelNoSessions": {
-    "message": "暂无会话"
-  },
-  "devtoolsPanelPlaceholder": {
-    "message": "向 Agent 发送消息，Enter 发送，Shift+Enter 换行"
-  },
-  "devtoolsPanelQueuedPrompts": {
-    "message": "等待发送"
-  },
-  "devtoolsPanelRemoveAttachment": {
-    "message": "移除附件"
-  },
-  "devtoolsPanelRemovePrompt": {
-    "message": "删除"
-  },
-  "devtoolsPanelSend": {
-    "message": "发送"
-  },
-  "devtoolsPanelSendNow": {
-    "message": "立即发送"
-  },
-  "devtoolsPanelSessions": {
-    "message": "会话"
-  },
-  "devtoolsAgentLabel": {
-    "message": "Agent"
-  },
-  "devtoolsNewSessionTitle": {
-    "message": "新建会话"
-  },
-  "devtoolsThought": {
-    "message": "思考"
-  },
-  "devtoolsToolCall": {
-    "message": "工具调用"
-  },
-  "devtoolsToolInput": {
-    "message": "参数"
-  },
-  "devtoolsCwdNoDirectories": {
-    "message": "没有匹配的目录"
-  },
-  "devtoolsCwdPlaceholder": {
-    "message": "工作目录"
-  },
-  "devtoolsCwdTitle": {
-    "message": "选择工作目录"
-  },
-  "devtoolsPermissionCancel": {
-    "message": "取消"
-  },
-  "devtoolsPermissionTitle": {
-    "message": "需要授权"
-  },
-  "devtoolsPermissionToolFallback": {
-    "message": "Agent 请求运行工具"
   },
   "downloadAria": {
     "message": "下载 $NAME$ 版本",
@@ -288,9 +180,6 @@
   },
   "manageToolsets": {
     "message": "管理工具集"
-  },
-  "openAgentSidebar": {
-    "message": "打开 Agent 侧边栏"
   },
   "marketSubtitle": {
     "message": "发现可直接订阅的社区工具集，也可以上传 JSON、JavaScript 或 TypeScript 文件发布自己的自动化能力。"

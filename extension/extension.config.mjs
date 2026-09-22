@@ -16,36 +16,8 @@ export default {
   },
   config(config) {
     config.target = ['web', 'es2024', 'browserslist:chrome >= 125, firefox >= 128'];
-    config.optimization ??= {};
-    config.optimization.splitChunks = {
-      ...config.optimization.splitChunks,
-      cacheGroups: {
-        ...config.optimization.splitChunks?.cacheGroups,
-        mermaidParser: {
-          test: /[\\/]@mermaid-js[\\/]parser[\\/]/,
-          name: 'mermaid-parser',
-          chunks: 'async',
-          minChunks: 2,
-          priority: 30,
-          reuseExistingChunk: true,
-          enforce: true,
-        },
-      },
-    };
     config.module ??= {};
     config.module.rules ??= [];
-    // dy-code-block 的 Prism 改为本地 vendor，见 loaders/prism-local.mjs
-    config.module.rules.unshift({
-      test: /\.js$/,
-      include: (filename) => /[\\/]duoyun-ui[\\/]elements[\\/]code-block\.js$/.test(filename),
-      use: [{ loader: new URL('./loaders/prism-local.mjs', import.meta.url).pathname }],
-    });
-    // @gem-bind/diff2html 的样式改为本地 vendor，见 loaders/diff2html-local.mjs
-    config.module.rules.unshift({
-      test: /\.js$/,
-      include: (filename) => /[\\/]@gem-bind[\\/]diff2html[\\/]dist[\\/]index\.js$/.test(filename),
-      use: [{ loader: new URL('./loaders/diff2html-local.mjs', import.meta.url).pathname }],
-    });
     // sandbox-globals 会被 Function.toString() 注入 QuickJS 按原文执行，必须排除转译：
     // 转译产物的 helper 引用模块作用域变量，进 VM 就会报 undefined
     config.module.rules.unshift({
@@ -62,13 +34,11 @@ export default {
               transform: { decoratorVersion: '2023-11' },
               externalHelpers: true,
               experimental: {
-                // runPluginFirst: true,
                 plugins: [
                   [
                     'swc-plugin-gem',
                     {
                       styleMinify: true,
-                      // hmr: true,
                       selectorCompatible: true,
                       autoImport: {
                         extends: 'gem',
@@ -78,7 +48,6 @@ export default {
                             'popup-*': '/popup/elements/*',
                             'market-*': '/pages/elements/*',
                             'welcome-*': '/pages/elements/*',
-                            'agent-*': '/pages/elements/*',
                           },
                         },
                       },

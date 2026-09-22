@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use anyhow::Result;
 use rmcp::transport::streamable_http_server::{
@@ -6,13 +6,11 @@ use rmcp::transport::streamable_http_server::{
 };
 
 use crate::{
-    agent_rpc::AgentService,
     constant::{BIND_ADDRESS, MCP_PATH},
     logger,
     mcp_server::{BrowserMcpServer, Capabilities, SharedCapabilities},
     native_messaging::read_native_message,
     peer::Peer,
-    relay_client,
 };
 
 /// Run the native messaging loop on the current thread.
@@ -26,10 +24,7 @@ async fn native_message_loop(peer: Peer) {
 
     loop {
         if let Some(msg) = read_native_message() {
-            // Capabilities include the pairing secret; never write them to logs.
-            if msg.get("method").and_then(serde_json::Value::as_str) != Some("capabilities") {
-                logger::log(&format!("Received from extension: {:?}", msg));
-            }
+            logger::log(&format!("Received from extension: {:?}", msg));
             peer.dispatch(msg).await;
         } else {
             logger::info("Stdin closed, browser disconnected");
@@ -39,38 +34,14 @@ async fn native_message_loop(peer: Peer) {
 }
 
 pub async fn run() -> Result<()> {
-    let service = Arc::new(AgentService::new());
     let peer = Peer::default();
-    service.attach(&peer);
 
     let caps: SharedCapabilities = Arc::default();
-    let remote_manager: Arc<Mutex<Option<Arc<relay_client::RemotePeerManager>>>> = Arc::default();
     {
         let caps = caps.clone();
-        let remote_manager = remote_manager.clone();
-        let service = service.clone();
         // The extension reports this right after receiving `connected`.
         peer.on_notify("capabilities", move |params| {
             *caps.lock().expect("lock poisoned") = Capabilities::from_params(&params);
-            let Some(relay_id) = params
-                .get("relayId")
-                .and_then(serde_json::Value::as_str)
-                .filter(|id| !id.is_empty())
-            else {
-                return;
-            };
-
-            // The remote peer manager owns independent RPC id spaces for each connected
-            // device while sharing the central Agent service. Start it only after the
-            // extension supplies its stable pairing id, and retain it for this process's lifetime.
-            let mut remote_manager = remote_manager.lock().expect("lock poisoned");
-            if remote_manager.is_some() {
-                return;
-            }
-            match relay_client::start(relay_id, &service) {
-                Ok(manager) => *remote_manager = Some(manager),
-                Err(error) => logger::info(&format!("Remote relay disabled: {error:#}")),
-            }
         });
     }
 

@@ -52,15 +52,6 @@
     "default_icon": "icon128.png",
     "default_title": "__MSG_actionTitle__"
   },
-  "side_panel": {
-    "default_path": "pages/agent-panel.html"
-  },
-  "firefox:sidebar_action": {
-    "default_panel": "pages/agent-panel.html",
-    "default_title": "__MSG_actionTitle__",
-    "default_icon": "icon128.png",
-    "open_at_install": false
-  },
   "options_ui": {
     "page": "options/index.html",
     "open_in_tab": true

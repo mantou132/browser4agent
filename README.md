@@ -7,21 +7,9 @@
 [![Firefox Add-ons](https://img.shields.io/badge/Firefox%20Add--ons-install-FF7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/firefox/addon/browser4agent@xianqiao.wang)
 [![GitHub Release](https://img.shields.io/github/v/release/mantou132/browser4agent?style=for-the-badge&logo=github&color=181717)](https://github.com/mantou132/browser4agent/releases/latest)
 
-A browser extension that connects your browser with AI agents — in both directions.
+A browser extension that connects your browser with AI agents via MCP or Skill.
 
-| **[Control your browser from any agent](#control-your-browser-from-any-agent-mcp--skill)** | **[Use an agent inside the browser](#use-an-agent-inside-the-browser-acp)** |
-| --- | --- |
-| ![Claude Code driving the browser via browser4agent](./docs/preview.png) | ![Chatting with Claude Code in the Agent panel](./docs/agent.png) |
-
-## Two ways to use it
-
-| | **[Control your browser from any agent](#control-your-browser-from-any-agent-mcp--skill)** | **[Use an agent inside the browser](#use-an-agent-inside-the-browser-acp)** |
-| --- | --- | --- |
-| **Works with** | Any agent that speaks MCP, or can run shell commands (via a [Skill](#cli)) | Claude Code, Codex, Cursor, and pi; a working user-installed CLI is preferred, otherwise a managed copy is installed automatically |
-| **What you get** | The agent reads pages, cookies, localStorage, errors, and screenshots; manages tabs and windows; runs scripts | You chat with the agent about the current page, in DevTools or the browser's side panel |
-| **Setup** | The welcome page registers the Native Host and wires up MCP or installs the Skill automatically | Register the Native Host; adapter-backed agents also need Node.js 22+ with npm; each managed runtime installs when first used |
-
-Both modes share the same prerequisite: download the `browser4agent` binary and run it once to register it as the Native Host (see [Install](#install)). After that, what differs is only how the agent side connects: MCP/Skill vs [ACP][acp].
+![Claude Code driving the browser via browser4agent](./docs/preview.png)
 
 > ⚠️ **Security**
 > - Make sure your AI agent environment is not vulnerable to prompt injection — otherwise an attacker can read your browser data through the extension.
@@ -78,22 +66,6 @@ browser4agent --tool read_tab --help   # inspect a tool's input schema
 - [High-Frequency UI Animation Profiling & Frame-by-Frame Tuning](./docs/cases.md#case-1-high-frequency-ui-animation-profiling--frame-by-frame-refactoring-card-expansion-tuning)
 - [View All Case Studies](./docs/cases.md)
 
-## Use an agent inside the browser (ACP)
-
-Open the **Agent** panel in DevTools — or as the browser's side panel — to chat with a coding agent about the page you're on. Sessions stream live, support attachments and permission prompts, can queue follow-up prompts while a turn is running, and you can keep several sessions and switch between them.
-
-Supported agents are Claude Code, Codex, Cursor, and pi. The host prefers a working user-installed `claude`, `codex`, `cursor-agent`, or `pi` from PATH (including common user-local locations). Claude Code and Codex run through their ACP adapters, Cursor uses its native `cursor-agent acp` mode, and pi runs through `pi-acp`. If the selected CLI is missing, a compatible managed CLI is installed automatically; Cursor's binary comes from the official ACP Registry, while adapter-backed agents require Node.js 22 or newer with npm. Sign-in and agent configuration continue to use each agent's normal user-level files.
-
-Managed agent runtimes and logs live together in the platform's local application data directory:
-
-- macOS: `~/Library/Application Support/browser4agent`
-- Windows: `%LOCALAPPDATA%\browser4agent`
-- Linux: `${XDG_DATA_HOME:-~/.local/share}/browser4agent`
-
-Troubleshooting & FAQs:
-- [macOS: "Apple could not verify '.<hash>-0.node'" on image attachments](./docs/troubleshooting.md#1-macos-apple-could-not-verify-hash-0node-security-warning-on-image-attachments)
-- [View all troubleshooting guides & FAQs](./docs/troubleshooting.md)
-
 ## Build from source
 
 ```bash
@@ -107,7 +79,6 @@ Load `extension/dist/<browser>` via *Load unpacked* above.
 
 ## Privacy policy
 
-Browser for AI Agent processes browser data only to provide its core features — MCP browser automation and the in-browser agent panel. Depending on the user's request, the extension may access tab metadata, page content, cookies, localStorage, page errors, screenshots, and toolset configuration. Data is sent only to the local Native Messaging Host and the user-configured MCP client / AI agent. We do not sell user data, use it for advertising, or use it for unrelated purposes. Only connect AI agents you trust, and only install toolsets you trust.
+Browser for AI Agent processes browser data only to provide its core features — MCP browser automation. Depending on the user's request, the extension may access tab metadata, page content, cookies, localStorage, page errors, screenshots, and toolset configuration. Data is sent only to the local Native Messaging Host and the user-configured MCP client / AI agent. We do not sell user data, use it for advertising, or use it for unrelated purposes. Only connect AI agents you trust, and only install toolsets you trust.
 
-[acp]: https://agentclientprotocol.com/
 [webmcp]: https://webmachinelearning.github.io/webmcp/

@@ -9,13 +9,8 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@gem-bind/diff2html": "^0.0.2",
-    "@gem-bind/latex": "^0.0.1",
-    "@gem-bind/marked": "^0.0.5",
-    "@gem-bind/mermaid": "^0.0.1",
     "@mantou/gem": "^2.2.8",
     "@swc/helpers": "^0.5.21",
-    "diff": "^8.0.4",
     "duoyun-ui": "^2.2.3",
     "quickjs-emscripten": "^0.32.0"
   },
