@@ -95,3 +95,17 @@ This session highlights what sets `browser4agent` apart from simple "screenshot-
 - **Runs multi-step, protocol-level debugging sessions**: Combining Chrome DevTools Protocol telemetry, rAF frame profiling, Shadow DOM traversal, and synthetic gesture events;
 - **Provides empirical proof for architectural decisions**: Code improvements are backed by microsecond-level layout metrics and frame-by-frame geometry rather than guesswork;
 - **Completely autonomous**: The Agent independently discovered the tab, diagnosed the bottleneck, updated the source code, ran tests, and delivered quantified benchmark data.
+
+---
+
+## Case 2: One Request, from Firebase Setup to Push Service Deployment
+
+The user wanted their Android app to receive a notification when an agent finished responding, even while the app was in the background. They asked the Agent to configure Firebase, download credentials, and deploy the push service.
+
+After the user accepted the terms and created the project, the Agent used `browser4agent` to continue in the already signed-in Firebase Console:
+
+- **Reuse the existing login**: Work directly in the user's browser session to register the Android app and download its client configuration.
+- **Handle real console workflows**: Fill dynamic forms, navigate settings, generate server credentials, and check browser download records to confirm the files arrived.
+- **Connect browser work to deployment**: With the credentials downloaded, the Agent used SSH to add Gorush to the existing Docker Compose and Nginx configuration, fix compatibility with the user's older Compose version, and verify the server-to-FCM request path.
+
+From an authenticated web console to downloaded files and server deployment, browser4agent makes browser interaction part of getting a real task done. Configuration and server-side connectivity were verified; notification delivery to a physical phone remained to be tested.
