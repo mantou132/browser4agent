@@ -16,7 +16,7 @@ function withDevtoolsFlag(result, tabId) {
 }
 
 // Pseudo toolset id used for tools that the page itself registered via
-// `navigator.modelContext.registerTool` (WebMCP). They are not stored in
+// `document.modelContext.registerTool` (WebMCP). They are not stored in
 // chrome.storage; metadata is fetched live from the tab and `execute` is
 // invoked through the in-page reference kept on `window.__webmcp_tools__`.
 const PAGE_TOOLSET_ID = 'webmcp';
@@ -240,7 +240,7 @@ export async function executeTabTool(tabId, toolsetId, toolName, args) {
         `async (name, args) => {
           const tool = window.__webmcp_tools__?.get(name);
           if (!tool) throw new Error('Page WebMCP tool not found: ' + name);
-          return await tool.execute(args);
+          return await tool.execute(args, { signal: new AbortController().signal });
         }`,
         [toolName, args || {}],
       );
