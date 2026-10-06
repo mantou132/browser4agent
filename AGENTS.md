@@ -39,7 +39,7 @@
 - `extension/_locales/`：扩展 i18n 文案，默认 `zh_CN`，同时维护英文 `en`
 - `extension/public/toolsets/`：内置工具集
 - `extension/read-content-hacks/`：特定站点的读取补丁
-- `cf/`：扩展中的工具集市场后端
+- `cf/`：扩展中的工具集市场后端；社区工具集在独立仓库 `mantou132/browser4agent-toolsets`，合并到 main 后由其 Actions 用 `MARKET_TOKEN` 发布到市场
 - `toolset-parser/`：工具集解析器
 - `docs/`：实战案例与故障排查文档
 

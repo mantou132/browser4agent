@@ -61,7 +61,7 @@ Agent 能得到：
 
 Agent 可以调用作用于当前标签页的工具。来源有两种：
 
-- **订阅工具集** —— 在扩展内置的市场订阅（也可以在设置里粘贴任意 URL），可用工具会按标签页 URL 自动筛选。
+- **订阅工具集** —— 在扩展内置的市场订阅（也可以在设置里粘贴任意 URL），可用工具会按标签页 URL 自动筛选。社区工具集维护在 [browser4agent-toolsets](https://github.com/mantou132/browser4agent-toolsets)，欢迎提交 PR。
 - **开发者提供** —— 页面作者通过 [WebMCP][webmcp] API 主动注册的工具。
 
 ### 命令行

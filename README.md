@@ -61,7 +61,7 @@ What the agent gets:
 
 Agents can call tools scoped to the current tab. Two sources:
 
-- **Subscribed toolsets** — subscribe from the in-extension marketplace (or paste any URL in settings); available tools are filtered by the tab URL.
+- **Subscribed toolsets** — subscribe from the in-extension marketplace (or paste any URL in settings); available tools are filtered by the tab URL. Community toolsets live in [browser4agent-toolsets](https://github.com/mantou132/browser4agent-toolsets) — pull requests welcome.
 - **Developer-provided** — page authors register tools via the [WebMCP][webmcp] API.
 
 ### CLI
