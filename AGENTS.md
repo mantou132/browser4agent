@@ -65,7 +65,7 @@
 
 ## 常用命令
 
-- `pnpm --dir extension build`：构建扩展
+- `pnpm --dir extension build --browser=chrome`：构建扩展，输出到 `extension/dist/chrome`（本地加载的就是这个目录）；不带 `--browser` 会按 Chromium 默认构建到 `dist/chromium`，产物缺少 background，不能用
 - `pnpm --dir extension test`：跑扩展测试（node 内置 test runner，当前覆盖 execute_script_in_background 沙箱）
 - `pnpm --dir extension dev`：开发模式
 - `pnpm lint`：格式化 JS/TS/HTML
