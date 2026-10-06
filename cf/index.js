@@ -65,14 +65,21 @@ const auth = (handler) => async (req, env, params) => {
   return handler(hash, req, env, params);
 };
 
+// Per-isolate list cache: KV free plan allows only 1000 list ops/day, and the
+// Cache API is a no-op on *.workers.dev.
+const LIST_CACHE_TTL = 60_000;
+let listCache = null;
+
 const router = [
   route('GET', '/api/toolsets', async (_req, env) => {
+    if (listCache && listCache.expires > Date.now()) return Response.json(listCache.toolsets);
     const { keys } = await env.MARKET_KV.list();
     const toolsets = [];
     for (const { name } of keys) {
       const t = await readToolset(env, name);
       if (t) toolsets.push(serializeSummary(t));
     }
+    listCache = { toolsets, expires: Date.now() + LIST_CACHE_TTL };
     return Response.json(toolsets);
   }),
 
@@ -87,6 +94,7 @@ const router = [
       }
       const stored = { ...input, installCount: 0, likeCount: 0, ownerHash: hash };
       await env.MARKET_KV.put(input.name, JSON.stringify(stored));
+      listCache = null;
       return Response.json(serialize(stored), { status: 201 });
     }),
   ),
@@ -139,7 +147,12 @@ const router = [
     const existing = await readToolset(env, name);
     if (!existing) return Response.json({ error: 'not found' }, { status: 404 });
     const stored = { ...existing, installCount: existing.installCount + 1 };
-    await env.MARKET_KV.put(name, JSON.stringify(stored));
+    try {
+      await env.MARKET_KV.put(name, JSON.stringify(stored));
+    } catch (err) {
+      // KV write quota / per-key rate limit must not block installs; the count is best-effort.
+      console.error('Failed to bump installCount', name, err);
+    }
     return Response.json(serialize(stored));
   }),
 
@@ -164,6 +177,7 @@ const router = [
         ownerHash: hash,
       };
       await env.MARKET_KV.put(name, JSON.stringify(stored));
+      listCache = null;
       return Response.json(serialize(stored), { status: 201 });
     }),
   ),
@@ -179,6 +193,7 @@ const router = [
         return Response.json({ error: 'forbidden' }, { status: 403 });
       }
       await env.MARKET_KV.delete(name);
+      listCache = null;
       return Response.json({ deleted: true });
     }),
   ),
