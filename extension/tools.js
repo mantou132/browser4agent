@@ -48,6 +48,11 @@ async function ensureTabLoaded(tabId) {
     }, 15_000);
     await promise;
   }
+  // Chrome freezes tabs in collapsed groups (such as the quiet B4A group) and script injection hangs until
+  // they thaw; expanding the group unfreezes them within milliseconds.
+  if (tab.frozen && tab.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE) {
+    await chrome.tabGroups.update(tab.groupId, { collapsed: false });
+  }
   return tab;
 }
 
@@ -180,9 +185,18 @@ export async function executeScript(tabId, funcStr, args) {
         } catch {
           script.textContent = window.__browser4agentPolicy.createScript(blobContent);
         }
+        // A script that fails to parse never fires onerror; the browser reports it synchronously as a
+        // window error event during insertion.
+        const onParseError = (e) => reject(e.message);
+        window.addEventListener('error', onParseError);
         document.head.append(script);
+        window.removeEventListener('error', onParseError);
+        // Chrome reports neither `result` nor `error` for an injected function whose promise rejects,
+        // so failures are returned as data and rethrown on the extension side.
         try {
-          return await promise;
+          return { value: await promise };
+        } catch (error) {
+          return { error: error instanceof Event ? { message: 'Failed to load the injected script' } : error };
         } finally {
           URL.revokeObjectURL(blobUrl);
           script.remove();
@@ -192,7 +206,9 @@ export async function executeScript(tabId, funcStr, args) {
       args: [funcStr, argsJson, nonce],
       world: 'MAIN',
     });
-    return { result: scriptResult(results) };
+    const { value, error } = scriptResult(results);
+    if (error) throw new Error(typeof error === 'string' ? error : `${error.name ?? 'Error'}: ${error.message}`);
+    return { result: value ?? null };
   } catch (e) {
     throw new Error(`Failed to execute script: ${e.message}`);
   }
