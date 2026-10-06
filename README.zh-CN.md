@@ -23,6 +23,20 @@
    - 可选：为检测到的 Codex、Claude Code、VS Code、Cursor、Zed、Antigravity 配置 **MCP**；
    - 可选：为上述 Agent 安装 **Skill**。
 
+macOS（Apple Silicon 和 Intel）和 Linux 推荐用 Homebrew 安装 Native Host，装完运行一次进入安装向导：
+
+```bash
+brew install mantou132/tap/browser4agent && browser4agent
+```
+
+Windows 用 Scoop：
+
+```powershell
+scoop bucket add mantou132 https://github.com/mantou132/scoop-bucket; scoop install browser4agent; browser4agent
+```
+
+> 二进制没有代码签名。在 macOS 上直接下载的版本如果被 Gatekeeper 拦截，先运行 `xattr -d com.apple.quarantine ./browser4agent`。
+
 > **注意**：扩展需要监听本地端口，同时在多个浏览器中安装并激活时只有一个会工作。
 
 ### 手动安装

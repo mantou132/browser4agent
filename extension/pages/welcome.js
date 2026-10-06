@@ -1,8 +1,10 @@
+import { Toast } from 'duoyun-ui/elements/toast';
 import { icons } from 'duoyun-ui/lib/icons';
 import { setPageI18n, t } from '../shared/i18n.js';
 
 const REPO_URL = 'https://github.com/mantou132/browser4agent';
-const DOWNLOAD_URL = `${REPO_URL}/releases/latest/download`;
+const RELEASES_URL = `${REPO_URL}/releases/latest`;
+const DOWNLOAD_URL = `${RELEASES_URL}/download`;
 
 setPageI18n('welcomeTitle');
 
@@ -20,26 +22,48 @@ const style = css`
 @customElement('agent-welcome-page')
 @adoptedStyle(style)
 class AgentWelcomePageElement extends GemElement {
+  // Unsigned binaries trip Gatekeeper/SmartScreen when downloaded directly, so package managers come first.
   #platforms = [
-    {
-      name: 'Windows',
-      type: 'windows',
-      description: t('downloadZip'),
-      url: `${DOWNLOAD_URL}/browser4agent-x86_64-pc-windows-msvc.zip`,
-    },
     {
       name: 'macOS',
       type: 'macos',
-      description: t('downloadTarGz'),
-      url: `${DOWNLOAD_URL}/browser4agent-aarch64-apple-darwin.tar.gz`,
+      platformKey: 'mac',
+      description: t('installWithHomebrew'),
+      command: ['brew install mantou132/tap/browser4agent', 'browser4agent'].join('\n'),
+      downloads: [
+        { label: 'Apple Silicon', url: `${DOWNLOAD_URL}/browser4agent-aarch64-apple-darwin.tar.gz` },
+        { label: 'Intel', url: `${DOWNLOAD_URL}/browser4agent-x86_64-apple-darwin.tar.gz` },
+      ],
+      downloadHint: t('gatekeeperHint'),
+    },
+    {
+      name: 'Windows',
+      type: 'windows',
+      platformKey: 'win',
+      description: t('installWithScoop'),
+      command: [
+        'scoop bucket add mantou132 https://github.com/mantou132/scoop-bucket',
+        'scoop install browser4agent',
+        'browser4agent',
+      ].join('\n'),
+      downloads: [{ label: 'x86_64', url: `${DOWNLOAD_URL}/browser4agent-x86_64-pc-windows-msvc.zip` }],
     },
     {
       name: 'Linux',
       type: 'linux',
-      description: t('downloadTarGz'),
-      url: `${DOWNLOAD_URL}/browser4agent-x86_64-unknown-linux-gnu.tar.gz`,
+      platformKey: 'linux',
+      description: t('installWithHomebrew'),
+      command: ['brew install mantou132/tap/browser4agent', 'browser4agent'].join('\n'),
+      downloads: [{ label: 'x86_64', url: `${DOWNLOAD_URL}/browser4agent-x86_64-unknown-linux-gnu.tar.gz` }],
     },
   ];
+
+  // Unrecognized platforms (e.g. ChromeOS variants) fall back to every option.
+  get #visiblePlatforms() {
+    const platform = navigator.platform.toLowerCase();
+    const current = this.#platforms.find(({ platformKey }) => platform.includes(platformKey));
+    return current ? [current] : this.#platforms;
+  }
 
   #helpLinks = [
     { label: t('viewDocs'), url: `${REPO_URL}#readme` },
@@ -157,22 +181,52 @@ class AgentWelcomePageElement extends GemElement {
     </div>
   `;
 
-  #renderDownloadCard = (platform) => html`
-    <a
-      href=${platform.url}
-      target="_blank"
-      rel="noreferrer"
-      class="group flex min-h-24 items-center gap-5 rounded-lg border border-border bg-white px-6 py-5 text-left no-underline shadow-sm transition hover:-translate-y-0.5 hover:border-primary hover:shadow-lg hover:shadow-indigo-500/10"
-      aria-label=${t('downloadAria', platform.name)}
+  #copyCommand = async (command) => {
+    try {
+      await navigator.clipboard.writeText(command);
+      Toast.open('success', t('copyCommandSuccess'));
+    } catch {
+      Toast.open('error', t('copyCommandFailure'));
+    }
+  };
+
+  #renderPlatformCard = (platform) => html`
+    <div
+      class="flex flex-col gap-3 rounded-lg border border-border bg-white px-6 py-5 text-left shadow-sm"
     >
-      <span class="grid size-12 shrink-0 place-items-center text-slate-600 transition group-hover:text-primary">
-        ${this.#renderPlatformIcon(platform.type)}
-      </span>
-      <span class="min-w-0">
-        <strong class="block text-lg leading-6 text-highlight">${platform.name}</strong>
-        <span class="mt-1 block text-sm text-describe">${platform.description}</span>
-      </span>
-    </a>
+      <div class="flex items-center gap-5">
+        <span class="grid size-12 shrink-0 place-items-center text-slate-600">
+          ${this.#renderPlatformIcon(platform.type)}
+        </span>
+        <span class="min-w-0 flex-1">
+          <strong class="block text-lg leading-6 text-highlight">${platform.name}</strong>
+          <span class="mt-1 block text-sm text-describe">${platform.description}</span>
+        </span>
+        <dy-button
+          small
+          square
+          color="cancel"
+          class="shrink-0"
+          .icon=${icons.copy}
+          title=${t('copyCommand')}
+          @click=${() => this.#copyCommand(platform.command)}
+        ></dy-button>
+      </div>
+      <pre class="m-0 overflow-x-auto rounded-md bg-slate-950 px-3 py-2.5 font-mono text-xs leading-5 text-slate-100"><code>${platform.command}</code></pre>
+      <p class="m-0 text-xs leading-5 text-describe">
+        ${t('directDownload')}:
+        ${platform.downloads.map(
+          (item, index) => html`${index ? ' · ' : ''}<a
+              href=${item.url}
+              target="_blank"
+              rel="noreferrer"
+              class="text-primary no-underline hover:underline"
+              >${item.label}</a
+            >`,
+        )}
+        <span v-if=${!!platform.downloadHint} class="block">${platform.downloadHint}</span>
+      </p>
+    </div>
   `;
 
   #renderFlowItem = (item, index) => html`
@@ -218,15 +272,12 @@ class AgentWelcomePageElement extends GemElement {
               t('stepDownloadTitle'),
               html`
                 ${t('stepDownloadDesc')}
-                <dy-popover
-                  position="bottomLeft"
-                  .content=${html`<welcome-native-install-popover class="py-2"></welcome-native-install-popover>`}
+                <a href=${RELEASES_URL} target="_blank" rel="noreferrer" class="text-primary no-underline hover:underline"
+                  >${t('allReleases')}</a
                 >
-                  <span class="text-primary cursor-default">${t('packageInstallHint')}</span>
-                </dy-popover>
               `,
             )}
-            <div class="mt-6 grid gap-4 sm:grid-cols-3">${this.#platforms.map(this.#renderDownloadCard)}</div>
+            <div class="mt-6 grid gap-4">${this.#visiblePlatforms.map(this.#renderPlatformCard)}</div>
             <p class="mt-6 flex items-start gap-2 text-sm leading-6 text-describe">
               <dy-use class="mt-0.5 shrink-0 text-base" .element=${icons.info}></dy-use>
               <span>${t('nativeHostPrivacy')}</span>

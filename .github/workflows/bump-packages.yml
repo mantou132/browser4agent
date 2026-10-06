@@ -34,6 +34,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           echo "mac_arm=$(cat dist/browser4agent-aarch64-apple-darwin.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
+          echo "mac_x86=$(cat dist/browser4agent-x86_64-apple-darwin.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
           echo "linux_x86=$(cat dist/browser4agent-x86_64-unknown-linux-gnu.tar.gz.sha256)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
@@ -50,6 +51,7 @@ jobs:
             -e "s|__TAG__|${{ steps.vars.outputs.tag }}|g" \
             -e "s|__VERSION__|${{ steps.vars.outputs.version }}|g" \
             -e "s|__MAC_ARM__|${{ steps.vars.outputs.mac_arm }}|g" \
+            -e "s|__MAC_X86__|${{ steps.vars.outputs.mac_x86 }}|g" \
             -e "s|__LINUX_X86__|${{ steps.vars.outputs.linux_x86 }}|g" \
             .github/templates/homebrew-formula.rb > tap/Formula/browser4agent.rb
 

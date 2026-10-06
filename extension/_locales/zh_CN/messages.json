@@ -97,19 +97,14 @@
   "description": {
     "message": "描述"
   },
-  "downloadAria": {
-    "message": "下载 $NAME$ 版本",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
+  "directDownload": {
+    "message": "直接下载"
   },
-  "downloadTarGz": {
-    "message": "下载 .tar.gz"
+  "gatekeeperHint": {
+    "message": "未签名版本：如果被 macOS 拦截，运行 xattr -d com.apple.quarantine ./browser4agent"
   },
-  "downloadZip": {
-    "message": "下载 .zip"
+  "installWithHomebrew": {
+    "message": "通过 Homebrew 安装"
   },
   "editTool": {
     "message": "编辑工具"
@@ -238,27 +233,6 @@
   "optionsTitle": {
     "message": "扩展设置"
   },
-  "packageInstallBrewDesc": {
-    "message": "通过 Homebrew 自动安装最新版本，并跟随后续升级。"
-  },
-  "packageInstallBrewPlatform": {
-    "message": "适用于 macOS 与 Linux"
-  },
-  "packageInstallDesc": {
-    "message": "下面是命令安装方式，复制到终端即可一步到位。"
-  },
-  "packageInstallHint": {
-    "message": "也可用包管理器"
-  },
-  "packageInstallScoopDesc": {
-    "message": "通过 Scoop 拉取最新版本，scoop update 即可保持同步。"
-  },
-  "packageInstallScoopPlatform": {
-    "message": "适用于 Windows"
-  },
-  "packageInstallTitle": {
-    "message": "用包管理器安装"
-  },
   "paramCount": {
     "message": "$COUNT$ 个参数",
     "placeholders": {
@@ -326,13 +300,13 @@
     "message": "必填"
   },
   "stepDownloadDesc": {
-    "message": "选择与你的操作系统匹配的版本，下载并保存到本地。"
+    "message": "下面是适用于你当前系统的安装方式。"
   },
   "stepDownloadTitle": {
     "message": "下载 Native Messaging Host"
   },
   "stepInstallDesc": {
-    "message": "打开下载的文件，按照提示完成初始化配置。"
+    "message": "在终端运行上面的命令（直接下载的话，运行解压出的 browser4agent），按提示完成初始化配置。"
   },
   "stepInstallTitle": {
     "message": "安装并初始化"
@@ -444,5 +418,11 @@
   },
   "welcomeTitle": {
     "message": "欢迎使用 Browser for AI Agent"
+  },
+  "allReleases": {
+    "message": "查看所有平台和版本"
+  },
+  "installWithScoop": {
+    "message": "通过 Scoop 安装"
   }
 }

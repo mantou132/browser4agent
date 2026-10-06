@@ -23,6 +23,20 @@ A browser extension that connects your browser with AI agents via MCP or Skill.
    - optionally wiring up **MCP** for any of Codex, Claude Code, VS Code, Cursor, Zed, and Antigravity that it detects,
    - optionally installing the **Skill** for those same agents.
 
+On macOS (Apple Silicon or Intel) and Linux, install the Native Host with Homebrew, then run it once to start setup:
+
+```bash
+brew install mantou132/tap/browser4agent && browser4agent
+```
+
+On Windows, use Scoop:
+
+```powershell
+scoop bucket add mantou132 https://github.com/mantou132/scoop-bucket; scoop install browser4agent; browser4agent
+```
+
+> The binaries are not code-signed. If you download one directly on macOS and Gatekeeper blocks it, run `xattr -d com.apple.quarantine ./browser4agent` first.
+
 > **Note:** the extension listens on a local port, so if it is installed and active in multiple browsers at the same time, only one of them will work.
 
 ### Manual install

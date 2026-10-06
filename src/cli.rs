@@ -19,6 +19,7 @@ use crate::{
 #[derive(Debug, Parser)]
 #[command(
     name = "browser4agent",
+    version,
     about = "Forward a single browser4agent tool call to the running MCP HTTP service.",
     after_help = "This CLI connects to a user-local loopback service. In sandboxed agent \
                   shells, request outside-sandbox execution on the first attempt; an \
@@ -45,7 +46,11 @@ pub(crate) struct CliArgs {
 }
 
 pub(crate) fn parse(args: Vec<OsString>) -> Result<Option<CliArgs>> {
-    Ok(Some(CliArgs::try_parse_from(args)?))
+    match CliArgs::try_parse_from(args) {
+        Ok(args) => Ok(Some(args)),
+        Err(e) if e.kind() == clap::error::ErrorKind::DisplayVersion => e.exit(),
+        Err(e) => Err(e.into()),
+    }
 }
 
 pub(crate) async fn run(args: CliArgs) -> Result<()> {

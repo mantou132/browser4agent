@@ -97,19 +97,14 @@
   "description": {
     "message": "Description"
   },
-  "downloadAria": {
-    "message": "Download $NAME$ version",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
+  "directDownload": {
+    "message": "Direct download"
   },
-  "downloadTarGz": {
-    "message": "Download .tar.gz"
+  "gatekeeperHint": {
+    "message": "Unsigned build: if macOS blocks it, run xattr -d com.apple.quarantine ./browser4agent"
   },
-  "downloadZip": {
-    "message": "Download .zip"
+  "installWithHomebrew": {
+    "message": "Install with Homebrew"
   },
   "editTool": {
     "message": "Edit Tool"
@@ -238,27 +233,6 @@
   "optionsTitle": {
     "message": "Extension Settings"
   },
-  "packageInstallBrewDesc": {
-    "message": "Installs and tracks the latest release via Homebrew."
-  },
-  "packageInstallBrewPlatform": {
-    "message": "For macOS and Linux"
-  },
-  "packageInstallDesc": {
-    "message": "Copy the command into your terminal — that single line does the whole setup."
-  },
-  "packageInstallHint": {
-    "message": "or use a package manager"
-  },
-  "packageInstallScoopDesc": {
-    "message": "Pulls the latest release via Scoop; run scoop update to stay in sync."
-  },
-  "packageInstallScoopPlatform": {
-    "message": "For Windows"
-  },
-  "packageInstallTitle": {
-    "message": "Install via package manager"
-  },
   "paramCount": {
     "message": "$COUNT$ parameters",
     "placeholders": {
@@ -326,13 +300,13 @@
     "message": "Required"
   },
   "stepDownloadDesc": {
-    "message": "Choose the version for your operating system, then download and save it locally."
+    "message": "The install method for your operating system is shown below."
   },
   "stepDownloadTitle": {
     "message": "Download Native Messaging Host"
   },
   "stepInstallDesc": {
-    "message": "Open the downloaded file and follow the prompts to finish initialization."
+    "message": "Run the command above in a terminal (or run the extracted browser4agent if you downloaded it directly), then follow the prompts to finish initialization."
   },
   "stepInstallTitle": {
     "message": "Install and Initialize"
@@ -444,5 +418,11 @@
   },
   "welcomeTitle": {
     "message": "Welcome to Browser for AI Agent"
+  },
+  "allReleases": {
+    "message": "All platforms & versions"
+  },
+  "installWithScoop": {
+    "message": "Install with Scoop"
   }
 }
