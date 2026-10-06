@@ -7,13 +7,19 @@
 [![Firefox Add-ons](https://img.shields.io/badge/Firefox%20Add--ons-install-FF7139?style=for-the-badge&logo=firefoxbrowser&logoColor=white)](https://addons.mozilla.org/firefox/addon/browser4agent@xianqiao.wang)
 [![GitHub Release](https://img.shields.io/github/v/release/mantou132/browser4agent?style=for-the-badge&logo=github&color=181717)](https://github.com/mantou132/browser4agent/releases/latest)
 
-一个把浏览器和 AI Agent 通过 MCP / Skill 连接起来的浏览器扩展。
+**让任何 AI Agent 使用你真实的浏览器。** Claude Code、Codex、Cursor、VS Code、Zed、Antigravity 通过 MCP 或命令行 Skill 连接 Chrome、Edge、Firefox，直接使用你已登录的会话。还有页面工具：AI 时代的油猴脚本。
 
 ![Claude Code 通过 browser4agent 操控浏览器](./docs/preview.png)
 
-> ⚠️ **安全提示**
-> - 确保你的 AI Agent 环境不受提示词注入攻击，否则攻击者可以通过扩展读取你的浏览器数据。
-> - 只安装来源可信的页面工具，恶意工具可以在你的浏览器中执行任意脚本。
+> ⚠️ 接入这个扩展的 Agent 能做你在浏览器里能做的一切。接入之前请先阅读[安全](#安全)。
+
+## 为什么选择 browser4agent
+
+- **不挑 Agent，不挑浏览器。** 支持你已经在用的 Agent：支持 MCP 的直接接入，不支持的通过命令行 Skill 接入；支持 Chrome、Edge、Firefox。不被厂商绑定，不用换一个 AI 浏览器；用不了厂商自家浏览器扩展的地方也能用。
+- **你真实的、已登录的浏览器。** Agent 直接在你的标签页里、用你的登录状态工作，不用在无头浏览器里重新登录。
+- **页面工具，像油猴脚本一样共享。** 针对具体网站的工具，返回干净、结构化的数据。在 YouTube 上，读取一小时演讲的页面拿不到任何讲话内容，`get_transcript` 1 秒返回全部 1,162 行带时间戳的字幕；在 682 条评论的 Hacker News 讨论页上，`get_thread` 只用约 6 千 token 返回 45 条顶层评论，而整页约 14.2 万 token（[对比测试](./docs/benchmarks.md)，英文）。可以在扩展内置的市场订阅，也可以向 [browser4agent-toolsets](https://github.com/mantou132/browser4agent-toolsets) 贡献，每个工具集都在公开的 PR 中审核。网站也可以通过 [WebMCP][webmcp] 主动提供自己的工具。
+- **为前端开发者打造。** 页面错误、Cookie、localStorage、截图，以及 Chrome DevTools Protocol，可以拿到网络响应体、做底层调试——见[实战案例](./docs/cases.zh-CN.md)。
+- **本地、私密。** 浏览器和 Agent 直接在你的电脑上通信：不经过云端中转，没有任何遥测。
 
 ## 安装
 
@@ -64,6 +70,8 @@ Agent 可以调用作用于当前标签页的工具。来源有两种：
 - **订阅工具集** —— 在扩展内置的市场订阅（也可以在设置里粘贴任意 URL），可用工具会按标签页 URL 自动筛选。社区工具集维护在 [browser4agent-toolsets](https://github.com/mantou132/browser4agent-toolsets)，欢迎提交 PR。
 - **开发者提供** —— 页面作者通过 [WebMCP][webmcp] API 主动注册的工具。
 
+![Agent 通过 get_transcript 页面工具总结当前标签页里的 YouTube 演讲](./docs/page-tools.png)
+
 ### 命令行
 
 完成安装后，`browser4agent` 同时也是一个单次调用的 CLI，把一次工具调用转发到运行中的 Native Host —— 适合写脚本或快速验证：
@@ -80,6 +88,12 @@ browser4agent --tool read_tab --help   # 查看工具的入参 schema
 - [高频 UI 动画性能剖析与逐帧重构（Card 展开动画调优）](./docs/cases.zh-CN.md#案例一高频-ui-动画性能剖析与逐帧重构card-展开动画调优)
 - [查看更多实战案例](./docs/cases.zh-CN.md)
 
+## 安全
+
+- **最主要的风险是提示词注入。** Agent 读取的页面里可能藏着针对它的指令，而 Agent 拥有你浏览器的能力：Cookie、已登录的会话、在任意标签页执行脚本。请使用执行工具前会征求确认的 Agent，不要让它在无人看管时浏览不可信的内容。
+- **页面工具是在你的页面里运行的脚本。** 只订阅你信任的工具集。市场在订阅和更新前会展示每个工具的代码，社区工具集都在公开的 PR 中审核。
+- **谁能访问这座桥。** Native Host 只在 `127.0.0.1:39271` 上提供 MCP 服务，并拒绝 `Host` 不是本机回环地址的请求，以防 DNS 重绑定。网页无法调用它：它只接受 `application/json` 请求，这类跨域请求需要 CORS 预检，而它从不放行。以你的用户身份运行的任何程序都能调用它——这和磁盘上的浏览器配置目录是同一个信任边界。
+
 ## 从源码构建
 
 ```bash
@@ -94,5 +108,9 @@ cargo run
 ## 隐私政策
 
 Browser for AI Agent 仅为提供核心能力（MCP 浏览器自动化）而处理浏览器数据。根据用户请求，扩展可能访问标签页元数据、页面内容、Cookie、localStorage、页面错误、截图和工具集配置。数据只发送给本地的 Native Messaging Host 和用户配置的 MCP 客户端 / AI Agent。我们不会出售用户数据、不会用于广告或其他无关用途。请只连接你信任的 AI Agent，只安装你信任的工具集。
+
+- **没有任何统计或遥测。**
+- Native Host 不发起任何网络请求。它的本地日志（应用数据目录下的 `logs/browser4agent.log`）只记录连接事件，从不记录页面数据。
+- 扩展只会访问工具集市场（浏览、订阅、点赞、发布工具集）和你订阅的工具集 URL，且不携带 Cookie。访问市场时会附带一个安装时本地生成的匿名随机 ID，用于点赞和校验谁可以更新已发布的工具集；市场只保存它的 SHA-256 哈希，并且只针对你发布过的工具集。
 
 [webmcp]: https://webmachinelearning.github.io/webmcp/
