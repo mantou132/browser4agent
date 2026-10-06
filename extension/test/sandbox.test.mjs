@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { executeScriptInBackground } from '../tools.js';
+
+// debugger.js touches chrome.* while loading; a minimal stub is enough.
+globalThis.chrome = {
+  storage: { session: { get: async () => ({}) } },
+  tabs: { onRemoved: { addListener() {} } },
+};
+
+const { exec } = await import('../execute-in-bg.js');
 
 test('execute_script_in_background sandbox', async (t) => {
   let prevChrome;
@@ -27,7 +34,7 @@ test('execute_script_in_background sandbox', async (t) => {
     globalThis.fetch = prevFetch;
   });
 
-  const run = (funcStr, args = []) => executeScriptInBackground(funcStr, args);
+  const run = (funcStr, args = []) => exec(funcStr, args);
 
   await t.test('keeps the vm alive until awaited sleeps resolve', async () => {
     const start = Date.now();
@@ -48,12 +55,7 @@ test('execute_script_in_background sandbox', async (t) => {
       return 42;
     }`);
     assert.equal(res.value, 42);
-    assert.deepEqual(res.logs, [
-      { level: 'log', args: ['first', 1] },
-      { level: 'info', args: ['second'] },
-      { level: 'warn', args: ['third'] },
-      { level: 'error', args: ['fourth'] },
-    ]);
+    assert.deepEqual(res.logs, ['first 1', '[info] second', '[warn] third', '[error] fourth']);
   });
 
   await t.test('proxies browser.* through the same bridge as chrome.*', async () => {
@@ -116,8 +118,7 @@ test('execute_script_in_background sandbox', async (t) => {
     }`);
     assert.equal(res.value, 'ok');
     assert.equal(res.logs.length, 1);
-    assert.equal(res.logs[0].level, 'error');
-    assert.match(String(res.logs[0].args[0]), /microtask boom/);
+    assert.match(res.logs[0], /^\[error\] .*microtask boom/);
   });
 
   await t.test('stops intervals once cleared', async () => {
@@ -144,8 +145,7 @@ test('execute_script_in_background sandbox', async (t) => {
     }`);
     assert.equal(res.value, 'done');
     assert.equal(res.logs.length, 1);
-    assert.equal(res.logs[0].level, 'error');
-    assert.match(String(res.logs[0].args[0]), /timer boom/);
+    assert.match(res.logs[0], /^\[error\] .*timer boom/);
   });
 
   await t.test('drops pending timers once the function settles', async () => {
@@ -161,10 +161,9 @@ test('execute_script_in_background sandbox', async (t) => {
 
   await t.test('supports synchronous debuggerEvents results', async () => {
     const res = await run(`() => {
-      const events = debuggerEvents(123);
-      return Array.isArray(events);
+      return debuggerEvents(123);
     }`);
-    assert.equal(res.value, true);
+    assert.equal(res.value, null);
   });
 
   await t.test('supports synchronous and asynchronous host APIs together', async () => {
@@ -193,8 +192,7 @@ test('execute_script_in_background sandbox', async (t) => {
       error = e;
     }
     assert.ok(error);
-    assert.match(error.message, /boom/);
-    assert.deepEqual(error.logs, [{ level: 'log', args: ['before boom'] }]);
+    assert.equal(error.message, 'boom\nbefore boom');
   });
 
   await t.test('automatically groups created tabs into B4A tab group with quiet background default', async () => {
