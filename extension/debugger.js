@@ -95,6 +95,11 @@ export async function debuggerSendCommand(tabId, method, params) {
   }
 }
 
+export async function isDebuggerAttached(tabId) {
+  await hydrated;
+  return !!tabStates.get(tabId)?.attached;
+}
+
 export async function debuggerDetach(tabId) {
   await hydrated;
   const state = tabStates.get(tabId);

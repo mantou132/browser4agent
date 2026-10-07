@@ -21,9 +21,9 @@ const CHROMIUM_ONLY_TOOLS: &[&str] = &["debugger_send_command", "debugger_detach
 /// Shared by MCP server instructions and the generated CLI Skill so both
 /// integrations teach agents the same shortest-path routing rules.
 pub(crate) const TOOL_ROUTING_WORKFLOW: &str = r#"1. Prefer a dedicated tool (`read_active_tab`, `read_tab`, `get_cookies`, `get_errors`, `get_local_storage`, `screenshot_tab`, etc.) over either script tool.
-2. Resolve the target without redundant reads: for the current page use `read_active_tab` directly; with a reliable tab ID use it directly and call `read_tab` only when page content or page-tool discovery is needed; only use `list_tabs` when the target tab is unknown.
+2. Resolve the target without redundant reads: for the current page use `read_active_tab` directly; with a reliable tab ID use it directly and call `read_tab` only when page content or page-tool discovery is needed; only use `list_tabs` when the target tab is unknown. Prefer text reads over `screenshot_tab`; screenshot only when visual layout or rendering matters.
 3. For page actions, inspect `tools` from `read_active_tab` / `read_tab`. Each `tools[]` item exposes `toolsetId`, `name`, and `inputSchema`; pass `toolsetId` as `toolset_id`, `name` as `tool_name`, and build `args` from `inputSchema`. Prefer `execute_tab_tool` when a matching tool exists; otherwise use `execute_script`.
-4. Reuse the discovered tab and page-tool metadata while the same document remains loaded. Read again after navigation or when a tool is no longer available. A short same-document sequence may be combined into one script call.
+4. Reuse the discovered tab and page-tool metadata while the same document remains loaded. Read again after navigation or when a tool is no longer available. Minimize round trips and output: combine consecutive steps on the same document into one script call, and make scripts filter in place and return only the fields you need, not whole pages, element lists, or raw event logs.
 5. Use `execute_script_in_background` only for one-shot browser-level operations such as tabs, windows, and downloads. It does not access page DOM, support event-listener callbacks, or keep work alive after the function returns.
 6. Use Chromium-only CDP tools only when dedicated tools and page/background scripts cannot provide the required lower-level data, such as network response bodies or protocol diagnostics. Complete follow-up CDP commands before `debugger_detach`."#;
 
@@ -322,8 +322,10 @@ impl BrowserMcpServer {
 
     #[tool(
         description = "Screenshot the given tab and return a base64-encoded PNG. Use list_tabs \
-                       first only when its ID is unknown. The target tab is activated \
-                       automatically so the screenshot succeeds."
+                       first only when its ID is unknown. On Chromium, background tabs and \
+                       windows that are not visible are captured through CDP without switching \
+                       tabs (briefly shows the debugging banner); a background tab CDP cannot \
+                       attach to is activated instead. On Firefox the tab is activated first."
     )]
     async fn screenshot_tab(
         &self,
@@ -336,14 +338,8 @@ impl BrowserMcpServer {
             Ok(resp) => resp,
             Err(msg) => return Ok(error_text_result(&msg)),
         };
-        if let Some(image) = resp.get("image").and_then(|i| i.as_str()) {
-            let format = resp.get("format").and_then(|f| f.as_str()).unwrap_or("png");
-            return Ok(CallToolResult::success(vec![Content::image(
-                image.to_string(),
-                format!("image/{format}"),
-            )]));
-        }
-        Ok(json_result(&resp))
+        let image = resp["image"].as_str().unwrap_or_default().to_string();
+        Ok(CallToolResult::success(vec![Content::image(image, "image/png")]))
     }
 
     #[tool(

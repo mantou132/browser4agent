@@ -1,3 +1,4 @@
+import { debuggerDetach, debuggerSendCommand, isDebuggerAttached } from './debugger.js';
 import { exec } from './execute-in-bg.js';
 import { devtoolsOpenTabs } from './shared/devtools-tracker.js';
 import { getAvailableTabTools, getSubscribedTool } from './shared/tool-store.js';
@@ -317,15 +318,53 @@ export async function screenshotTab(tabId) {
   if (tabId == null) throw new Error('tabId is required');
   try {
     const tab = await ensureTabLoaded(tabId);
+    // Background tabs are hidden too, so this also covers windows that are not visible (screen locked, minimized, covered)
+    let hidden = await isTabHidden(tabId);
+    // CDP renders hidden tabs without switching the user's view away
+    if (hidden && chrome.debugger) {
+      try {
+        return { image: await captureWithDebugger(tabId) };
+      } catch {
+        // Tabs with DevTools open can't be attached; activate them instead
+      }
+    }
     if (!tab.active) {
       await chrome.tabs.update(tabId, { active: true });
       await new Promise((resolve) => setTimeout(resolve, 300));
+      hidden = await isTabHidden(tabId);
     }
-    const format = 'png';
-    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format });
-    const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
-    return { tabId, image: base64Data, format };
+    // captureVisibleTab silently returns the last stale frame while the window is not visible
+    if (hidden) {
+      throw new Error(
+        'the browser window is not visible (screen locked, minimized or covered); retry once it is shown',
+      );
+    }
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+    return { image: dataUrl.replace(/^data:image\/png;base64,/, '') };
   } catch (e) {
     throw new Error(`Failed to screenshot tab ${tabId}: ${e.message}`);
+  }
+}
+
+async function isTabHidden(tabId) {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => document.visibilityState,
+    });
+    return scriptResult(results) === 'hidden';
+  } catch {
+    // Pages that reject injection go on to captureVisibleTab, which either captures them or reports why it can't
+    return false;
+  }
+}
+
+async function captureWithDebugger(tabId) {
+  const wasAttached = await isDebuggerAttached(tabId);
+  try {
+    const { data } = await debuggerSendCommand(tabId, 'Page.captureScreenshot');
+    return data;
+  } finally {
+    if (!wasAttached) await debuggerDetach(tabId);
   }
 }
