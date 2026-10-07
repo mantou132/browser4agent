@@ -204,6 +204,7 @@ test('execute_script_in_background sandbox', async (t) => {
         return { id: nextTabId++, ...createProperties };
       },
     };
+    globalThis.chrome.windows = { getAll: async () => [{ id: 1 }] };
     globalThis.chrome.tabGroups = {
       query: async () => existingGroups,
       update: async (groupId, props) => {
@@ -243,5 +244,24 @@ test('execute_script_in_background sandbox', async (t) => {
     assert.equal(res3.value.groupId, 101);
     assert.equal(res3.value.active, true);
     assert.ok(updates.some((u) => u.groupId === 101 && u.collapsed === false));
+  });
+
+  await t.test('opens a new window when creating a tab while no window is open', async () => {
+    let createdWindow;
+    globalThis.chrome.tabs = {
+      create: async () => {
+        throw new Error('No current window');
+      },
+    };
+    globalThis.chrome.windows = {
+      getAll: async () => [],
+      create: async (props) => {
+        createdWindow = props;
+        return { id: 2, tabs: [{ id: 9, url: props.url }] };
+      },
+    };
+    const res = await run(`async () => await chrome.tabs.create({ url: 'https://a.com' })`);
+    assert.deepEqual(createdWindow, { url: 'https://a.com' });
+    assert.equal(res.value.id, 9);
   });
 });

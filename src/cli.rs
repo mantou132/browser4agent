@@ -1,9 +1,12 @@
 use std::{
     ffi::OsString,
+    fs,
     io::{self, Read},
+    path::PathBuf,
 };
 
 use anyhow::{Context, Result, anyhow, bail};
+use base64::prelude::*;
 use clap::{CommandFactory, Parser};
 use rmcp::{
     ServiceExt,
@@ -155,11 +158,45 @@ fn print_result(result: &rmcp::model::CallToolResult) -> Result<()> {
         return Ok(());
     }
     if let [content] = result.content.as_slice() {
-        if let RawContent::Text(text) = &content.raw {
-            println!("{}", text.text);
-            return Ok(());
+        match &content.raw {
+            RawContent::Text(text) => {
+                println!("{}", text.text);
+                return Ok(());
+            }
+            // Printing base64 would flood the agent's context with text it can't view as an image
+            RawContent::Image(image) => {
+                println!("{}", save_image(&image.data, &image.mime_type)?.display());
+                return Ok(());
+            }
+            _ => {}
         }
     }
     println!("{}", serde_json::to_string_pretty(result)?);
     Ok(())
+}
+
+fn save_image(data: &str, mime_type: &str) -> Result<PathBuf> {
+    let bytes = BASE64_STANDARD
+        .decode(data)
+        .context("failed to decode image data")?;
+    let ext = mime_type.strip_prefix("image/").unwrap_or("png");
+    let path = std::env::temp_dir().join(format!(
+        "browser4agent-{}.{ext}",
+        chrono::Local::now().format("%Y%m%d-%H%M%S-%3f")
+    ));
+    fs::write(&path, bytes).with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn save_image_writes_decoded_bytes() {
+        let path = save_image(&BASE64_STANDARD.encode(b"\x89PNG"), "image/png").unwrap();
+        assert_eq!(path.extension().unwrap(), "png");
+        assert_eq!(fs::read(&path).unwrap(), b"\x89PNG");
+        fs::remove_file(path).unwrap();
+    }
 }

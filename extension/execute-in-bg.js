@@ -60,26 +60,23 @@ function invoke(path, args) {
       target = target?.[part];
     }
     if (typeof target !== 'function') return undefined;
-    const isTabCreate = path === 'chrome.tabs.create' || path === 'browser.tabs.create';
-    let callArgs = args;
-    if (isTabCreate) {
-      const props = args[0];
-      if (props && typeof props === 'object' && props.active === undefined) {
-        callArgs = [{ ...props, active: false }, ...args.slice(1)];
-      }
-    }
-    const result = target.apply(parent, callArgs);
-    if (isTabCreate && result && typeof result.then === 'function') {
-      return result.then(async (tab) => {
-        await groupTabToB4A(tab);
-        return tab;
-      });
-    }
-    return result;
+    if (path === 'chrome.tabs.create' || path === 'browser.tabs.create') return createTab(target, parent, args);
+    return target.apply(parent, args);
   }
   const handler = handlers[head];
   if (!handler) throw new Error(`Unknown sandbox API: ${path}`);
   return handler(...args);
+}
+
+async function createTab(create, tabsApi, [props = {}, ...rest]) {
+  // tabs.create rejects with "No current window" while the browser has no window open
+  if (props.windowId == null && !(await chrome.windows.getAll({ windowTypes: ['normal'] })).length) {
+    const { tabs } = await chrome.windows.create({ url: props.url });
+    return tabs[0];
+  }
+  const tab = await create.apply(tabsApi, [{ ...props, active: props.active ?? false }, ...rest]);
+  await groupTabToB4A(tab);
+  return tab;
 }
 
 function serializeResult(result) {

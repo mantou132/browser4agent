@@ -23,7 +23,7 @@ const CHROMIUM_ONLY_TOOLS: &[&str] = &["debugger_send_command", "debugger_detach
 pub(crate) const TOOL_ROUTING_WORKFLOW: &str = r#"1. Prefer a dedicated tool (`read_active_tab`, `read_tab`, `get_cookies`, `get_errors`, `get_local_storage`, `screenshot_tab`, etc.) over either script tool.
 2. Resolve the target without redundant reads: for the current page use `read_active_tab` directly; with a reliable tab ID use it directly and call `read_tab` only when page content or page-tool discovery is needed; only use `list_tabs` when the target tab is unknown. Prefer text reads over `screenshot_tab`; screenshot only when visual layout or rendering matters.
 3. For page actions, inspect `tools` from `read_active_tab` / `read_tab`. Each `tools[]` item exposes `toolsetId`, `name`, and `inputSchema`; pass `toolsetId` as `toolset_id`, `name` as `tool_name`, and build `args` from `inputSchema`. Prefer `execute_tab_tool` when a matching tool exists; otherwise use `execute_script`.
-4. Reuse the discovered tab and page-tool metadata while the same document remains loaded. Read again after navigation or when a tool is no longer available. Minimize round trips and output: combine consecutive steps on the same document into one script call, and make scripts filter in place and return only the fields you need, not whole pages, element lists, or raw event logs.
+4. Reuse the discovered tab and page-tool metadata while the same document remains loaded. Read again after navigation or when a tool is no longer available. If a snapshot looks like an unrendered app shell (common right after opening or navigating a single-page app), wait briefly and read again. Minimize round trips and output: combine consecutive steps on the same document into one script call, and make scripts filter in place and return only the fields you need, not whole pages, element lists, or raw event logs.
 5. Use `execute_script_in_background` only for one-shot browser-level operations such as tabs, windows, and downloads. It does not access page DOM, support event-listener callbacks, or keep work alive after the function returns.
 6. Use Chromium-only CDP tools only when dedicated tools and page/background scripts cannot provide the required lower-level data, such as network response bodies or protocol diagnostics. Complete follow-up CDP commands before `debugger_detach`."#;
 
@@ -321,7 +321,8 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Screenshot the given tab and return a base64-encoded PNG. Use list_tabs \
+        description = "Screenshot the given tab and return a PNG image (the CLI saves it to a \
+                       temporary file and prints the path). Use list_tabs \
                        first only when its ID is unknown. On Chromium, background tabs and \
                        windows that are not visible are captured through CDP without switching \
                        tabs (briefly shows the debugging banner); a background tab CDP cannot \
