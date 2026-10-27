@@ -21,7 +21,7 @@ const CHROMIUM_ONLY_TOOLS: &[&str] = &["debugger_send_command", "debugger_detach
 /// Shared by MCP server instructions and the generated CLI Skill so both
 /// integrations teach agents the same shortest-path routing rules.
 pub(crate) const TOOL_ROUTING_WORKFLOW: &str = r#"1. Prefer a dedicated tool (`read_active_tab`, `read_tab`, `get_cookies`, `get_errors`, `get_local_storage`, `screenshot_tab`, etc.) over either script tool.
-2. Resolve the target without redundant reads: for the current page use `read_active_tab` directly; with a reliable tab ID use it directly and call `read_tab` only when page content or page-tool discovery is needed; only use `list_tabs` when the target tab is unknown. Prefer text reads over `screenshot_tab`; screenshot only when visual layout or rendering matters.
+2. Resolve the target without redundant reads: for the current page use `read_active_tab` directly; with a reliable tab ID use it directly and call `read_tab` only when page content or page-tool discovery is needed; otherwise use `list_tabs` to find it. When the user points to the current tab or a specific tab, use that tab directly. For read-only tasks on a page, site, or URL, reuse a matching tab from `list_tabs` and open one only when none matches. For tasks that interact with or change a page, open a new tab unless the user indicated to use the already-open one. Prefer text reads over `screenshot_tab`; screenshot only when visual layout or rendering matters.
 3. For page actions, inspect `tools` from `read_active_tab` / `read_tab`. Each `tools[]` item exposes `toolsetId`, `name`, and `inputSchema`; pass `toolsetId` as `toolset_id`, `name` as `tool_name`, and build `args` from `inputSchema`. Prefer `execute_tab_tool` when a matching tool exists; otherwise use `execute_script`.
 4. Reuse the discovered tab and page-tool metadata while the same document remains loaded. Read again after navigation or when a tool is no longer available. If a snapshot looks like an unrendered app shell (common right after opening or navigating a single-page app), wait briefly and read again. Minimize round trips and output: combine consecutive steps on the same document into one script call, and make scripts filter in place and return only the fields you need, not whole pages, element lists, or raw event logs.
 5. Use `execute_script_in_background` only for one-shot browser-level operations such as tabs, windows, and downloads. It does not access page DOM, support event-listener callbacks, or keep work alive after the function returns.
@@ -177,8 +177,10 @@ impl BrowserMcpServer {
 
     #[tool(
         description = "List every open tab in the browser. Returns each tab's id, title, active \
-                       flag, last-accessed time, and URL. Use this only when the target tab is \
-                       unknown; for the current page use read_active_tab directly."
+                       flag, last-accessed time, and URL. Use this to find the target tab ID, \
+                       including before opening a URL for a read-only task: reuse an \
+                       already-open matching tab instead of creating a new one. For the current \
+                       page use read_active_tab directly."
     )]
     async fn list_tabs(&self) -> Result<CallToolResult, McpError> {
         self.call("list_tabs", json!({})).await
@@ -187,8 +189,9 @@ impl BrowserMcpServer {
     #[tool(
         description = "Read a condensed HTML snapshot of the given tab. Also returns the page \
                        tools available on this tab. Each tools[] item contains toolsetId, name, \
-                       description, and inputSchema for use with execute_tab_tool. Use list_tabs \
-                       first only when the target tab ID is unknown."
+                       description, and inputSchema for use with execute_tab_tool. If the tab ID is \
+                       unknown, find it with list_tabs; do not open a new tab just to read a page \
+                       the user already has open."
     )]
     async fn read_tab(
         &self,
@@ -280,7 +283,9 @@ impl BrowserMcpServer {
         description = "Run a JavaScript function in the extension's background service worker and \
                        return its result. Use this for one-shot browser-level operations such as \
                        opening/closing tabs and windows (chrome.tabs.create/remove, \
-                       chrome.windows.create/remove) or controlling downloads. Tabs created via \
+                       chrome.windows.create/remove) or controlling downloads. For read-only tasks, \
+                       check list_tabs and reuse a matching open tab instead of opening a URL. \
+                       Tabs created via \
                        chrome.tabs.create are automatically organized into the 'B4A' tab group \
                        and default to quiet background tabs (active: false, collapsed: true) \
                        unless active: true is explicitly requested. Both chrome.* and \
@@ -489,7 +494,8 @@ mod tests {
     fn shared_workflow_covers_dynamic_tool_mapping_and_cdp_fallback() {
         assert!(TOOL_ROUTING_WORKFLOW.contains("toolsetId` as `toolset_id"));
         assert!(TOOL_ROUTING_WORKFLOW.contains("`name` as `tool_name"));
-        assert!(TOOL_ROUTING_WORKFLOW.contains("only use `list_tabs`"));
+        assert!(TOOL_ROUTING_WORKFLOW.contains("For read-only tasks"));
+        assert!(TOOL_ROUTING_WORKFLOW.contains("open a new tab unless the user indicated"));
         assert!(TOOL_ROUTING_WORKFLOW.contains("CDP tools only when"));
         assert!(TOOL_ROUTING_WORKFLOW.contains("before `debugger_detach`"));
     }
