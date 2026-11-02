@@ -98,7 +98,8 @@ function visitRefs(node, visit, parentLocals = new Set()) {
 function bindingNames(name) {
   if (ts.isIdentifier(name)) return [name.text];
   if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
-    return name.elements.flatMap((element) => bindingNames(element.name));
+    // Holes in array patterns (`const [, b] = …`) are OmittedExpressions with no name.
+    return name.elements.flatMap((element) => (ts.isOmittedExpression(element) ? [] : bindingNames(element.name)));
   }
   return [];
 }
