@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 
 const APP_DIRECTORY: &str = "browser4agent";
 
-/// Per-user, machine-local storage for logs.
+/// Per-user, machine-local storage for logs and saved page snapshots.
 pub fn root_dir() -> Result<PathBuf> {
     let dir = dirs::data_local_dir()
         .context("failed to resolve the local application data directory")?
@@ -22,5 +22,13 @@ pub fn log_dir() -> Result<PathBuf> {
     let dir = root_dir()?.join("logs");
     fs::create_dir_all(&dir)
         .with_context(|| format!("failed to create log directory: {}", dir.display()))?;
+    Ok(dir)
+}
+
+/// Long `read_tab` snapshots saved for the agent to read on demand.
+pub fn page_dir() -> Result<PathBuf> {
+    let dir = root_dir()?.join("pages");
+    fs::create_dir_all(&dir)
+        .with_context(|| format!("failed to create page directory: {}", dir.display()))?;
     Ok(dir)
 }

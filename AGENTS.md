@@ -56,7 +56,8 @@
 - `extension/tools.js`：MCP 工具实现
 - `extension/sandbox-globals.js`：execute_script_in_background 沙箱的全局安装函数（经 Function.toString() 注入 QuickJS，必须保持自包含，且在 extension.config.mjs 中排除 swc 转译）：`chrome`/`browser`/`debuggerEvents` 统一经单一 `__invoke` 桥、定时器（主函数返回即丢弃未触发的）、console 捕获（随结果以 `logs` 返回）、queueMicrotask、基础 URL/URLSearchParams
 - `extension/debugger.js`：CDP 调试会话，per-tab 事件 ring buffer 桥接 chrome.debugger 的 push 和 MCP 的 pull；快照以惰性函数暴露为 execute_script_in_background QuickJS 里的全局 `debuggerEvents()`，脚本调用时才序列化；attach 状态经 storage.session 在 SW 重启后恢复。MCP 侧只有 `debugger_send_command`（自动 attach）和 `debugger_detach` 两个工具（Chromium only，见 `CHROMIUM_ONLY_TOOLS`）
-- `src/app_data.rs`：统一解析并创建 `browser4agent` 的跨平台本地应用数据目录；程序日志放在 `logs/`
+- `src/app_data.rs`：统一解析并创建 `browser4agent` 的跨平台本地应用数据目录；程序日志放在 `logs/`，长页面快照放在 `pages/`
+- `src/page_store.rs`：`read_tab` / `read_active_tab` 的 content 超过 20,000 字符时写入 `pages/`，结果里去掉 content，只返回 `contentFile` 路径和 `contentLength`（`inline_content: true` 可强制内联）；每次写入时删除 24 小时前的文件并最多保留 50 个
 - `src/native_messaging.rs`：Native Messaging 基础消息读写
 - `src/peer.rs`：与扩展的双工消息协议（`{ id, method, params }` 请求、`{ id, result | error }` 响应、`{ id, event }` 流事件、无 id 通知），两端对称的 `call` / `handle` / `notify` API
 - `src/logger.rs`：写入应用数据目录 `logs/browser4agent.log` 的 Native Host 日志

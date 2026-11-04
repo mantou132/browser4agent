@@ -7,6 +7,7 @@ mod mcp_setup;
 mod native_host;
 mod native_message_setup;
 mod native_messaging;
+mod page_store;
 mod peer;
 mod skill_setup;
 

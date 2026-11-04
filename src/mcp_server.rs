@@ -11,7 +11,7 @@ use rmcp::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::peer::Peer;
+use crate::{logger, page_store, peer::Peer};
 
 /// Tools that only work on a Chromium engine (they need `chrome.debugger`);
 /// hidden from tools/list unless the extension reports `debuggerAvailable`.
@@ -22,7 +22,7 @@ const CHROMIUM_ONLY_TOOLS: &[&str] = &["debugger_send_command", "debugger_detach
 /// integrations teach agents the same shortest-path routing rules.
 pub(crate) const TOOL_ROUTING_WORKFLOW: &str = r#"1. Prefer a dedicated tool (`read_active_tab`, `read_tab`, `get_cookies`, `get_errors`, `get_local_storage`, `screenshot_tab`, etc.) over either script tool.
 2. Resolve the target without redundant reads: for the current page use `read_active_tab` directly; with a reliable tab ID use it directly and call `read_tab` only when page content or page-tool discovery is needed; otherwise use `list_tabs` to find it. When the user points to the current tab or a specific tab, use that tab directly. For read-only tasks on a page, site, or URL, reuse a matching tab from `list_tabs` and open one only when none matches. For tasks that interact with or change a page, open a new tab unless the user indicated to use the already-open one. Prefer text reads over `screenshot_tab`; screenshot only when visual layout or rendering matters.
-3. For page actions, inspect `tools` from `read_active_tab` / `read_tab`. Each `tools[]` item exposes `toolsetId`, `name`, and `inputSchema`; pass `toolsetId` as `toolset_id`, `name` as `tool_name`, and build `args` from `inputSchema`. Prefer `execute_tab_tool` when a matching tool exists; otherwise use `execute_script`.
+3. For page actions, inspect `tools` from `read_active_tab` / `read_tab`. Each `tools[]` item exposes `toolsetId`, `name`, and `inputSchema`; pass `toolsetId` as `toolset_id`, `name` as `tool_name`, and build `args` from `inputSchema`. Prefer `execute_tab_tool` when a matching tool exists; otherwise use `execute_script`. When a read returns `contentFile` instead of `content`, the page is long: prefer a matching page tool; otherwise search or read that file instead of reading the tab again.
 4. Reuse the discovered tab and page-tool metadata while the same document remains loaded. Read again after navigation or when a tool is no longer available. If a snapshot looks like an unrendered app shell (common right after opening or navigating a single-page app), wait briefly and read again. Minimize round trips and output: combine consecutive steps on the same document into one script call, and make scripts filter in place and return only the fields you need, not whole pages, element lists, or raw event logs.
 5. Use `execute_script_in_background` only for one-shot browser-level operations such as tabs, windows, and downloads. It does not access page DOM, support event-listener callbacks, or keep work alive after the function returns.
 6. Use Chromium-only CDP tools only when dedicated tools and page/background scripts cannot provide the required lower-level data, such as network response bodies or protocol diagnostics. Complete follow-up CDP commands before `debugger_detach`."#;
@@ -55,6 +55,29 @@ pub struct TabIdParams {
                        browser Agent panel context."
     )]
     pub tab_id: i64,
+}
+
+const INLINE_CONTENT_DESCRIPTION: &str = "Return the whole content inline even when it is long. \
+     Default false: content over 20,000 characters is saved to a local file and only its path \
+     is returned.";
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReadTabParams {
+    #[schemars(
+        description = "Target tab ID obtained from read_active_tab, read_tab, list_tabs, or the \
+                       browser Agent panel context."
+    )]
+    pub tab_id: i64,
+    #[schemars(description = INLINE_CONTENT_DESCRIPTION)]
+    #[serde(default)]
+    pub inline_content: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReadActiveTabParams {
+    #[schemars(description = INLINE_CONTENT_DESCRIPTION)]
+    #[serde(default)]
+    pub inline_content: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -191,13 +214,17 @@ impl BrowserMcpServer {
                        tools available on this tab. Each tools[] item contains toolsetId, name, \
                        description, and inputSchema for use with execute_tab_tool. If the tab ID is \
                        unknown, find it with list_tabs; do not open a new tab just to read a page \
-                       the user already has open."
+                       the user already has open. Content over 20,000 characters is saved to a local file \
+                       and returned as contentFile (path) and contentLength instead of content; \
+                       prefer a matching page tool, otherwise read or search the file, or pass \
+                       inline_content: true."
     )]
     async fn read_tab(
         &self,
-        Parameters(p): Parameters<TabIdParams>,
+        Parameters(p): Parameters<ReadTabParams>,
     ) -> Result<CallToolResult, McpError> {
-        self.call("read_tab", json!({ "tabId": p.tab_id })).await
+        self.read("read_tab", json!({ "tabId": p.tab_id }), p.inline_content)
+            .await
     }
 
     #[tool(
@@ -205,10 +232,17 @@ impl BrowserMcpServer {
                        Returns tabId, title, URL, content, and page tools. Each tools[] item \
                        contains toolsetId, name, description, and inputSchema for use with \
                        execute_tab_tool. Use this when the user asks about \"the current page\" — \
-                       no list_tabs or follow-up read_tab is needed first."
+                       no list_tabs or follow-up read_tab is needed first. Content over 20,000 characters is saved to a local file \
+                       and returned as contentFile (path) and contentLength instead of content; \
+                       prefer a matching page tool, otherwise read or search the file, or pass \
+                       inline_content: true."
     )]
-    async fn read_active_tab(&self) -> Result<CallToolResult, McpError> {
-        self.call("read_active_tab", json!({})).await
+    async fn read_active_tab(
+        &self,
+        Parameters(p): Parameters<ReadActiveTabParams>,
+    ) -> Result<CallToolResult, McpError> {
+        self.read("read_active_tab", json!({}), p.inline_content)
+            .await
     }
 
     #[tool(
@@ -396,6 +430,25 @@ impl BrowserMcpServer {
     async fn call(&self, method: &str, params: Value) -> Result<CallToolResult, McpError> {
         match self.request_extension(method, params).await {
             Ok(resp) => Ok(json_result(&resp)),
+            Err(msg) => Ok(error_text_result(&msg)),
+        }
+    }
+
+    /// Like [`Self::call`] for page reads: long content goes to a file (see
+    /// `page_store`). If saving fails the content is returned inline as before.
+    async fn read(
+        &self,
+        method: &str,
+        params: Value,
+        inline: bool,
+    ) -> Result<CallToolResult, McpError> {
+        match self.request_extension(method, params).await {
+            Ok(mut resp) => {
+                if let Err(e) = page_store::offload_content(&mut resp, inline) {
+                    logger::info(&format!("Failed to save page content: {e}"));
+                }
+                Ok(json_result(&resp))
+            }
             Err(msg) => Ok(error_text_result(&msg)),
         }
     }
