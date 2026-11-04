@@ -34,7 +34,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.tabs.create({ url: WELCOME_URL });
   }
   if (details.reason === 'update') {
-    refreshBuiltinToolsets();
+    refreshToolsets((t) => t.type === 'official');
   }
 });
 
@@ -48,25 +48,44 @@ async function subscribeCommonToolset() {
   });
 }
 
-async function refreshBuiltinToolsets() {
+async function refreshToolsets(shouldRefresh) {
   const { toolsets } = await getToolConfig();
-  const officialToolsets = toolsets.filter((t) => t.type === 'official');
-  if (!officialToolsets.length) return;
-
-  const next = toolsets.slice();
-  for (const ts of officialToolsets) {
+  const loaded = new Map();
+  for (const ts of toolsets.filter(shouldRefresh)) {
     try {
-      const { meta, tools } = await loadToolset(ts.url);
-      const idx = next.findIndex((t) => t.id === ts.id);
-      if (idx >= 0) {
-        next[idx] = { ...next[idx], ...meta, tools };
-      }
-    } catch {
-      // skip toolsets that fail to load
+      loaded.set(ts.id, await loadToolset(ts.url));
+    } catch (e) {
+      console.error(`Failed to refresh toolset ${ts.name}:`, e);
     }
   }
-  await persist({ toolsets: next });
+  if (!loaded.size) return;
+
+  // Re-read after the slow fetches so edits made meanwhile (toggles, removals) aren't overwritten.
+  const latest = (await getToolConfig()).toolsets;
+  let changed = false;
+  const next = latest.map((ts) => {
+    if (!loaded.has(ts.id)) return ts;
+    const { meta, tools } = loaded.get(ts.id);
+    const updated = { ...ts, ...meta, tools };
+    if (JSON.stringify(updated) === JSON.stringify(ts)) return ts;
+    changed = true;
+    return updated;
+  });
+  if (changed) await persist({ toolsets: next });
 }
+
+const AUTO_UPDATE_ALARM = 'toolset-auto-update';
+
+const refreshAutoUpdateToolsets = () => refreshToolsets((t) => t.autoUpdate);
+
+// Creating unconditionally would restart the period on every service worker wake-up.
+chrome.alarms.get(AUTO_UPDATE_ALARM).then((alarm) => {
+  if (!alarm) chrome.alarms.create(AUTO_UPDATE_ALARM, { periodInMinutes: 24 * 60 });
+});
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === AUTO_UPDATE_ALARM) refreshAutoUpdateToolsets();
+});
+chrome.runtime.onStartup.addListener(refreshAutoUpdateToolsets);
 
 chrome.contextMenus.create({
   id: 'open-welcome',

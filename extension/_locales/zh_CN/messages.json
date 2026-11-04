@@ -271,6 +271,15 @@
   "recommendedToolsets": {
     "message": "推荐工具集"
   },
+  "autoUpdate": {
+    "message": "自动更新"
+  },
+  "autoUpdateEnabled": {
+    "message": "已开启自动更新，每天检查一次"
+  },
+  "autoUpdateDisabled": {
+    "message": "已关闭自动更新"
+  },
   "refresh": {
     "message": "刷新"
   },

@@ -271,6 +271,15 @@
   "recommendedToolsets": {
     "message": "Recommended Toolsets"
   },
+  "autoUpdate": {
+    "message": "Auto-update"
+  },
+  "autoUpdateEnabled": {
+    "message": "Auto-update on, checked daily"
+  },
+  "autoUpdateDisabled": {
+    "message": "Auto-update off"
+  },
   "refresh": {
     "message": "Refresh"
   },

@@ -66,6 +66,11 @@ export async function setToolsetEnabled(id, enabled) {
   await persist({ toolsets: next });
 }
 
+export async function setToolsetAutoUpdate(id, autoUpdate) {
+  const next = toolStore.toolsets.map((t) => (t.id === id ? { ...t, autoUpdate } : t));
+  await persist({ toolsets: next });
+}
+
 export function isToolEnabled(toolsetId, toolName) {
   return isToolEnabledFromState(toolStore.toolStates, toolsetId, toolName);
 }

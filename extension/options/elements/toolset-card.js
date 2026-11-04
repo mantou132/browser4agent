@@ -7,6 +7,7 @@ import {
   addToolset,
   likeToolset,
   removeToolset,
+  setToolsetAutoUpdate,
   setToolsetEnabled,
   toolStore,
   unlikeToolset,
@@ -42,6 +43,12 @@ class OptionsToolsetCardElement extends GemElement {
     Toast.open('success', t('refreshedToolset', [meta.name, tools.length]));
   };
 
+  #toggleAutoUpdate = async () => {
+    const autoUpdate = !this.toolset.autoUpdate;
+    await setToolsetAutoUpdate(this.toolset.id, autoUpdate);
+    Toast.open('success', t(autoUpdate ? 'autoUpdateEnabled' : 'autoUpdateDisabled'));
+  };
+
   #like = async () => {
     await likeToolset(this.toolset.id, this.toolset.name);
     Toast.open('success', t('thanksForLike'));
@@ -67,10 +74,11 @@ class OptionsToolsetCardElement extends GemElement {
         items.push({ text: t('like'), handle: () => this.#like() });
       }
     }
-    items.push(
-      { text: t('refresh'), handle: () => this.#refresh() },
-      { text: t('delete'), danger: true, handle: () => this.#remove(e) },
-    );
+    items.push({ text: t('refresh'), handle: () => this.#refresh() });
+    if (toolset.type !== 'official') {
+      items.push({ text: t('autoUpdate'), selected: !!toolset.autoUpdate, handle: () => this.#toggleAutoUpdate() });
+    }
+    items.push({ text: t('delete'), danger: true, handle: () => this.#remove(e) });
     ContextMenu.open(items, { activeElement: e.target, openLeft: true });
   };
 
@@ -98,6 +106,7 @@ class OptionsToolsetCardElement extends GemElement {
           <dy-space class="mb-2" size="large">
             <span class="font-semibold text-sm text-highlight">${toolset.name}</span>
             <dy-tag small color=${isOfficial ? 'positive' : 'default'}>${isCustom ? t('custom') : isOfficial ? t('official') : t('community')}</dy-tag>
+            <dy-tag small v-if=${toolset.autoUpdate}>${t('autoUpdate')}</dy-tag>
             <span class="text-xs text-describe">${t('toolCount', toolsCount)}</span>
           </dy-space>
           <div class="mb-2 text-sm leading-6 text-describe">${toolset.description || t('noDescription')}</div>
