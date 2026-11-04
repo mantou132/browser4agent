@@ -156,15 +156,25 @@ export async function executeScript(tabId, funcStr, args) {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       func: async (code, argsStr, nonce) => {
-        const { promise, resolve, reject } = Promise.withResolvers();
-        const callbackId = `agent_tool_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-        window[callbackId] = {
-          resolve: (val) => resolve(val),
-          reject: (err) => reject(err),
+        const { promise, resolve: resolvePromise, reject: rejectPromise } = Promise.withResolvers();
+        let settled = false;
+        const resolve = (value) => {
+          settled = true;
+          resolvePromise(value);
         };
+        const reject = (reason) => {
+          settled = true;
+          rejectPromise(reason);
+        };
+        const callbackId = `agent_tool_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+        const cb = { started: false, resolve, reject };
+        window[callbackId] = cb;
+        // The first statement marks the script as running, so a launcher can tell whether CSP blocked it:
+        // blocked inline scripts fire neither `error` on the element nor a window error event.
         const blobContent = `
           (async () => {
             const cb = window["${callbackId}"];
+            cb.started = true;
             try {
               const args = JSON.parse(${JSON.stringify(argsStr)});
               const result = await (${code})(...args);
@@ -176,31 +186,85 @@ export async function executeScript(tabId, funcStr, args) {
         `;
         const blob = new Blob([blobContent], { type: 'text/javascript' });
         const blobUrl = URL.createObjectURL(blob);
-        const script = document.createElement('script');
-        if (nonce) script.setAttribute('nonce', nonce);
-        script.onerror = reject;
-        try {
-          const content = window.__firstPolicy.createScript(blobContent);
-          if (content.toString() !== blobContent) throw new Error('invalid policy');
-          script.textContent = content;
-        } catch {
-          script.textContent = window.__browser4agentPolicy.createScript(blobContent);
-        }
-        // A script that fails to parse never fires onerror; the browser reports it synchronously as a
-        // window error event during insertion.
-        const onParseError = (e) => reject(e.message);
-        window.addEventListener('error', onParseError);
-        document.head.append(script);
-        window.removeEventListener('error', onParseError);
+        const trusted = (method, value) => {
+          try {
+            const result = window.__firstPolicy[method](value);
+            if (result.toString() !== value) throw new Error('invalid policy');
+            return result;
+          } catch {
+            return window.__browser4agentPolicy[method](value);
+          }
+        };
+        let scriptSrc;
+        const onViolation = (e) => {
+          if (e.effectiveDirective.startsWith('script-src')) {
+            scriptSrc ??= e.originalPolicy
+              .split(';')
+              .find((d) => /^\s*script-src(-elem)?\s/.test(d))
+              ?.trim();
+          }
+        };
+        document.addEventListener('securitypolicyviolation', onViolation);
+        const scripts = [];
+        const createScript = () => {
+          const script = document.createElement('script');
+          if (nonce) script.setAttribute('nonce', nonce);
+          scripts.push(script);
+          return script;
+        };
+        const launchInline = () => {
+          const script = createScript();
+          script.textContent = trusted('createScript', blobContent);
+          // A script that fails to parse never fires onerror; the browser reports it synchronously as a
+          // window error event during insertion.
+          const onParseError = (e) => reject(e.message);
+          window.addEventListener('error', onParseError);
+          document.head.append(script);
+          window.removeEventListener('error', onParseError);
+        };
+        // Allowed by CSPs that list `blob:` in script-src without 'unsafe-inline'.
+        const launchBlob = () => {
+          const { promise: loaded, resolve: done } = Promise.withResolvers();
+          const script = createScript();
+          script.onload = done;
+          script.onerror = done;
+          const onParseError = (e) => {
+            if (e.filename === blobUrl) reject(e.message);
+          };
+          window.addEventListener('error', onParseError);
+          script.src = trusted('createScriptURL', blobUrl);
+          document.head.append(script);
+          return loaded.finally(() => window.removeEventListener('error', onParseError));
+        };
+        // Allowed by CSPs with 'unsafe-eval'; throws EvalError when CSP blocks it.
+        const launchEval = () => {
+          try {
+            // biome-ignore lint/security/noGlobalEval: last-resort launcher for pages whose CSP blocks scripts
+            window.eval(trusted('createScript', blobContent));
+          } catch (e) {
+            if (!(e instanceof EvalError)) reject(e.message);
+          }
+        };
         // Chrome reports neither `result` nor `error` for an injected function whose promise rejects,
         // so failures are returned as data and rethrown on the extension side.
         try {
+          for (const launch of [launchInline, launchBlob, launchEval]) {
+            await launch();
+            if (cb.started || settled) break;
+          }
+          if (!cb.started && !settled) {
+            const policy = scriptSrc ? ` (${scriptSrc})` : '';
+            throw new Error(
+              `The page's Content-Security-Policy${policy} blocks inline scripts, blob: scripts and eval, so the script cannot run on this page`,
+            );
+          }
           return { value: await promise };
         } catch (error) {
-          return { error: error instanceof Event ? { message: 'Failed to load the injected script' } : error };
+          return { error: error instanceof Error ? { name: error.name, message: error.message } : error };
         } finally {
+          document.removeEventListener('securitypolicyviolation', onViolation);
           URL.revokeObjectURL(blobUrl);
-          script.remove();
+          for (const script of scripts) script.remove();
           delete window[callbackId];
         }
       },
