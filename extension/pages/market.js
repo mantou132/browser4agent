@@ -202,9 +202,9 @@ class AgentMarketPageElement extends GemElement {
               @clear=${this.#onSearch}
             ></dy-input>
           </header>
-          <dy-loading v-if=${loading} class="py-20"></dy-loading>
+          <dy-loading v-if=${loading} class="flex justify-center py-20"></dy-loading>
           <dy-empty v-else-if=${!filtered.length} class="py-20" text=${this.#state.searchQuery ? t('noSearchResults') : t('emptyToolsets')}></dy-empty>
-          <div v-else class="flex flex-col gap-5">
+          <div v-else class="grid gap-5 sm:grid-cols-2">
             ${filtered.map(
               (toolset) => html`
                 <market-toolset-card

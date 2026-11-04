@@ -227,9 +227,6 @@
   "openOnceDesc": {
     "message": "The program will automatically complete this setup:"
   },
-  "optionsSubtitle": {
-    "message": "Manage the toolsets available to AI Agents, enable the capabilities you need, and discover more automation workflows from the community market."
-  },
   "optionsTitle": {
     "message": "Extension Settings"
   },

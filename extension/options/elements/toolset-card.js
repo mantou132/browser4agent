@@ -97,27 +97,24 @@ class OptionsToolsetCardElement extends GemElement {
     const isCustom = toolset.type === 'custom';
     const toolsCount = toolset.tools?.length ?? 0;
     return html`
-      <div
-        class="group flex items-center gap-4 rounded-lg border border-border bg-white/90 p-5 shadow-sm shadow-slate-200/60 transition hover:-translate-y-0.5 hover:border-primary hover:shadow-lg hover:shadow-indigo-500/10"
-      >
-        <dy-avatar v-if=${isIconUrl} src=${icon} size="large" square></dy-avatar>
-        <dy-avatar v-else size="large" square>${icon || this.#initial(toolset.name)}</dy-avatar>
+      <div class="flex items-center gap-3 px-4 py-3 transition hover:bg-slate-50">
+        <dy-avatar v-if=${isIconUrl} src=${icon} square></dy-avatar>
+        <dy-avatar v-else square>${icon || this.#initial(toolset.name)}</dy-avatar>
         <div class="flex-1 min-w-0">
-          <dy-space class="mb-2" size="large">
+          <dy-space size="small">
             <span class="font-semibold text-sm text-highlight">${toolset.name}</span>
-            <dy-tag small color=${isOfficial ? 'positive' : 'default'}>${isCustom ? t('custom') : isOfficial ? t('official') : t('community')}</dy-tag>
-            <dy-tag small v-if=${toolset.autoUpdate}>${t('autoUpdate')}</dy-tag>
+            <dy-tag small class="px-1.5 py-0.5" color=${isOfficial ? 'positive' : 'default'}>${isCustom ? t('custom') : isOfficial ? t('official') : t('community')}</dy-tag>
+            <dy-tag small class="px-1.5 py-0.5" v-if=${toolset.autoUpdate}>${t('autoUpdate')}</dy-tag>
             <span class="text-xs text-describe">${t('toolCount', toolsCount)}</span>
           </dy-space>
-          <div class="mb-2 text-sm leading-6 text-describe">${toolset.description || t('noDescription')}</div>
-          <div class="truncate rounded-md bg-slate-50 px-3 py-2 text-xs text-neutral">${toolset.url}</div>
+          <div class="mt-0.5 truncate text-xs text-describe" title=${toolset.url}>${toolset.description || t('noDescription')}</div>
         </div>
-        <div class="flex items-center gap-2.5 shrink-0" v-if=${this.recommended}>
-          <dy-button type="reverse" @click=${this.#subscribe}>${t('subscribe')}</dy-button>
+        <div class="flex items-center gap-2 shrink-0" v-if=${this.recommended}>
+          <dy-button small type="reverse" @click=${this.#subscribe}>${t('subscribe')}</dy-button>
         </div>
-        <div class="flex items-center gap-2.5 shrink-0" v-else>
+        <div class="flex items-center gap-2 shrink-0" v-else>
           <dy-switch neutral="positive" .checked=${!!toolset.enabled} @change=${this.#toggle}></dy-switch>
-          <dy-button square color="cancel" .icon=${icons.more} @contextmenu=${this.#openMenu} @click=${this.#openMenu}></dy-button>
+          <dy-button small square color="cancel" .icon=${icons.more} @contextmenu=${this.#openMenu} @click=${this.#openMenu}></dy-button>
         </div>
       </div>
     `;

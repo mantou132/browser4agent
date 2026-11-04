@@ -17,10 +17,7 @@ const style = css`
   :scope {
     display: block;
     min-height: 100vh;
-    background:
-      radial-gradient(circle at 85% 12%, rgba(129, 140, 248, 0.2), transparent 32rem),
-      radial-gradient(circle at 8% 88%, rgba(139, 92, 246, 0.12), transparent 28rem),
-      linear-gradient(135deg, white 0%, #f8fafc 52%, #f5f3ff 100%);
+    background: #f8fafc;
   }
 `;
 
@@ -103,41 +100,21 @@ class AgentOptionsPageElement extends GemElement {
     const manifest = chrome.runtime.getManifest();
     const icon = chrome.runtime.getURL(manifest.icons['128']);
     return html`
-      <main class="mx-auto flex w-full max-w-[64rem] flex-col gap-7 px-5 py-8 sm:px-7 sm:py-12">
-        <header class="overflow-hidden rounded-lg border border-border bg-white/90 shadow-2xl shadow-slate-200/70 backdrop-blur">
-          <div class="relative p-7 sm:flex sm:items-center sm:justify-between sm:gap-8 sm:p-8">
-            <div class="pointer-events-none absolute -right-20 -top-24 size-64 rounded-full bg-indigo-100/70 blur-3xl"></div>
-            <div class="relative flex min-w-0 items-start gap-5">
-              <img
-                src=${icon}
-                class="size-18 shrink-0 rounded-[1.125rem] shadow-xl shadow-indigo-500/20"
-                alt="Browser for AI Agent"
-              />
-              <div class="min-w-0">
-                <p class="m-0 text-sm font-semibold text-primary">Browser for AI Agent</p>
-                <h1 class="m-0 mt-2 text-3xl font-bold leading-tight text-highlight">${t('optionsTitle')}</h1>
-                <p class="mb-0 mt-3 max-w-2xl text-sm leading-6 text-describe sm:text-base">
-                  ${t('optionsSubtitle')}
-                </p>
-              </div>
-            </div>
-            <div class="relative mt-6 flex flex-wrap gap-3 sm:mt-0 sm:justify-end">
-              <dy-button @click=${this.#openMarket}>${t('openMarket')}</dy-button>
-            </div>
-          </div>
-        </header>
-
-        <section class="rounded-lg border border-border bg-white/90 p-5 shadow-xl shadow-slate-200/60 backdrop-blur sm:p-6">
-          <header class="mb-5 flex items-center justify-between gap-3">
-            <div>
-              <h2 class="m-0 text-lg font-bold text-highlight">${t('myToolsets')}</h2>
-              <p class="mt-1 mb-0 text-describe text-xs">
-                ${t('myToolsetsDesc')}
-              </p>
-            </div>
-            <dy-button @click=${this.#openAdd}>${t('subscribeUrl')}</dy-button>
+      <header class="sticky top-0 z-10 border-b border-border bg-white/90 backdrop-blur">
+        <div class="mx-auto flex h-14 w-full max-w-[52rem] items-center gap-3 px-5">
+          <img src=${icon} class="size-7 rounded-md" alt="Browser for AI Agent" />
+          <h1 class="m-0 flex-1 text-base font-semibold text-highlight">${t('optionsTitle')}</h1>
+          <dy-button small color="cancel" .icon=${icons.right} @click=${this.#openMarket}>${t('openMarket')}</dy-button>
+          <dy-button small .icon=${icons.add} @click=${this.#openAdd}>${t('subscribeUrl')}</dy-button>
+        </div>
+      </header>
+      <main class="mx-auto flex w-full max-w-[52rem] flex-col gap-8 px-5 py-8">
+        <section>
+          <header class="mb-3">
+            <h2 class="m-0 text-sm font-semibold text-highlight">${t('myToolsets')}</h2>
+            <p class="mt-1 mb-0 text-describe text-xs">${t('myToolsetsDesc')}</p>
           </header>
-          <div class="flex flex-col gap-5">
+          <div class="divide-y divide-border overflow-hidden rounded-lg border border-border bg-white">
             ${
               toolsets.length
                 ? repeat(
@@ -145,19 +122,17 @@ class AgentOptionsPageElement extends GemElement {
                     (t) => t.id,
                     (t) => html`<options-toolset-card .toolset=${t}></options-toolset-card>`,
                   )
-                : html`<dy-empty class="py-20" text=${t('emptySubscribedToolsets')}></dy-empty>`
+                : html`<dy-empty class="py-12" text=${t('emptySubscribedToolsets')}></dy-empty>`
             }
           </div>
         </section>
 
-        <section class="rounded-lg border border-border bg-white/90 p-5 shadow-xl shadow-slate-200/60 backdrop-blur sm:p-6">
-          <header class="mb-5 flex items-center justify-between gap-3">
-            <div>
-              <h2 class="m-0 text-lg font-bold text-highlight">${t('recommendedToolsets')}</h2>
-              <p class="mt-1 mb-0 text-describe text-xs">${t('recommendedDesc')}</p>
-            </div>
+        <section>
+          <header class="mb-3">
+            <h2 class="m-0 text-sm font-semibold text-highlight">${t('recommendedToolsets')}</h2>
+            <p class="mt-1 mb-0 text-describe text-xs">${t('recommendedDesc')}</p>
           </header>
-          <div class="flex flex-col gap-5">
+          <div class="divide-y divide-border overflow-hidden rounded-lg border border-border bg-white">
             ${repeat(
               this._recommended,
               (t) => t.url,
@@ -165,13 +140,13 @@ class AgentOptionsPageElement extends GemElement {
                 html`<options-toolset-card .recommended=${true} @subscription=${() => this.#addByUrl(t.url)} .toolset=${t}></options-toolset-card>`,
             )}
             <div
-              class="group flex cursor-pointer items-center gap-4 rounded-lg border border-dashed border-indigo-200 bg-indigo-50/60 p-5 text-describe transition hover:-translate-y-0.5 hover:border-primary hover:bg-indigo-50 hover:text-primary hover:shadow-lg hover:shadow-indigo-500/10"
+              class="group flex cursor-pointer items-center gap-3 px-4 py-3 text-describe transition hover:bg-slate-50 hover:text-primary"
               @click=${this.#openMarket}
             >
-              <span class="grid size-14 shrink-0 place-items-center rounded-lg bg-white text-2xl shadow-sm">🧭</span>
+              <dy-avatar square>🧭</dy-avatar>
               <div class="flex-1 min-w-0">
-                <div class="mb-1 text-sm font-semibold text-highlight group-hover:text-primary">${t('exploreMoreToolsets')}</div>
-                <div class="text-xs leading-5">${t('exploreMoreToolsetsDesc')}</div>
+                <div class="text-sm font-semibold text-highlight group-hover:text-primary">${t('exploreMoreToolsets')}</div>
+                <div class="mt-0.5 truncate text-xs">${t('exploreMoreToolsetsDesc')}</div>
               </div>
               <dy-use .element=${icons.right}></dy-use>
             </div>

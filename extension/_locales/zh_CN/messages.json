@@ -227,9 +227,6 @@
   "openOnceDesc": {
     "message": "程序将自动完成以下配置："
   },
-  "optionsSubtitle": {
-    "message": "管理 AI Agent 可调用的工具集，启用需要的能力，并从社区市场发现更多自动化方案。"
-  },
   "optionsTitle": {
     "message": "扩展设置"
   },
