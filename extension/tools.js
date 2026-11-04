@@ -147,136 +147,198 @@ export async function executeScript(tabId, funcStr, args) {
   const argsJson = JSON.stringify(args || []);
   try {
     await ensureTabLoaded(tabId);
-    const nonce = scriptResult(
-      await chrome.scripting.executeScript({
-        target: { tabId },
-        func: () => document.querySelector('script[nonce]')?.nonce,
-      }),
-    );
-    const results = await chrome.scripting.executeScript({
-      target: { tabId },
-      func: async (code, argsStr, nonce) => {
-        const { promise, resolve: resolvePromise, reject: rejectPromise } = Promise.withResolvers();
-        let settled = false;
-        const resolve = (value) => {
-          settled = true;
-          resolvePromise(value);
-        };
-        const reject = (reason) => {
-          settled = true;
-          rejectPromise(reason);
-        };
-        const callbackId = `agent_tool_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-        const cb = { started: false, resolve, reject };
-        window[callbackId] = cb;
-        // The first statement marks the script as running, so a launcher can tell whether CSP blocked it:
-        // blocked inline scripts fire neither `error` on the element nor a window error event.
-        const blobContent = `
-          (async () => {
-            const cb = window["${callbackId}"];
-            cb.started = true;
-            try {
-              const args = JSON.parse(${JSON.stringify(argsStr)});
-              const result = await (${code})(...args);
-              cb.resolve(result);
-            } catch(e) {
-              cb.reject(e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : String(e));
-            }
-          })();
-        `;
-        const blob = new Blob([blobContent], { type: 'text/javascript' });
-        const blobUrl = URL.createObjectURL(blob);
-        const trusted = (method, value) => {
-          try {
-            const result = window.__firstPolicy[method](value);
-            if (result.toString() !== value) throw new Error('invalid policy');
-            return result;
-          } catch {
-            return window.__browser4agentPolicy[method](value);
-          }
-        };
-        let scriptSrc;
-        const onViolation = (e) => {
-          if (e.effectiveDirective.startsWith('script-src')) {
-            scriptSrc ??= e.originalPolicy
-              .split(';')
-              .find((d) => /^\s*script-src(-elem)?\s/.test(d))
-              ?.trim();
-          }
-        };
-        document.addEventListener('securitypolicyviolation', onViolation);
-        const scripts = [];
-        const createScript = () => {
-          const script = document.createElement('script');
-          if (nonce) script.setAttribute('nonce', nonce);
-          scripts.push(script);
-          return script;
-        };
-        const launchInline = () => {
-          const script = createScript();
-          script.textContent = trusted('createScript', blobContent);
-          // A script that fails to parse never fires onerror; the browser reports it synchronously as a
-          // window error event during insertion.
-          const onParseError = (e) => reject(e.message);
-          window.addEventListener('error', onParseError);
-          document.head.append(script);
-          window.removeEventListener('error', onParseError);
-        };
-        // Allowed by CSPs that list `blob:` in script-src without 'unsafe-inline'.
-        const launchBlob = () => {
-          const { promise: loaded, resolve: done } = Promise.withResolvers();
-          const script = createScript();
-          script.onload = done;
-          script.onerror = done;
-          const onParseError = (e) => {
-            if (e.filename === blobUrl) reject(e.message);
-          };
-          window.addEventListener('error', onParseError);
-          script.src = trusted('createScriptURL', blobUrl);
-          document.head.append(script);
-          return loaded.finally(() => window.removeEventListener('error', onParseError));
-        };
-        // Allowed by CSPs with 'unsafe-eval'; throws EvalError when CSP blocks it.
-        const launchEval = () => {
-          try {
-            // biome-ignore lint/security/noGlobalEval: last-resort launcher for pages whose CSP blocks scripts
-            window.eval(trusted('createScript', blobContent));
-          } catch (e) {
-            if (!(e instanceof EvalError)) reject(e.message);
-          }
-        };
-        // Chrome reports neither `result` nor `error` for an injected function whose promise rejects,
-        // so failures are returned as data and rethrown on the extension side.
-        try {
-          for (const launch of [launchInline, launchBlob, launchEval]) {
-            await launch();
-            if (cb.started || settled) break;
-          }
-          if (!cb.started && !settled) {
-            const policy = scriptSrc ? ` (${scriptSrc})` : '';
-            throw new Error(
-              `The page's Content-Security-Policy${policy} blocks inline scripts, blob: scripts and eval, so the script cannot run on this page`,
-            );
-          }
-          return { value: await promise };
-        } catch (error) {
-          return { error: error instanceof Error ? { name: error.name, message: error.message } : error };
-        } finally {
-          document.removeEventListener('securitypolicyviolation', onViolation);
-          URL.revokeObjectURL(blobUrl);
-          for (const script of scripts) script.remove();
-          delete window[callbackId];
-        }
-      },
-      args: [funcStr, argsJson, nonce],
-      world: 'MAIN',
-    });
-    const { value, error } = scriptResult(results);
+    const { value, error, cspBlocked } = (await canUseUserScripts())
+      ? await executeUserScript(tabId, funcStr, argsJson)
+      : await executeInjectedScript(tabId, funcStr, argsJson);
+    if (cspBlocked != null) {
+      const policy = cspBlocked ? ` (${cspBlocked})` : '';
+      // Firefox has no userScripts.execute, so the toggle would not help there
+      const hint =
+        typeof chrome.runtime.getBrowserInfo !== 'function'
+          ? `; turn on "Allow User Scripts" for this extension at chrome://extensions/?id=${chrome.runtime.id} to run scripts on such pages`
+          : '';
+      throw new Error(
+        `The page's Content-Security-Policy${policy} blocks inline scripts, blob: scripts and eval, so the script cannot run on this page${hint}`,
+      );
+    }
     if (error) throw new Error(typeof error === 'string' ? error : `${error.name ?? 'Error'}: ${error.message}`);
     return { result: value ?? null };
   } catch (e) {
     throw new Error(`Failed to execute script: ${e.message}`);
   }
+}
+
+// chrome.userScripts is undefined until the user turns on "Allow User Scripts" for the extension (Chrome 138+;
+// earlier versions throw unless developer mode is on), and `execute` needs Chrome 135+.
+async function canUseUserScripts() {
+  try {
+    if (typeof chrome.userScripts.execute !== 'function') return false;
+    await chrome.userScripts.getScripts();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// User scripts are exempt from the page's CSP, so this works on pages that block every in-page launcher.
+async function executeUserScript(tabId, funcStr, argsJson) {
+  const state = `window[${JSON.stringify(`agent_tool_${crypto.randomUUID()}`)}]`;
+  const [{ result, error } = {}] = await chrome.userScripts.execute({
+    target: { tabId },
+    world: 'MAIN',
+    injectImmediately: true,
+    // Each entry runs as its own script; a syntax error in funcStr skips only the second one and is reported
+    // as a window error event, which the first one records.
+    js: [
+      {
+        code: `${state} = { errors: [], onError: (e) => ${state}.errors.push(e.message) };
+          addEventListener('error', ${state}.onError);`,
+      },
+      {
+        code: `${state}.promise = (async () => {
+          try {
+            const args = JSON.parse(${JSON.stringify(argsJson)});
+            return { value: await (${funcStr})(...args) };
+          } catch (e) {
+            return { error: e instanceof Error ? { name: e.name, message: e.message } : String(e) };
+          }
+        })();`,
+      },
+      {
+        code: `(() => {
+          const state = ${state};
+          delete ${state};
+          removeEventListener('error', state.onError);
+          return state.promise ?? { error: state.errors[0] ?? 'The script did not run' };
+        })();`,
+      },
+    ],
+  });
+  if (error) throw new Error(error);
+  return result;
+}
+
+async function executeInjectedScript(tabId, funcStr, argsJson) {
+  const nonce = scriptResult(
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => document.querySelector('script[nonce]')?.nonce,
+    }),
+  );
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    func: async (code, argsStr, nonce) => {
+      const { promise, resolve: resolvePromise, reject: rejectPromise } = Promise.withResolvers();
+      let settled = false;
+      const resolve = (value) => {
+        settled = true;
+        resolvePromise(value);
+      };
+      const reject = (reason) => {
+        settled = true;
+        rejectPromise(reason);
+      };
+      const callbackId = `agent_tool_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+      const cb = { started: false, resolve, reject };
+      window[callbackId] = cb;
+      // The first statement marks the script as running, so a launcher can tell whether CSP blocked it:
+      // blocked inline scripts fire neither `error` on the element nor a window error event.
+      const blobContent = `
+        (async () => {
+          const cb = window["${callbackId}"];
+          cb.started = true;
+          try {
+            const args = JSON.parse(${JSON.stringify(argsStr)});
+            const result = await (${code})(...args);
+            cb.resolve(result);
+          } catch(e) {
+            cb.reject(e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : String(e));
+          }
+        })();
+      `;
+      const blob = new Blob([blobContent], { type: 'text/javascript' });
+      const blobUrl = URL.createObjectURL(blob);
+      const trusted = (method, value) => {
+        try {
+          const result = window.__firstPolicy[method](value);
+          if (result.toString() !== value) throw new Error('invalid policy');
+          return result;
+        } catch {
+          return window.__browser4agentPolicy[method](value);
+        }
+      };
+      let scriptSrc;
+      const onViolation = (e) => {
+        if (e.effectiveDirective.startsWith('script-src')) {
+          scriptSrc ??= e.originalPolicy
+            .split(';')
+            .find((d) => /^\s*script-src(-elem)?\s/.test(d))
+            ?.trim();
+        }
+      };
+      document.addEventListener('securitypolicyviolation', onViolation);
+      const scripts = [];
+      const createScript = () => {
+        const script = document.createElement('script');
+        if (nonce) script.setAttribute('nonce', nonce);
+        scripts.push(script);
+        return script;
+      };
+      const launchInline = () => {
+        const script = createScript();
+        script.textContent = trusted('createScript', blobContent);
+        // A script that fails to parse never fires onerror; the browser reports it synchronously as a
+        // window error event during insertion.
+        const onParseError = (e) => reject(e.message);
+        window.addEventListener('error', onParseError);
+        document.head.append(script);
+        window.removeEventListener('error', onParseError);
+      };
+      // Allowed by CSPs that list `blob:` in script-src without 'unsafe-inline'.
+      const launchBlob = () => {
+        const { promise: loaded, resolve: done } = Promise.withResolvers();
+        const script = createScript();
+        script.onload = done;
+        script.onerror = done;
+        const onParseError = (e) => {
+          if (e.filename === blobUrl) reject(e.message);
+        };
+        window.addEventListener('error', onParseError);
+        script.src = trusted('createScriptURL', blobUrl);
+        document.head.append(script);
+        return loaded.finally(() => window.removeEventListener('error', onParseError));
+      };
+      // Allowed by CSPs with 'unsafe-eval'; throws EvalError when CSP blocks it.
+      const launchEval = () => {
+        try {
+          // biome-ignore lint/security/noGlobalEval: last-resort launcher for pages whose CSP blocks scripts
+          window.eval(trusted('createScript', blobContent));
+        } catch (e) {
+          if (!(e instanceof EvalError)) reject(e.message);
+        }
+      };
+      // Chrome reports neither `result` nor `error` for an injected function whose promise rejects,
+      // so failures are returned as data and rethrown on the extension side.
+      try {
+        for (const launch of [launchInline, launchBlob, launchEval]) {
+          await launch();
+          if (cb.started || settled) break;
+        }
+        if (!cb.started && !settled) return { cspBlocked: scriptSrc ?? '' };
+        return { value: await promise };
+      } catch (error) {
+        return { error: error instanceof Error ? { name: error.name, message: error.message } : error };
+      } finally {
+        document.removeEventListener('securitypolicyviolation', onViolation);
+        URL.revokeObjectURL(blobUrl);
+        for (const script of scripts) script.remove();
+        delete window[callbackId];
+      }
+    },
+    args: [funcStr, argsJson, nonce],
+    world: 'MAIN',
+  });
+  return scriptResult(results);
 }
 
 async function getPageWebmcpTools(tabId) {
