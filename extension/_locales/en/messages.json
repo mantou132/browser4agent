@@ -17,10 +17,10 @@
     }
   },
   "appDescription": {
-    "message": "Let AI agents read browser tab content, control the browser (tabs, windows, and more), and call tab tools."
+    "message": "Let AI agents use your real, logged-in browser via MCP or CLI Skill. Local only, no cloud relay."
   },
   "appName": {
-    "message": "Browser for AI Agent"
+    "message": "Browser for AI Agent – MCP & Skill"
   },
   "authorEmail": {
     "message": "Author Email"

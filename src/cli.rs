@@ -15,6 +15,7 @@ use rmcp::{
 };
 
 use crate::{
+    SetupChoice,
     constant::{BIND_ADDRESS, MCP_PATH},
     mcp_server::BrowserMcpServer,
 };
@@ -30,7 +31,7 @@ use crate::{
                   stopped.\n\nPass --help with --tool to print that tool's input schema.\n\nExamples:\n  \
                   browser4agent --tool list_tabs\n  browser4agent --tool read_tab --input \
                   '{\"tab_id\": 123}'\n  echo '{\"tab_id\":123}' | browser4agent --tool read_tab \
-                  --stdin\n  browser4agent --tool read_tab --help",
+                  --stdin\n  browser4agent --tool read_tab --help\n  browser4agent --setup skills",
     disable_help_flag = true
 )]
 pub(crate) struct CliArgs {
@@ -46,6 +47,11 @@ pub(crate) struct CliArgs {
 
     #[arg(long)]
     stdin: bool,
+
+    /// Run setup non-interactively: install the Native Messaging Host, then
+    /// Skills, MCP settings, or nothing else.
+    #[arg(long, value_enum, value_name = "TARGET", conflicts_with_all = ["tool", "input", "stdin"])]
+    pub(crate) setup: Option<SetupChoice>,
 }
 
 pub(crate) fn parse(args: Vec<OsString>) -> Result<Option<CliArgs>> {

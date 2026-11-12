@@ -101,6 +101,8 @@ browser4agent --tool read_tab --help   # 查看工具的入参 schema
 pnpm -C extension run build --browser=chrome
 # Native Host —— 不带参数运行即进入 setup 模式
 cargo run
+# 非交互 setup：skills | mcp | none
+cargo run -- --setup skills
 ```
 
 将 `extension/dist/<browser>` 按上述「加载未打包扩展」加载。

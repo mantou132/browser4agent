@@ -17,10 +17,10 @@
     }
   },
   "appDescription": {
-    "message": "让 AI Agent 读取浏览器标签页内容、操控浏览器（管理标签页/窗口等），调用标签页工具"
+    "message": "让 AI Agent 通过 MCP 或 Skill 使用你已登录的真实浏览器，数据只在本机流转。"
   },
   "appName": {
-    "message": "Browser for AI Agent"
+    "message": "Browser for AI Agent – 让 AI 使用你的浏览器 (MCP)"
   },
   "authorEmail": {
     "message": "作者 Email"

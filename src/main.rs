@@ -22,7 +22,8 @@ enum LaunchMode {
     /// Chrome passes `chrome-extension://<id>/`; Firefox passes manifest path +
     /// extension id.
     Browser,
-    Setup,
+    /// `None` prompts interactively; `Some` comes from `--setup`.
+    Setup(Option<SetupChoice>),
 }
 
 fn looks_like_browser_launch(args: &[OsString]) -> bool {
@@ -43,16 +44,22 @@ fn detect_launch_mode() -> Result<Option<LaunchMode>> {
     }
 
     if args.len() > 1 {
-        return Ok(cli::parse(args)?.map(LaunchMode::Cli));
+        return Ok(cli::parse(args)?.map(|args| match args.setup {
+            Some(choice) => LaunchMode::Setup(Some(choice)),
+            None => LaunchMode::Cli(args),
+        }));
     }
 
-    Ok(Some(LaunchMode::Setup))
+    Ok(Some(LaunchMode::Setup(None)))
 }
 
-#[derive(Clone, Copy)]
-enum SetupChoice {
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub(crate) enum SetupChoice {
+    #[value(name = "mcp")]
     InstallMcp,
+    #[value(name = "skills")]
     InstallSkills,
+    #[value(name = "none")]
     Skip,
 }
 
@@ -70,7 +77,7 @@ fn choose_setup_target() -> Result<SetupChoice> {
     Ok(choices[index].1)
 }
 
-fn run_setup() -> Result<()> {
+fn run_setup(choice: Option<SetupChoice>) -> Result<()> {
     native_message_setup::install_native_message_host(
         "browser4agent",
         "Browser for AI Agent",
@@ -82,7 +89,11 @@ fn run_setup() -> Result<()> {
         &["browser4agent@xianqiao.wang"],
     )?;
 
-    match choose_setup_target()? {
+    let choice = match choice {
+        Some(choice) => choice,
+        None => choose_setup_target()?,
+    };
+    match choice {
         SetupChoice::InstallMcp => {
             skill_setup::uninstall_skill()?;
             if mcp_setup::setup_mcp()? {
@@ -112,7 +123,7 @@ async fn main() -> Result<()> {
         None => {} // --help was printed
         Some(LaunchMode::Cli(args)) => cli::run(args).await?,
         Some(LaunchMode::Browser) => native_host::run().await?,
-        Some(LaunchMode::Setup) => run_setup()?,
+        Some(LaunchMode::Setup(choice)) => run_setup(choice)?,
     }
     Ok(())
 }

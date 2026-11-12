@@ -127,6 +127,8 @@ pnpm -C extension run build --browser=chrome
 
 # Native Host — running the binary with no arguments enters setup mode
 cargo run
+# Non-interactive setup: skills | mcp | none
+cargo run -- --setup skills
 ```
 
 Load `extension/dist/<browser>` via *Load unpacked* (see the manual install notes above).

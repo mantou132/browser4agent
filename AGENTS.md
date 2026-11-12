@@ -17,11 +17,11 @@
 1. 浏览器扩展首次安装后自动订阅内置 `common` 工具集，并打开 `extension/pages/welcome.html`
 2. 扩展后台在 `extension/background.js` 里连接本地 Native Host
 3. Rust 程序在 `src/main.rs` 里判断运行模式
-4. Setup 模式（无参数）：
+4. Setup 模式（无参数，或 `--setup <skills|mcp|none>` 非交互）：
   1. `src/native_message_setup.rs` 负责安装 Native Messaging Host
   2. `src/mcp_setup.rs` 尝试给 Codex / Claude / VS Code / Cursor / Zed / Antigravity 配 MCP
   3. `src/skill_setup.rs` 为检测到的 agent 安装 SKILL
-  4. `src/main.rs` 在安装 Native Messaging Host 后让用户选择安装 MCP 或 Skills；
+  4. `src/main.rs` 在安装 Native Messaging Host 后让用户选择安装 MCP 或 Skills；带 `--setup` 时跳过选择（参数在 `src/cli.rs` 解析）
 5. MCP 模式：
   1. `src/native_host.rs` 负责本地消息循环和 MCP HTTP 服务；连接后发送的 `connected` 通知携带 host 版本（`CARGO_PKG_VERSION`），`extension/background.js` 的 `updateHostCompat` 用它和 `MIN_HOST_VERSION` 做兼容性检查，不兼容时在 action 图标上加警告徽标；扩展收到 `connected` 后回发 `capabilities` 通知（浏览器内核、debugger 可用性）
   2. `src/mcp_server.rs` MCP 服务端；按上报能力过滤工具列表（`CHROMIUM_ONLY_TOOLS`，能力未上报视为不可用）
