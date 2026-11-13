@@ -53,6 +53,12 @@ from an earlier action or attachment from being mistaken for new ones.
 If an error mentions DevTools or another debugger holding the tab, ask the user to close it;
 on `No target with given id found`, get a fresh id via `list_tabs`.
 
+## Building page tools
+
+When the user asks to build a page tool or toolset, follow the format and guidelines in
+https://github.com/mantou132/browser4agent-toolsets. Get each function body working on the target
+page with `execute_script` first, then package it as a toolset file.
+
 ## Failure modes
 
 - `failed to connect to running MCP HTTP service` — the browser extension isn't running. Ask the user to open their browser with the extension installed.
