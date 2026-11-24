@@ -155,7 +155,7 @@ peer.handle('execute_script', (p) => executeScript(p.tabId, p.funcStr, p.args));
 peer.handle('execute_tab_tool', (p) => executeTabTool(p.tabId, p.toolsetId, p.toolName, p.args));
 peer.handle('execute_script_in_background', (p) => executeScriptInBackground(p.funcStr, p.args));
 peer.handle('get_local_storage', (p) => getLocalStorage(p.tabId));
-peer.handle('screenshot_tab', (p) => screenshotTab(p.tabId));
+peer.handle('screenshot_tab', (p) => screenshotTab(p.tabId, p));
 peer.handle('debugger_send_command', (p) => debuggerSendCommand(p.tabId, p.method, p.params));
 peer.handle('debugger_detach', (p) => debuggerDetach(p.tabId));
 

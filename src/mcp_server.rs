@@ -57,6 +57,31 @@ pub struct TabIdParams {
     pub tab_id: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, schemars::JsonSchema, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ImageFormat {
+    #[default]
+    Jpeg,
+    Png,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ScreenshotTabParams {
+    #[schemars(
+        description = "Target tab ID obtained from read_active_tab, read_tab, list_tabs, or the \
+                       browser Agent panel context."
+    )]
+    pub tab_id: i64,
+    #[schemars(
+        description = "Image format: 'jpeg' (default, highly recommended to minimize token \
+                       usage and latency) or 'png'."
+    )]
+    #[serde(default)]
+    pub format: ImageFormat,
+    #[schemars(description = "Compression quality for JPEG images (0-100). Ignored for PNG.")]
+    pub quality: Option<u8>,
+}
+
 const INLINE_CONTENT_DESCRIPTION: &str = "Return the whole content inline even when it is long. \
      Default false: content over 20,000 characters is saved to a local file and only its path \
      is returned.";
@@ -360,26 +385,37 @@ impl BrowserMcpServer {
     }
 
     #[tool(
-        description = "Screenshot the given tab and return a PNG image (the CLI saves it to a \
-                       temporary file and prints the path). Use list_tabs \
-                       first only when its ID is unknown. On Chromium, background tabs and \
-                       windows that are not visible are captured through CDP without switching \
-                       tabs (briefly shows the debugging banner); a background tab CDP cannot \
-                       attach to is activated instead. On Firefox the tab is activated first."
+        description = "Screenshot the given tab and return an image (default JPEG for lower token \
+                       usage and latency; the CLI saves it to a temporary file and prints the \
+                       path). Use list_tabs first only when its ID is unknown. On Chromium, \
+                       background tabs and windows that are not visible are captured through CDP \
+                       without switching tabs (briefly shows the debugging banner); a background \
+                       tab CDP cannot attach to is activated instead. On Firefox the tab is \
+                       activated first."
     )]
     async fn screenshot_tab(
         &self,
-        Parameters(p): Parameters<TabIdParams>,
+        Parameters(p): Parameters<ScreenshotTabParams>,
     ) -> Result<CallToolResult, McpError> {
-        let resp = match self
-            .request_extension("screenshot_tab", json!({ "tabId": p.tab_id }))
-            .await
-        {
+        let (format_str, mime_type) = match p.format {
+            ImageFormat::Jpeg => ("jpeg", "image/jpeg"),
+            ImageFormat::Png => ("png", "image/png"),
+        };
+        let mut payload = json!({
+            "tabId": p.tab_id,
+            "format": format_str,
+        });
+        if let Some(quality) = p.quality {
+            payload["quality"] = json!(quality);
+        }
+        let resp = match self.request_extension("screenshot_tab", payload).await {
             Ok(resp) => resp,
             Err(msg) => return Ok(error_text_result(&msg)),
         };
         let image = resp["image"].as_str().unwrap_or_default().to_string();
-        Ok(CallToolResult::success(vec![Content::image(image, "image/png")]))
+        Ok(CallToolResult::success(vec![Content::image(
+            image, mime_type,
+        )]))
     }
 
     #[tool(
@@ -551,5 +587,23 @@ mod tests {
         assert!(TOOL_ROUTING_WORKFLOW.contains("open a new tab unless the user indicated"));
         assert!(TOOL_ROUTING_WORKFLOW.contains("CDP tools only when"));
         assert!(TOOL_ROUTING_WORKFLOW.contains("before `debugger_detach`"));
+    }
+
+    #[test]
+    fn screenshot_tab_schema_has_format_and_quality() {
+        let tools = BrowserMcpServer::tool_specs();
+        let tool = tools
+            .iter()
+            .find(|t| t.name == "screenshot_tab")
+            .expect("screenshot_tab tool should exist");
+        let schema = serde_json::to_value(&*tool.input_schema).unwrap();
+        let properties = schema.get("properties").unwrap();
+        assert!(properties.get("tab_id").is_some());
+        assert!(properties.get("format").is_some());
+        assert!(properties.get("quality").is_some());
+        let required = schema.get("required").unwrap().as_array().unwrap();
+        assert!(required.contains(&serde_json::json!("tab_id")));
+        assert!(!required.contains(&serde_json::json!("format")));
+        assert!(!required.contains(&serde_json::json!("quality")));
     }
 }

@@ -35,12 +35,17 @@ pub fn offload_content(resp: &mut Value, inline: bool) -> Result<()> {
 
     let dir = app_data::page_dir()?;
     prune(&dir);
-    let tab_id = resp.get("tabId").and_then(Value::as_i64).unwrap_or_default();
+    let tab_id = resp
+        .get("tabId")
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
     let millis = SystemTime::now().duration_since(UNIX_EPOCH)?.as_millis();
     let path = dir.join(format!("tab-{tab_id}-{millis}.html"));
     fs::write(&path, content)?;
 
-    let obj = resp.as_object_mut().expect("content exists, so resp is an object");
+    let obj = resp
+        .as_object_mut()
+        .expect("content exists, so resp is an object");
     obj.remove("content");
     obj.insert("contentLength".into(), json!(length));
     obj.insert("contentFile".into(), json!(path));

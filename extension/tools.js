@@ -440,16 +440,22 @@ export async function getLocalStorage(tabId) {
   }
 }
 
-export async function screenshotTab(tabId) {
+export async function screenshotTab(tabId, options = {}) {
   if (tabId == null) throw new Error('tabId is required');
   try {
     const tab = await ensureTabLoaded(tabId);
+    const format = options.format === 'png' ? 'png' : 'jpeg';
+    const quality = typeof options.quality === 'number' ? Math.round(options.quality) : undefined;
+    const captureOptions = { format };
+    if (format === 'jpeg' && typeof quality === 'number') {
+      captureOptions.quality = quality;
+    }
     // Background tabs are hidden too, so this also covers windows that are not visible (screen locked, minimized, covered)
     let hidden = await isTabHidden(tabId);
     // CDP renders hidden tabs without switching the user's view away
     if (hidden && chrome.debugger) {
       try {
-        return { image: await captureWithDebugger(tabId) };
+        return { image: await captureWithDebugger(tabId, format, quality) };
       } catch {
         // Tabs with DevTools open can't be attached; activate them instead
       }
@@ -465,8 +471,9 @@ export async function screenshotTab(tabId) {
         'the browser window is not visible (screen locked, minimized or covered); retry once it is shown',
       );
     }
-    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
-    return { image: dataUrl.replace(/^data:image\/png;base64,/, '') };
+    const dataUrl = await chrome.tabs.captureVisibleTab(tab.windowId, captureOptions);
+    const prefixRegex = format === 'jpeg' ? /^data:image\/jpeg;base64,/ : /^data:image\/png;base64,/i;
+    return { image: dataUrl.replace(prefixRegex, '') };
   } catch (e) {
     throw new Error(`Failed to screenshot tab ${tabId}: ${e.message}`);
   }
@@ -485,10 +492,14 @@ async function isTabHidden(tabId) {
   }
 }
 
-async function captureWithDebugger(tabId) {
+async function captureWithDebugger(tabId, format = 'jpeg', quality) {
   const wasAttached = await isDebuggerAttached(tabId);
   try {
-    const { data } = await debuggerSendCommand(tabId, 'Page.captureScreenshot');
+    const params = { format };
+    if (format === 'jpeg' && typeof quality === 'number') {
+      params.quality = quality;
+    }
+    const { data } = await debuggerSendCommand(tabId, 'Page.captureScreenshot', params);
     return data;
   } finally {
     if (!wasAttached) await debuggerDetach(tabId);
